@@ -60,6 +60,11 @@ body.touch footer{display:none}
   content:''; position:absolute; inset:0; border-radius:50%; pointer-events:none;
   background:conic-gradient(rgba(8,6,14,.72) calc(var(--cd,0) * 1turn), transparent 0);
 }
+#btns button .pips{ /* cargas (Puño del dragón): puntos en la parte de abajo del botón */
+  position:absolute; left:0; right:0; bottom:9%; z-index:1; display:flex; justify-content:center; gap:7%; pointer-events:none}
+#btns button .pips i{width:15%; aspect-ratio:1; border-radius:50%; background:#3a3342; border:1.5px solid rgba(0,0,0,.55); transition:background .12s, transform .12s}
+#btns button .pips i.full{background:#ff8a3d}
+#btns button .pips i.lv{background:#fff; transform:scale(1.25)}
 #btns button.off{opacity:.45}
 #btns button.on{box-shadow:0 0 0 3px #fff inset}
 #btns button.ready{animation:btnReady .32s ease-out}
@@ -4327,6 +4332,21 @@ function setBtn(b, type, color, frac, off, on) {
   const tn = iconTones(color), bc = off ? 'rgba(255,255,255,.25)' : f > 0 ? tn.D : tn.B;
   if (el.style.borderColor !== bc) el.style.borderColor = bc;
 }
+// Puntos de cargas dentro de un botón: n llenas de max; lv: las que se gastarán al soltar
+function setPips(b, n, max, lv) {
+  let box = b.el.querySelector('.pips');
+  if (!max) { if (box) box.remove(); return; }
+  if (!box || box.children.length !== max) {
+    if (box) box.remove();
+    box = document.createElement('div'); box.className = 'pips';
+    for (let i = 0; i < max; i++) box.appendChild(document.createElement('i'));
+    b.el.appendChild(box);
+  }
+  for (let i = 0; i < max; i++) {
+    const d = box.children[i];
+    d.classList.toggle('full', i < n); d.classList.toggle('lv', i < lv);
+  }
+}
 function updateTouchButtons() {
   const p = players.find(q => q.dev === 'touch');
   if (!p) return;
@@ -4340,6 +4360,8 @@ function updateTouchButtons() {
   setBtn(e, c.secType, p.color, p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
     p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0));
   setBtn(lock, 'lock', p.color, 0, p.down, !!p.lockOn);
+  for (const [b, slot, t] of [[q, 'pri', c.priType], [e, 'sec', c.secType]]) // cargas del Puño del dragón
+    setPips(b, p.dragonCharges || 0, t === 'dragon' ? AB.dragon.max : 0, t === 'dragon' && p.cast === slot ? dragonLevel(p) : 0);
 }
 
 let lastPlaying = null;
