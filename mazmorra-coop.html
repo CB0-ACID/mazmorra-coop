@@ -253,7 +253,8 @@ const CHARGED = {
   seismic:  { reach: 40, r0: 45, r1: 80 },   // Losa sísmica: área más contenida
   arcane:   { d0: 140, d1: 320, r0: 50, r1: 80, fly: 0.35, vortex: 0.45 }, // Singularidad arcana (Musgo)
   hook:     { len0: 120, len1: 260 },
-  flurry:   { n0: 3, n1: 7, interval: 0.07 },
+  flurry:   { interval: 0.07 },             // Ráfaga volcánica (remate del combo de Brasa)
+  uppercut: { r0: 56, r1: 76, arc: 1.0, lunge0: 160, lunge1: 320, dur: 0.24 }, // Uppercut del dragón: lanza
   starfall: { d0: 90, d1: 220, r0: 38, r1: 55 } // área pequeña, no lanza; si alcanza a alguien recarga la Embestida
 };
 // Salto (movimiento de Brasa y Ámbar): arco en la dirección en la que te mueves.
@@ -338,11 +339,11 @@ const STAFF_KIT = {
   toward:    { name: 'Estocada de báculo', shape: 'thrust', len: 90, width: 20, dur: 0.16, dmg: 1.5, kb: 280, lunge: 300 },
   away:      { name: 'Báculo ascendente',  shape: 'thrust', len: 60, width: 28, dur: 0.16, dmg: 1,   kb: 440, lunge: -300, launcher: true }
 };
-// Brasa: boxeo de fuego. Directo con un brazo, cruzado con el otro y gancho ígneo de remate
+// Brasa: boxeo de fuego. Directo con un brazo, cruzado con el otro y Ráfaga volcánica de remate
 const FIST_KIT = {
   normal:    { name: 'Directo',       shape: 'thrust', len: 54, width: 28, dur: 0.11, dmg: 1,   kb: 180 },
   normal2:   { name: 'Cruzado',       shape: 'thrust', len: 62, width: 32, dur: 0.13, dmg: 1.1, kb: 240 },
-  heavy:     { name: 'Gancho ígneo',  shape: 'arc',    range: 56, arc: 1.0, dur: 0.2, dmg: 1.7, kb: 420, hitFrom: 0.45 } // conecta cuando el puño llega delante
+  flurry:    { name: 'Ráfaga volcánica', hits: 5, punchDmg: 0.42 } // remate: ráfaga de puñetazos que no lanza
 };
 // Ámbar: garras ninja. Zarpazo en diagonal, contrazarpazo en la diagonal contraria y Tajo sombra atravesando al enemigo
 const CLAW_KIT = {
@@ -376,8 +377,8 @@ const CHARS = [
   { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil, escarcha', priType: 'frostburst', priCd: 7, secType: 'phase', secCd: 10,
     shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300 }, // ondas mágicas continuas; cargando, bola de nieve
   { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil, ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
-  { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'flurry', role: 'Brawler, ejecutor',
-    meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'heavy',
+  { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'uppercut', role: 'Brawler, ejecutor',
+    meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'flurry',
     priType: 'reaper', priCd: 5, secType: 'dragon', secCd: 1,
     moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
   { name: 'Ámbar',    color: '#f5c542', mark: 'star',    family: 'golpe', chargedMelee: 'starfall', role: 'Brawler ninja',
@@ -1392,6 +1393,11 @@ function updatePlayer(p, dt) {
     p.combo = c.finisher && step < 3 ? step : 0; p.comboT = p.combo ? c.comboWindow : 0;
     const def = c.meleeKit[kind];
     p.atkCd = c.meleeCd * (step === 3 ? 1.6 : 1);
+    if (kind === 'flurry') { // remate de Brasa: ráfaga de puñetazos, sin lanzar
+      p.flurry = { left: def.hits, t: 0, dmg: def.punchDmg };
+      floatText(p.x, p.y - 46 * c.size, def.name, p.slotColor); SFX.swing(true);
+      if (c.chargedMelee && !p.jump) p.mHold = 0;
+    } else {
     if (kind !== 'away' && !p.jump) { // paso de entrada hacia el fijado: cierra el hueco para que el golpe conecte
       const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) - tgt.r - p.r - 6 : Infinity;
       // el impulso se frena a 12/s, así que recorre impulso / 12 px
@@ -1402,6 +1408,7 @@ function updatePlayer(p, dt) {
     if (kind !== 'normal' && kind !== 'normal2') floatText(p.x, p.y - 46 * c.size, def.name, p.slotColor);
     if (c.chargedMelee && !p.jump) p.mHold = 0; // si se mantiene pulsado, empieza a cargar (en el aire no)
     if (c.meleeStyle === 'claw') SFX.claw(step === 3); else SFX.swing(step === 3 || kind !== 'normal');
+    }
   }
   if (p.slash) {
     const s = p.slash; s.t += dt;
@@ -2487,8 +2494,14 @@ function releaseChargedMelee(p, lv) {
       damageEnemy(best, p.x, p.y, dmg, dmg, 0); impactFx(p, best, true);
       if (!best.dead) { const L = []; launchOrBump(best, force, L); pullTo(best, p.x, p.y, p.r + best.r + 20); p.lockOn = true; p.target = best; }
     }
-  } else if (type === 'flurry') { // Ráfaga volcánica: lluvia de puñetazos; el último lanza
-    p.flurry = { left: Math.round(cfg.n0 + (cfg.n1 - cfg.n0) * lv), t: 0, lv, force };
+  } else if (type === 'uppercut') { // Uppercut del dragón: avanza con un gancho ascendente de fuego que lanza
+    p.kbx += p.ax * (cfg.lunge0 + (cfg.lunge1 - cfg.lunge0) * lv); p.kby += p.ay * (cfg.lunge0 + (cfg.lunge1 - cfg.lunge0) * lv);
+    const def = { name: '', shape: 'arc', range: cfg.r0 + (cfg.r1 - cfg.r0) * lv, arc: cfg.arc, dur: cfg.dur, dmg: 1 + 2 * lv, kb: 160, launcher: true, hitFrom: 0.25 };
+    p.slash = { kind: 'uppercut', def, t: 0, dur: def.dur, ang: Math.atan2(p.ay, p.ax), hit: new Set(), side: 1 };
+    const fx = p.x + p.ax * def.range * 0.6, fy = p.y + p.ay * def.range * 0.6;
+    for (let i = 0; i < 22; i++) particles.push({ x: fx + (Math.random() - 0.5) * 26, y: fy - 10 - Math.random() * 20, vx: (Math.random() - 0.5) * 50, vy: -160 - Math.random() * 220,
+      life: 0.45, max: 0.45, color: i % 3 ? '#ff6a2a' : '#ffd54a', s: 5 + Math.random() * 5 }); // columna de fuego ascendente
+    shake = Math.max(shake, 4 + lv * 4);
   } else if (type === 'starfall') { // Estrella fugaz: salta hacia el objetivo y lanza a los de alrededor
     const [x1, y1] = starfallPoint(p, lv);
     p.leap = { x0: p.x, y0: p.y, x1, y1, t: 0, dur: 0.32, lv };
@@ -2500,7 +2513,7 @@ function updateFlurry(p, dt) {
   if (f.t > 0) return;
   f.t = CHARGED.flurry.interval; f.left--;
   const last = f.left <= 0;
-  const def = { name: '', shape: 'arc', range: 52, arc: 0.9, dur: 0.07, dmg: 0.3 * (1 + f.lv), kb: last ? 300 : 60, launcher: last, forceLaunch: last && f.force };
+  const def = { name: '', shape: 'arc', range: 52, arc: 0.9, dur: 0.07, dmg: f.dmg, kb: last ? 300 : 60 }; // no lanza
   SFX.swing(false);
   p.slash = { kind: 'flurry', def, t: 0, dur: def.dur, ang: Math.atan2(p.ay, p.ax) + (Math.random() - 0.5) * 0.5, hit: new Set(), side: (p.punchSide = -(p.punchSide || 1)) };
   if (last) p.flurry = null;
@@ -2669,9 +2682,9 @@ function drawChargeHints() {
       const L = beamLength(p.x, p.y, p.ax, p.ay, cfg.len0 + (cfg.len1 - cfg.len0) * lv);
       ctx.globalAlpha = 0.85; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.ax * L, p.y + p.ay * L); ctx.stroke(); ctx.setLineDash([]);
-    } else if (c.chargedMelee === 'flurry') {
-      const a = Math.atan2(p.ay, p.ax);
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, 52, a - 0.9, a + 0.9); ctx.closePath();
+    } else if (c.chargedMelee === 'uppercut') {
+      const a = Math.atan2(p.ay, p.ax), R = cfg.r0 + (cfg.r1 - cfg.r0) * lv;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, R, a - cfg.arc, a + cfg.arc); ctx.closePath();
       ctx.globalAlpha = 0.15 + 0.15 * lv; ctx.fill(); ctx.globalAlpha = 0.85; ctx.stroke();
     } else if (c.chargedMelee === 'starfall') { const [x, y] = starfallPoint(p, lv); area(x, y, cfg.r0 + (cfg.r1 - cfg.r0) * lv); }
     ctx.restore();
@@ -2951,6 +2964,10 @@ function drawAbilityIcon(type, cx, cy, s, col) {
     case 'flurry': // ráfaga de puñetazos
       L('L', th, [[-1, -0.5], [-0.45, -0.5]]); L('L', th, [[-1, 0.05], [-0.3, 0.05]]); L('L', th, [[-1, 0.6], [-0.45, 0.6]]);
       C('B', 0.25, -0.5, 0.32); C('B', 0.55, 0.05, 0.36); C('L', 0.25, 0.6, 0.32); C('W', 0.45, -0.08, 0.1); break;
+    case 'uppercut': // puño que sube envuelto en una llama de dragón
+      P('B', [[-0.9, 1], [-0.05, -0.35], [0.45, 0.15]]); P('L', [[-0.55, 0.85], [0.02, -0.1], [0.22, 0.12]]); // estela de fuego
+      C('L', 0.38, -0.42, 0.5); L('D', th * 0.7, [[0.12, -0.3], [0.5, -0.72]]); C('W', 0.25, -0.62, 0.12); // puño con nudillos
+      L('L', th, [[-0.72, -0.15], [-0.72, -0.85]]); L('L', th, [[-0.38, -0.55], [-0.38, -1]]); break; // líneas de subida
     case 'starfall': // estrella que cae dejando estela
       L('B', TH, [[-1, -1], [-0.1, -0.1]]); L('B', th, [[-0.4, -1], [0.1, -0.5]]); L('B', th, [[-1, -0.4], [-0.5, 0.1]]);
       STAR('L', 0.35, 0.35, 0.62); C('W', 0.35, 0.35, 0.13); break;
@@ -3128,7 +3145,7 @@ function meleeHit(p, e, s) {
   impactFx(p, e, heavy, s.kind === 'flurry');
   if (e.dead) return;
   if (s.def.launcher && tryLaunch(e, s.def.forceLaunch)) { p.lockOn = true; p.target = e; } // quien lo lanza lo fija al instante
-  if (e.airborne) e.vz = Math.max(e.vz, 120);
+  if (e.airborne) e.vz = Math.max(e.vz, s.kind === 'uppercut' ? 260 : 120);
 }
 // ability: disparo que viene de una habilidad (rebotante); si no, es un disparo normal
 function shotHit(p, e, dmg, kb, sx, sy, ability) {
@@ -3691,7 +3708,8 @@ const CHARGED_TEXT = {
   seismic: ['Martillo sísmico', 'El martillo golpea el suelo en área y lanza'],
   hook: ['Látigo de raíz', 'Desde el báculo: atrae al primero y lo lanza'],
   arcane: ['Singularidad arcana', 'Orbe a distancia que atrae y estalla'],
-  flurry: ['Ráfaga volcánica', 'Puñetazos en ráfaga; el último lanza'],
+  flurry: ['Ráfaga volcánica', 'Puñetazos en ráfaga, sin lanzar'],
+  uppercut: ['Uppercut del dragón', 'Gancho ascendente de fuego que lanza'],
   starfall: ['Estrella fugaz', 'Golpea al caer; si acierta, recarga Embestida']
 };
 // Ranura de ataque cargado: golpe cargado, disparo cargado o, si no carga, su fuego continuo
@@ -4216,6 +4234,7 @@ function drawPunch(p) {
   else if (s.kind === 'normal2') { side = 1; big = 1.1; }
   else if (s.kind === 'heavy') { side = 1; angOff = (1 - Math.min(1, k * 2)) * 1.4; big = 1.35; fire = true; } // gancho: llega desde el lado y conecta a mitad
   else if (s.kind === 'away') { side = 1; up = 20 * ext; big = 1.2; }                          // gancho ascendente
+  else if (s.kind === 'uppercut') { side = 1; up = 38 * ext; big = 1.5; fire = true; }          // uppercut del dragón
   else if (s.kind === 'toward' || s.kind === 'afterMove') big = 1.2;
   const a = s.ang + angOff * side, ux = Math.cos(a), uy = Math.sin(a), bux = Math.cos(s.ang), buy = Math.sin(s.ang);
   const bx = p.x - buy * side * p.r * 0.6, by = p.y - lift + bux * side * p.r * 0.45;
