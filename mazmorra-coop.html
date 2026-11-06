@@ -329,9 +329,10 @@ const ROLES = {
 const CHARS = [
   { name: 'Ceniza',   color: '#a9a2b4', mark: 'bars',    family: 'grande', role: 'Tanque defensor', meleeKit: SHIELD_KIT, meleeStyle: 'shield',
     priType: 'raiseShield', priCd: 0.3, secType: 'taunt', secCd: 12, chargedMelee: 'seismic',
-    moveType: 'dash', moveSpeed: 420, moveTime: 0.14, moveCd: 0.9 }, // el bloqueo pasa al escudo en alto; el movimiento vuelve a ser una zancada
+    moveType: 'dash', moveSpeed: 320, moveTime: 0.12, moveCd: 0.9 }, // el bloqueo pasa al escudo en alto; zancada corta (≈38 px)
   { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'grande', role: 'Tanque mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
-    priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane' },
+    priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
+    moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.9 }, // teletransporte corto en vez de bloquear
   { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil, escarcha', priType: 'frostburst', priCd: 7, secType: 'phase', secCd: 10,
     shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300 }, // ondas mágicas continuas; cargando, bola de nieve
   { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil, ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
@@ -980,6 +981,14 @@ function startMovement(p) {
   const c = p.ch;
   p.moveCd = c.moveCd;
   if (c.moveType === 'dash') { p.moveT = c.moveTime; p.mdx = p.fx; p.mdy = p.fy; }
+  else if (c.moveType === 'teleport') { // aparece al instante un poco más adelante; las paredes lo frenan
+    const x0 = p.x, y0 = p.y, d = beamLength(x0, y0, p.fx, p.fy, c.moveDist);
+    burst(x0, y0 - 12, p.color, 10);
+    p.x = x0 + p.fx * d; p.y = y0 + p.fy * d; collide(p, true);
+    p.moveT = c.moveTime; p.mdx = p.mdy = 0; // breve ventana invulnerable y de "golpe tras movimiento"
+    effects.push({ type: 'tracer', x: x0, y: y0, ax: p.fx, ay: p.fy, len: d, w: 10, z2: 0, t: 0, dur: 0.25, color: p.color });
+    burst(p.x, p.y - 12, p.color, 12);
+  }
 }
 function updateMovement(p, dt) { // devuelve true mientras la habilidad controla el desplazamiento
   const c = p.ch;
