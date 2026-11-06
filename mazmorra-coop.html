@@ -1459,6 +1459,7 @@ function fireShot(p, dmg, lv) {
 
 // ---------- Habilidades de Brawler ----------
 function dropTarget(p) {
+  if (p.jump) { const e = p.jump.target; return e && !e.dead && e.airborne && !e.grabbed ? e : null; } // en el aire: el enemigo al que estás pegado
   if (p.lockOn && p.target && p.target.airborne && !p.target.dead) return p.target;
   return nearestAirborne(p);
 }
@@ -1473,8 +1474,8 @@ function testLaunch(p) {
 function abilityType(p, slot) { return slot === 'pri' ? p.ch.priType : p.ch.secType; }
 // Algunas habilidades necesitan un objetivo: si no lo hay, aparecen deshabilitadas
 function abilityReady(p, slot) {
-  if (p.jump) return false; // en el aire solo golpes básicos
   const t = abilityType(p, slot);
+  if (p.jump) return t === 'drop' && p.jump.phase === 'air' && !!dropTarget(p); // en el aire solo golpes básicos, salvo la Caída Izuna
   if (t === 'drop') return !!dropTarget(p);
   if (t === 'ricochet') return !!ricochetTarget(p)[0];
   if (t === 'suspend') return liveTargets().some(e => e.airborne);
@@ -1549,7 +1550,8 @@ function startDrop(p) {
   const e = dropTarget(p);
   if (!e) return;
   p.lockOn = true; p.target = e;
-  p.drop = { e, phase: 'rise', t: 0, x0: p.x, y0: p.y, z0: 0 };
+  const z0 = p.z || 0; p.jump = null; p.slash = null; // desde el aire: sale de la pelea aérea directamente a la caída
+  p.drop = { e, phase: 'rise', t: 0, x0: p.x, y0: p.y, z0, zs: z0 };
   e.grabbed = true;
   floatText(p.x, p.y - 46 * p.ch.size, 'Caída Izuna', p.slotColor);
 }
@@ -1613,8 +1615,8 @@ function updateSpecial(p, dt) {
   if (e.dead) { p.drop = null; p.z = 0; return false; }
   d.t += dt;
   if (d.phase === 'rise') { // salta hasta el enemigo en el aire
-    const k = Math.min(1, d.t / 0.22);
-    p.x = d.x0 + (e.x - d.x0) * k; p.y = d.y0 + (e.y + 2 - d.y0) * k; p.z = e.z * k;
+    const k = Math.min(1, d.t / (d.zs > 0 ? 0.08 : 0.22)); // desde el aire ya está al lado: agarre casi inmediato
+    p.x = d.x0 + (e.x - d.x0) * k; p.y = d.y0 + (e.y + 2 - d.y0) * k; p.z = d.zs + (e.z - d.zs) * k;
     if (k >= 1) { d.phase = 'fall'; d.t = 0; d.z0 = e.z; burst(e.x, e.y - 12 - e.z, p.color, 12); }
     return true;
   }
