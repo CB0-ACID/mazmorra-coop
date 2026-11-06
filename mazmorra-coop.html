@@ -133,6 +133,21 @@ const ENEMY = {
   splitter: { tier: 3, hp: 14, sta: 10, r: 17, spd: 52,  color: '#5eead4', cost: 6 },
   boss:     { tier: 4, hp: 40, sta: 24, r: 30, spd: 36,  color: '#e5484d', cost: 0 }
 };
+// ---------- Vida de los personajes (en puntos, ya no en corazones) ----------
+// Un antiguo corazón equivale a 20 puntos. El corazón se mantiene solo como símbolo de curación.
+const HEAL = { pickup: 40, floor: 40 }; // corazón recogido y curación al bajar de piso
+// Daño de cada ataque enemigo a los jugadores, en puntos (los élite pegan un 30 % más)
+const ENEMY_DMG = {
+  mite:     { touch: 10 },
+  slime:    { touch: 14 },
+  charger:  { touch: 22, swipe: 26 },
+  shooter:  { touch: 12, shot: 16 },
+  golem:    { touch: 24, leap: 32, slam: 36 },
+  splitter: { touch: 16, bomb: 22 },
+  boss:     { touch: 30, shot: 18 }
+};
+const ELITE_DMG_MUL = 1.3;
+function edmg(e, kind) { const t = ENEMY_DMG[e.type] || {}; return Math.round((t[kind] || t.touch || 20) * (e.elite ? ELITE_DMG_MUL : 1)); }
 const ENEMY_HP_MUL = 4.4; // vida de los enemigos respecto al daño de los jugadores
 const ENEMY_STA_MUL = 2;  // estamina de los enemigos (doblada junto con la vida)
 const MULTI_HP_MUL = 0.5; // con más jugadores, cada uno extra suma un 50 % de vida a los enemigos (premia combinar: lanzar, rematar en el aire, ejecutar)
@@ -169,7 +184,7 @@ const AB = {
   overdrive: { r: 100, dmg: 2, kb: 420 }, // Purga: onda de calor que daña y empuja
   turret:    { time: 10, rate: 0.3, range: 330, dmg: 1.2, hp: 8, regen: 0.5, destroyedCd: 20 }, // vida propia; se regenera guardada
   overcharge: { time: 5, mul: 0.5 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta
-  reaper:    { len: 82, arc: 0.85, dmg: 2, heal: 1 }, // Puño ejecutor: ejecuta a los tier 1 y cura
+  reaper:    { len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: ejecuta a los tier 1 y cura
   dragon: {  // Puño del dragón: cargas por ejecuciones propias o de aliados cercanos
     max: 3, step: 0.45, allyR: 240,
     l1: { len: 110, w: 34, dmg: 3 },          // golpe corto como un rayo
@@ -199,7 +214,7 @@ const FALL_HP = 0.06, FALL_STA = 0.15; // daño al caer al suelo: fracción de l
 // De momento todos comparten estadísticas: cambia aquí cada valor para diferenciarlos.
 const BASE_STATS = {
   size: 1,         // tamaño (radio = 12 × size)
-  hp: 5,           // corazones
+  hp: 100,         // puntos de vida
   speed: 175,      // píxeles por segundo
   melee: 2,        // daño del golpe
   meleeCd: 0.24,   // segundos entre golpes
@@ -277,8 +292,8 @@ const BRAWLER_KIT = {
   away:      { name: 'Gancho ascendente', shape: 'thrust', len: 52, width: 34, dur: 0.16, dmg: 1,   kb: 440, lunge: -300, launcher: true }
 };
 const ROLES = {
-  grande:  { role: 'Tanque',  size: 1.35, hp: 8, speed: 135, canShoot: false, autoLock: true, finisher: 'heavy', moveType: 'block', weight: 'heavy' }, // bloquean en vez de esquivar
-  agil:    { role: 'Ágil',    size: 0.75, hp: 3, speed: 225, moveCd: 0.45, shotType: 'hitscan', canMelee: false, weight: 'light' },
+  grande:  { role: 'Tanque',  size: 1.35, hp: 160, speed: 135, canShoot: false, autoLock: true, finisher: 'heavy', moveType: 'block', weight: 'heavy' }, // bloquean en vez de esquivar
+  agil:    { role: 'Ágil',    size: 0.75, hp: 60, speed: 225, moveCd: 0.45, shotType: 'hitscan', canMelee: false, weight: 'light' },
   // Brawlers: la habilidad 1 es una embestida que lanza al primer enemigo; la 2, una caída Izuna con un enemigo en el aire
   golpe:   { role: 'Brawler', melee: 4, canShoot: false, autoLock: true, finisher: 'normal', meleeKit: BRAWLER_KIT, meleeStyle: 'fist', priType: 'rush', priLen: 260, rushSpeed: 680, secType: 'drop', secCd: 4, dropDmg: 5, dropSta: 0.75, dropRadius: 60 },
   tirador: { role: 'Tirador', shot: 2, shotType: 'hitscan', shotStagger: 0.34, canMelee: false }
@@ -533,7 +548,7 @@ let testMode = false;
 let npcMode = false; // modo 1 jugador + aliado IA
 // Levantar al caído (del laboratorio de interacción): quien cae queda en el suelo y un aliado lo levanta manteniendo el ataque a su lado.
 // La cuenta atrás se pausa mientras lo levantan; si el aliado se aparta, la barra baja poco a poco. Al agotarse, pasa a fantasma
-const REVIVE = { r: 52, time: 1.6, ghostTime: 3.2, bleed: 12, decay: 0.5, crawl: 0.18, ghostSpeed: 0.5, hp: 2 };
+const REVIVE = { r: 52, time: 1.6, ghostTime: 3.2, bleed: 12, decay: 0.5, crawl: 0.18, ghostSpeed: 0.5, hp: 40 };
 const humans = () => players.filter(p => !p.npc);
 // Aliado IA: sigue al jugador a poca distancia. Si el jugador lleva a Ceniza con el escudo alzado, se pone detrás a cubierto
 function npcInput(p) {
@@ -863,7 +878,7 @@ function makeEnemy(type, x, y, elite) {
 function roomCleared() {
   room.cleared = true; bullets = []; hazards = [];
   let revived = false;
-  for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = 2; p.inv = 1.5; revived = true; }
+  for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = 1.5; revived = true; }
   if (room.type === 'boss') { room.stairs = true; showBanner('Guardián derrotado, baja por la escalera'); }
   else {
     showBanner(revived ? 'Sala despejada, compañeros de vuelta' : 'Sala despejada');
@@ -884,7 +899,7 @@ function newRun() {
 function nextFloor() {
   const d = floor.depth + 1;
   floor = genFloor(seed, d);
-  for (const p of players) { if (p.down) { p.down = false; p.hp = 2; } p.hp = Math.min(p.maxHp, p.hp + 2); }
+  for (const p of players) { if (p.down) { p.down = false; p.ghost = false; p.hp = Math.min(p.maxHp, REVIVE.hp); } healPlayer(p, HEAL.floor); }
   enterRoom(floor.start, null);
   showBanner('Piso ' + d);
 }
@@ -992,6 +1007,7 @@ function updatePlayer(p, dt) {
   p.gatSpin = (p.gatSpin || 0) + dt * (c.shotStyle === 'gatling' && inp.s ? 38 : 3); // los cañones giran al disparar
   p.castT = p.cast ? (p.castT || 0) + dt : 0;
   { const wt = WEIGHT[c.weight] || WEIGHT.medium; p.sqv = (p.sqv || 0) + (-320 * (p.sq || 0) - wt.damping * (p.sqv || 0)) * dt; p.sq = Math.max(-0.35, Math.min(0.35, (p.sq || 0) + p.sqv * dt)); } // tiempo con la habilidad pulsada (nivel del Puño del dragón)
+  if (p.hurtFx > 0) p.hurtFx -= dt; if (p.healFx > 0) p.healFx -= dt;
   if (p.turretHp != null && !myTurret(p)) p.turretHp = Math.min(AB.turret.hp, p.turretHp + AB.turret.regen * dt); // la torreta guardada se repara
   if (p.comboT > 0) { p.comboT -= dt; if (p.comboT <= 0) p.combo = 0; }
 
@@ -1789,8 +1805,7 @@ function castReaper(p) {
   }
   effects.push({ type: 'cone', x: p.x, y: p.y, ang: a, r: R, arc: AB.reaper.arc, t: 0, dur: 0.3, color: p.color });
   if (reaped && p.hp < p.maxHp) {
-    p.hp = Math.min(p.maxHp, p.hp + AB.reaper.heal);
-    floatText(p.x, p.y - 62 * p.ch.size, '+' + AB.reaper.heal + ' vida', '#7ee08a'); burst(p.x, p.y - 14, '#7ee08a', 12);
+    healPlayer(p, AB.reaper.heal); burst(p.x, p.y - 14, '#7ee08a', 12);
   }
   shake = Math.max(shake, 4);
 }
@@ -2428,10 +2443,21 @@ function onBlock(p, sx, sy, srcEnemy, bullet) {
     if (bullet) { const a = Math.atan2(-dy, -dx); pBullets.push({ x: p.x, y: p.y, vx: Math.cos(a) * 380, vy: Math.sin(a) * 380, r: 5, life: 0.9, dmg: 2, color: p.color, pierce: false, hit: new Set(), owner: p, h: 12, vh: 0 }); }
   } else { p.kbx += dx / d * 120; p.kby += dy / d * 120; SFX.hit(false); }
 }
-function hurtPlayer(p, sx, sy, srcEnemy) {
+// Cura con número flotante; el corazón sigue siendo el símbolo de la curación
+function healPlayer(p, amt) {
+  if (p.down) return 0;
+  const got = Math.min(p.maxHp - p.hp, amt);
+  if (got <= 0) return 0;
+  p.hp += got; p.healFx = 0.6;
+  floatText(p.x, p.y - 56 * p.ch.size, '+' + Math.round(got) + ' \u2665', '#ff7a93');
+  return got;
+}
+function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
   if (p.down || p.inv > 0 || p.phaseT > 0 || p.rush || p.drop || p.leap || p.dragonRush || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
-  p.hp--; p.inv = 1.0; SFX.hurt();
+  if (dmg == null) dmg = srcEnemy ? edmg(srcEnemy, 'touch') : 20;
+  p.hp -= dmg; p.inv = 1.0; p.hurtFx = 0.5; SFX.hurt();
+  floatText(p.x + (Math.random() - 0.5) * 14, p.y - 50 * p.ch.size, '-' + Math.round(dmg), '#ff5a6e');
   const dx = p.x - sx, dy = p.y - sy, d = Math.hypot(dx, dy) || 1;
   const kbm = (WEIGHT[p.ch.weight] || WEIGHT.medium).kbMul; // los pesados apenas se mueven al recibir golpes
   p.kbx = dx / d * 260 * kbm; p.kby = dy / d * 260 * kbm;
@@ -2595,7 +2621,7 @@ function nearestPlayer(e) {
   for (const p of players) if (!p.down) { const d = Math.hypot(p.x - e.x, p.y - e.y); if (d < bd) { bd = d; best = p; } }
   return [best, bd];
 }
-function fire(x, y, ang, spd) { bullets.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r: 5, life: 4 }); }
+function fire(x, y, ang, spd, dmg) { bullets.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r: 5, life: 4, dmg: dmg || 16 }); }
 function randomFloorNear(px, py, minD, maxD) {
   for (let i = 0; i < 30; i++) {
     const a = Math.random() * Math.PI * 2, d = minD + Math.random() * (maxD - minD);
@@ -2615,7 +2641,7 @@ const ENEMY_AI = {
       e.t -= dt;
       if (d < 58 && e.swipeCd <= 0) {
         e.state = 'swipe'; e.t = 0.45; e.swipeCd = 1.6;
-        hazards.push({ x: e.x, y: e.y, r: 62, ang: e.face, arc: 1.1, t: 0, delay: 0.4, owner: e, follow: true });
+        hazards.push({ x: e.x, y: e.y, r: 62, ang: e.face, arc: 1.1, t: 0, delay: 0.4, owner: e, follow: true, dmg: edmg(e, 'swipe') });
         return [0, 0];
       }
       if (e.t <= 0 && d < 330) { e.state = 'wind'; e.t = 0.5; e.dirx = nx; e.diry = ny; return [0, 0]; }
@@ -2633,8 +2659,8 @@ const ENEMY_AI = {
     e.cd -= dt;
     if (e.cd <= 0) {
       e.shots++; const spd = 170 + floor.depth * 10;
-      if (e.shots % 3 === 0) for (const o of [-0.3, 0, 0.3]) fire(e.x, e.y, e.face + o, spd * 0.85);
-      else fire(e.x, e.y, e.face, spd);
+      if (e.shots % 3 === 0) for (const o of [-0.3, 0, 0.3]) fire(e.x, e.y, e.face + o, spd * 0.85, edmg(e, 'shot'));
+      else fire(e.x, e.y, e.face, spd, edmg(e, 'shot'));
       e.cd = 1.6 + Math.random() * 0.8;
     }
     return [nx * want * e.spd - ny * e.spd * 0.6 * st, ny * want * e.spd + nx * e.spd * 0.6 * st];
@@ -2651,12 +2677,12 @@ const ENEMY_AI = {
       e.t -= dt;
       if (e.t <= 0) {
         e.state = 'leap'; e.t = 0; e.lx0 = e.x; e.ly0 = e.y; e.lx1 = p.x; e.ly1 = p.y;
-        hazards.push({ x: p.x, y: p.y, r: 80, t: 0, delay: e.leapDur, owner: e });
+        hazards.push({ x: p.x, y: p.y, r: 80, t: 0, delay: e.leapDur, owner: e, dmg: edmg(e, 'leap') });
       }
       return [0, 0];
     }
     if (e.state === 'slam') { e.t -= dt; if (e.t <= 0) e.state = 'walk'; return [0, 0]; }
-    if (d < 95 && e.slamCd <= 0) { e.state = 'slam'; e.t = 0.9; e.slamCd = 3.2; hazards.push({ x: e.x, y: e.y, r: 105, t: 0, delay: 0.85, owner: e }); return [0, 0]; }
+    if (d < 95 && e.slamCd <= 0) { e.state = 'slam'; e.t = 0.9; e.slamCd = 3.2; hazards.push({ x: e.x, y: e.y, r: 105, t: 0, delay: 0.85, owner: e, dmg: edmg(e, 'slam') }); return [0, 0]; }
     if (d > 160 && e.leapCd <= 0) { e.state = 'leapWind'; e.t = 0.55; e.leapCd = 4.5; return [0, 0]; }
     return [nx * e.spd, ny * e.spd];
   },
@@ -2672,7 +2698,7 @@ const ENEMY_AI = {
     if (e.bombCd <= 0) {
       e.bombCd = 3 + Math.random();
       const alive = players.filter(q => !q.down);
-      for (let i = 0; i < 3; i++) { const q = alive[i % alive.length]; hazards.push({ x: q.x + (Math.random() - 0.5) * 70, y: q.y + (Math.random() - 0.5) * 70, r: 46, t: 0, delay: 1.0, owner: e, detach: true }); }
+      for (let i = 0; i < 3; i++) { const q = alive[i % alive.length]; hazards.push({ x: q.x + (Math.random() - 0.5) * 70, y: q.y + (Math.random() - 0.5) * 70, r: 46, t: 0, delay: 1.0, owner: e, detach: true, dmg: edmg(e, 'bomb') }); }
     }
     const want = d < 140 ? -1 : (d > 220 ? 1 : 0), st = Math.sin(e.anim * 1.1 + e.phase);
     return [nx * want * e.spd - ny * e.spd * 0.7 * st, ny * want * e.spd + nx * e.spd * 0.7 * st];
@@ -2682,10 +2708,10 @@ const ENEMY_AI = {
     e.cd -= dt; e.cd2 -= dt;
     if (e.cd <= 0) {
       const n = 12 + floor.depth * 2;
-      for (let i = 0; i < n; i++) fire(e.x, e.y, i / n * Math.PI * 2 + e.rot, 130);
+      for (let i = 0; i < n; i++) fire(e.x, e.y, i / n * Math.PI * 2 + e.rot, 130, edmg(e, 'shot'));
       e.rot += 0.3; e.cd = rage ? 1.8 : 2.6;
     }
-    if (e.cd2 <= 0) { for (const o of [-0.25, 0, 0.25]) fire(e.x, e.y, e.face + o, 190); e.cd2 = rage ? 1.0 : 1.5; }
+    if (e.cd2 <= 0) { for (const o of [-0.25, 0, 0.25]) fire(e.x, e.y, e.face + o, 190, edmg(e, 'shot')); e.cd2 = rage ? 1.0 : 1.5; }
     return [nx * e.spd * (rage ? 1.3 : 1), ny * e.spd * (rage ? 1.3 : 1)];
   }
 };
@@ -2755,7 +2781,7 @@ function updateHazards(dt) {
       const dx = p.x - h.x, dy = p.y - h.y, dd = Math.hypot(dx, dy);
       if (dd > h.r + p.r) continue;
       if (h.arc) { let da = Math.atan2(dy, dx) - h.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); if (Math.abs(da) > h.arc && dd > p.r + 10) continue; }
-      hurtPlayer(p, h.x, h.y);
+      hurtPlayer(p, h.x, h.y, null, h.dmg || (h.owner ? edmg(h.owner, 'touch') : 20));
     }
     for (const t of turrets) if (Math.hypot(t.x - h.x, t.y - h.y) <= h.r + 10) hurtTurret(t, 2);
     effects.push({ type: 'ring', x: h.x, y: h.y, r: h.r, t: 0, dur: 0.3, color: '#ff6b6b' });
@@ -2869,7 +2895,7 @@ function update(dt) {
       if (wp) { reflectBullet(wp, b); b.life = 0; continue; }
     }
     { const tt = turrets.find(q => !q.gone && Math.hypot(q.x - b.x, q.y - b.y) < 12 + b.r); if (tt) { hurtTurret(tt, 1); b.life = 0; continue; } } // la torreta para balas y sufre
-    for (const p of players) if (!p.down && Math.hypot(p.x - b.x, p.y - b.y) < p.r + b.r) { if (blocks(p, b.x - b.vx * 0.05, b.y - b.vy * 0.05)) { onBlock(p, b.x - b.vx * 0.05, b.y - b.vy * 0.05, null, b); b.life = 0; } else if (hurtPlayer(p, b.x, b.y)) b.life = 0; break; }
+    for (const p of players) if (!p.down && Math.hypot(p.x - b.x, p.y - b.y) < p.r + b.r) { if (blocks(p, b.x - b.vx * 0.05, b.y - b.vy * 0.05)) { onBlock(p, b.x - b.vx * 0.05, b.y - b.vy * 0.05, null, b); b.life = 0; } else if (hurtPlayer(p, b.x, b.y, null, b.dmg || 16)) b.life = 0; break; }
   }
   bullets = bullets.filter(b => b.life > 0);
 
@@ -2896,7 +2922,7 @@ function update(dt) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const h = pickups[i]; h.t += dt;
     const p = players.find(p => !p.down && p.hp < p.maxHp && Math.hypot(p.x - h.x, p.y - h.y) < p.r + 12);
-    if (p) { p.hp = Math.min(p.maxHp, p.hp + 2); burst(h.x, h.y - 14, '#ff4d6d', 10); pickups.splice(i, 1); }
+    if (p) { healPlayer(p, HEAL.pickup); burst(h.x, h.y - 14, '#ff4d6d', 10); pickups.splice(i, 1); }
   }
 
   if (!room.cleared && enemies.length === 0) {
@@ -3060,7 +3086,7 @@ function drawInfoPanel(ch) {
   ctx.fillStyle = ch.color; ctx.font = '700 13px ' + FONT; ctx.fillText(ch.role, x + 16, y + 50);
   ctx.fillStyle = '#8f86a0'; ctx.font = '400 11.5px ' + FONT; ctx.fillText(styleText(ch), x + 16, y + 66);
   const bars = [
-    ['Vida', ch.hp / 8, ch.hp + ' corazones'],
+    ['Vida', ch.hp / 160, ch.hp + ' de vida'],
     ['Velocidad', ch.speed / 225, ''],
     ['Golpe', ch.canMelee ? ch.melee / 4 : 0, ch.canMelee ? '' : 'no'],
     ['Disparo', ch.canShoot ? ch.shot / 2 : 0, ch.canShoot ? '' : 'no']
@@ -3460,6 +3486,12 @@ function drawClaws(p) {
   ctx.restore();
 }
 function drawTexts() {
+  // barrita sobre la cabeza durante un momento al recibir daño o curarse (útil con cuatro jugadores)
+  for (const p of players) if (!p.down && ((p.hurtFx || 0) > 0 || (p.healFx || 0) > 0)) {
+    ctx.globalAlpha = Math.min(1, Math.max(p.hurtFx || 0, p.healFx || 0) * 4);
+    bar(p.x - 16, p.y - 40 * p.ch.size - 12 - (p.z || 0), 32, 3, p.hp / p.maxHp, p.hp / p.maxHp <= 0.25 ? '#ff9aa8' : '#ff4d6d');
+    ctx.globalAlpha = 1;
+  }
   ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
   for (const f of texts) {
     ctx.globalAlpha = 1 - f.t / f.dur;
@@ -3767,6 +3799,27 @@ function drawShotState(p) {
     ctx.fillRect(x, y, w * p.heat, 4);
   }
 }
+// Barra de vida del HUD: el tramo perdido queda un instante en blanco y luego se vacía;
+// las marcas finas van cada 20 puntos (lo que antes era un corazón)
+function drawHpBar(p, x, y, w, h) {
+  const f = Math.max(0, p.hp) / p.maxHp;
+  if (p.hpLag == null || p.hpLag < p.hp) p.hpLag = p.hp;
+  else if (p.hpLag > p.hp) p.hpLag = Math.max(p.hp, p.hpLag - p.maxHp * 0.012);
+  ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = '#3a3342'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillRect(x, y, w * Math.max(0, p.hpLag) / p.maxHp, h);
+  const low = !p.down && f <= 0.25;
+  ctx.fillStyle = p.down ? '#6b4a55' : (low && Math.floor(time * 6) % 2 ? '#ff9aa8' : '#ff4d6d');
+  ctx.fillRect(x, y, w * f, h);
+  if (p.healFx > 0) { ctx.fillStyle = 'rgba(255,170,190,' + (p.healFx * 0.8).toFixed(2) + ')'; ctx.fillRect(x, y, w * f, h); }
+  ctx.fillStyle = 'rgba(10,8,16,0.45)';
+  for (let v = 20; v < p.maxHp; v += 20) ctx.fillRect(x + Math.round(w * v / p.maxHp), y, 1, h);
+  const txt = Math.ceil(Math.max(0, p.hp)) + '/' + p.maxHp;
+  ctx.font = '700 9px ' + FONT; ctx.textAlign = 'right'; ctx.lineJoin = 'round';
+  ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(10,8,16,0.9)'; ctx.strokeText(txt, x + w - 2, y + h - 1.5);
+  ctx.fillStyle = '#ffffff'; ctx.fillText(txt, x + w - 2, y + h - 1.5);
+  ctx.textAlign = 'left';
+}
 function drawPickup(h) {
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(h.x, h.y, 8, 3.5);
   drawHeart(h.x, h.y - 16 - 3 * Math.sin(h.t * 3), 7, '#ff4d6d');
@@ -3778,8 +3831,7 @@ function drawHUD() {
   for (let i = 0; i < players.length; i++) {
     const x = 12 + i * 112, p = players[i];
     ctx.font = '700 13px ' + FONT; ctx.fillStyle = p.slotColor; ctx.fillText('J' + p.id, x, 21);
-    const hs = p.maxHp > 5 ? 4 : 5, hsp = p.maxHp > 5 ? 9.5 : 14;
-    for (let h = 0; h < p.maxHp; h++) drawHeart(x + 32 + h * hsp, 15, hs, h < p.hp ? '#ff4d6d' : '#3a3342');
+    drawHpBar(p, x + 28, 9, 76, 10);
     ctx.fillStyle = p.color; ellipse(x + 4, 36, 4, 4);
     ctx.font = '400 11px ' + FONT; ctx.fillStyle = p.down ? '#ff8f8f' : '#b9afc9';
     ctx.fillText(p.ch.name, x + 13, 40);
