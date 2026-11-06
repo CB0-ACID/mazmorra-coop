@@ -22,6 +22,9 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
    - Fijado automático de los cuerpo a cuerpo (tanques y brawlers): al moverte, fijan al enemigo más cercano dentro del cono hacia el que miras, y al golpear dan un paso de entrada que cierra el hueco. Se ajusta con la constante AIM.
    - Iconos de habilidad a color (`drawAbilityIcon`): cada icono usa tonos derivados del color del personaje (`iconTones`: base, claro, oscuro y brillo) con contorno oscuro; casillas del marcador de 18 px.
    - Brasa y Ámbar saltan en vez de esquivar (moveType 'jump', constantes en JUMP): salto en la dirección del movimiento; si saltas hacia un enemigo en el aire te enganchas a él, lo mantienes flotando con golpes básicos (sin cargados ni habilidades) y puedes ejecutarlo en el aire si está aturdido.
+   - Ranura de movimiento modular (`MOVES`): cada personaje elige `moveType` y cada tipo define nombre, descripción, icono y comportamiento (`start`/`update`, o `hold` para mantener). Tipos actuales: `dash` (Esquiva), `stride` (Zancada, Ceniza), `teleport` (Musgo), `jump` (Salto, Brasa y Ámbar) y `block` (Guardia, sin uso ahora).
+   - Ranura de ataque cargado (`chargedSlot`): golpe cargado de cada cuerpo a cuerpo; en los tiradores, su disparo cargado o, si no cargan, su fuego continuo. Todos con icono propio.
+   - El marcador muestra por jugador: movimiento, habilidad 1 y habilidad 2. El panel de selección lista ataque, carga, movimiento y habilidades con su icono.
    - Las constantes de balance están agrupadas al principio del script (ENEMY, AB, CHARGED, BASE_STATS, REVIVE…).
 2. **laboratorio-coop.html**: banco de pruebas con 8 mecánicas coop jugables (levantar al caído, cuerda de energía, congelar y romper, placas simultáneas, escudo y tirador, lanzar al compañero, cámara compartida, golpe sincronizado), con notas de diseño de cada una.
 

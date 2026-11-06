@@ -343,7 +343,7 @@ const ROLES = {
 const CHARS = [
   { name: 'Ceniza',   color: '#a9a2b4', mark: 'bars',    family: 'grande', role: 'Tanque defensor', meleeKit: SHIELD_KIT, meleeStyle: 'shield',
     priType: 'raiseShield', priCd: 0.3, secType: 'taunt', secCd: 12, chargedMelee: 'seismic',
-    moveType: 'dash', moveSpeed: 320, moveTime: 0.12, moveCd: 0.9 }, // el bloqueo pasa al escudo en alto; zancada corta (≈38 px)
+    moveType: 'stride', moveSpeed: 320, moveTime: 0.12, moveCd: 0.9 }, // el bloqueo pasa al escudo en alto; zancada corta (≈38 px)
   { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'grande', role: 'Tanque mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
     priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
     moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.9 }, // teletransporte corto en vez de bloquear
@@ -993,20 +993,36 @@ function beamLength(x, y, ax, ay, max) {
   return max;
 }
 
-// Habilidad de movimiento: de momento todos usan 'dash'; aquí se añadirán otros tipos
+// ---------- Habilidad de movimiento: ranura modular ----------
+// Cada personaje elige su tipo con moveType. Cada tipo define nombre, descripción, icono y comportamiento;
+// para añadir uno nuevo basta con una entrada más aquí. hold: se mantiene pulsado en vez de tener recarga.
+const MOVES = {
+  dash: { name: 'Esquiva', desc: 'Impulso rápido; invulnerable mientras dura', icon: 'dash',
+    start(p, c) { p.moveT = c.moveTime; p.mdx = p.fx; p.mdy = p.fy; },
+    update(p, c, dt) {
+      p.x += p.mdx * c.moveSpeed * dt; p.y += p.mdy * c.moveSpeed * dt;
+      if (Math.random() < 0.7) particles.push({ x: p.x, y: p.y - 12, vx: 0, vy: 0, life: 0.25, max: 0.25, color: p.color, s: 6 });
+    } },
+  stride: { name: 'Zancada', desc: 'Paso corto y firme; invulnerable mientras dura', icon: 'stride',
+    start(p, c) { MOVES.dash.start(p, c); }, update(p, c, dt) { MOVES.dash.update(p, c, dt); } },
+  teleport: { name: 'Teletransporte', desc: 'Reaparece un poco más adelante; las paredes lo frenan', icon: 'teleport',
+    start(p, c) { // aparece al instante un poco más adelante
+      const x0 = p.x, y0 = p.y, d = beamLength(x0, y0, p.fx, p.fy, c.moveDist);
+      burst(x0, y0 - 12, p.color, 10);
+      p.x = x0 + p.fx * d; p.y = y0 + p.fy * d; collide(p, true);
+      p.moveT = c.moveTime; p.mdx = p.mdy = 0; // breve ventana invulnerable y de "golpe tras movimiento"
+      effects.push({ type: 'tracer', x: x0, y: y0, ax: p.fx, ay: p.fy, len: d, w: 10, z2: 0, t: 0, dur: 0.25, color: p.color });
+      burst(p.x, p.y - 12, p.color, 12);
+    } },
+  jump: { name: 'Salto', desc: 'Hacia un enemigo en el aire te enganchas y sigues el combo', icon: 'jump',
+    start(p, c, mx, my) { startJump(p, mx || 0, my || 0); } }, // el salto lleva su propio estado (p.jump, ver «Salto»)
+  block: { name: 'Guardia', desc: 'Mantén para bloquear; justo a tiempo, bloqueo perfecto', icon: 'block', hold: true }
+};
+function moveOf(c) { return MOVES[c.moveType] || MOVES.dash; }
 function startMovement(p, mx, my) {
-  const c = p.ch;
+  const c = p.ch, m = moveOf(c);
   p.moveCd = c.moveCd;
-  if (c.moveType === 'jump') startJump(p, mx || 0, my || 0);
-  else if (c.moveType === 'dash') { p.moveT = c.moveTime; p.mdx = p.fx; p.mdy = p.fy; }
-  else if (c.moveType === 'teleport') { // aparece al instante un poco más adelante; las paredes lo frenan
-    const x0 = p.x, y0 = p.y, d = beamLength(x0, y0, p.fx, p.fy, c.moveDist);
-    burst(x0, y0 - 12, p.color, 10);
-    p.x = x0 + p.fx * d; p.y = y0 + p.fy * d; collide(p, true);
-    p.moveT = c.moveTime; p.mdx = p.mdy = 0; // breve ventana invulnerable y de "golpe tras movimiento"
-    effects.push({ type: 'tracer', x: x0, y: y0, ax: p.fx, ay: p.fy, len: d, w: 10, z2: 0, t: 0, dur: 0.25, color: p.color });
-    burst(p.x, p.y - 12, p.color, 12);
-  }
+  if (m.start) m.start(p, c, mx, my);
 }
 // ---------- Salto ----------
 // Busca a un enemigo en el aire hacia el que saltar: el fijado primero, si no el más cercano delante
@@ -1085,13 +1101,10 @@ function updateJump(p, dt) { // devuelve true mientras el salto controla el desp
   return true;
 }
 function updateMovement(p, dt) { // devuelve true mientras la habilidad controla el desplazamiento
-  const c = p.ch;
+  const c = p.ch, m = moveOf(c);
   if (p.moveT <= 0) return false;
   p.moveT -= dt;
-  if (c.moveType === 'dash') {
-    p.x += p.mdx * c.moveSpeed * dt; p.y += p.mdy * c.moveSpeed * dt;
-    if (Math.random() < 0.7) particles.push({ x: p.x, y: p.y - 12, vx: 0, vy: 0, life: 0.25, max: 0.25, color: p.color, s: 6 });
-  }
+  if (m.update) m.update(p, c, dt);
   if (p.moveT <= 0) p.postMoveT = c.postMoveWindow;
   return true;
 }
@@ -1214,14 +1227,14 @@ function updatePlayer(p, dt) {
 
   // desplazamiento: habilidad de movimiento > impulso del golpe > órbita > libre
   const special = (p.rush || p.drop || p.leap || p.dragonRush || p.shieldCharge) ? updateSpecial(p, dt) : false;
-  if (c.moveType === 'block') { // el botón de movimiento sube la guardia mientras se mantiene
+  if (moveOf(c).hold) { // el botón de movimiento sube la guardia mientras se mantiene
     const want = !!inp.d && !special && !p.flurry;
     if (want && !p.blocking) { p.blocking = true; p.blockT = 0; p.perfectUsed = false; p.slash = null; p.mHold = null; p.mCharging = false; }
     else if (!want) p.blocking = false;
     if (p.blocking) p.blockT += dt;
     p.bufD = 0;
   }
-  if (!special && !p.jump && c.moveType !== 'block' && p.bufD > 0 && p.moveCd <= 0 && !(p.slash && p.slash.def.lunge)) { p.slash = null; p.flurry = null; p.bufD = 0; startMovement(p, mx, my); } // el dash cancela el golpe
+  if (!special && !p.jump && !moveOf(c).hold && p.bufD > 0 && p.moveCd <= 0 && !(p.slash && p.slash.def.lunge)) { p.slash = null; p.flurry = null; p.bufD = 0; startMovement(p, mx, my); } // el dash cancela el golpe
   if (!special && !(p.jump ? updateJump(p, dt) : updateMovement(p, dt))) {
     const s = p.slash;
     if (s && s.def.lunge && s.t < s.dur) {
@@ -2589,6 +2602,7 @@ function drawAbilityIcon(type, cx, cy, s, col) {
   const P = (c, pts) => ops.push({ k: 'p', c, pts });                                      // polígono relleno
   const C = (c, x, y, r, o) => ops.push(Object.assign({ k: 'c', c, x, y, r, fill: true }, o)); // círculo (relleno o trazo con w)
   const R = (c, x, y, w, hh) => P(c, [[x, y], [x + w, y], [x + w, y + hh], [x, y + hh]]);
+  const STAR = (c, x, y, r) => P(c, Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; return [x + Math.cos(a) * rr, y + Math.sin(a) * rr]; }));
   switch (type) {
     case 'beam': L('L', TH, [[-0.95, 0], [0.25, 0]]); P('B', [[1, 0], [0.15, -0.6], [0.15, 0.6]]); break;
     case 'area': C('B', 0, 0, 0.85, { fill: false, w: th }); L('L', TH, [[0, 0.45], [0, -0.35]]); P('L', [[0, -0.7], [-0.38, -0.2], [0.38, -0.2]]); break;
@@ -2629,6 +2643,50 @@ function drawAbilityIcon(type, cx, cy, s, col) {
     case 'overcharge': L('B', TH, [[-0.72, 0.8], [0, 0.12], [0.72, 0.8]]); L('L', TH, [[-0.72, 0.1], [0, -0.6], [0.72, 0.1]]); C('W', 0, -0.92, 0.15); break;
     case 'turret': L('L', th, [[0, 0.45], [-0.62, 1]]); L('L', th, [[0, 0.45], [0.62, 1]]);
       L('L', TH, [[0.25, -0.15], [1, -0.62]]); R('B', -0.6, -0.35, 1.15, 0.75); C('W', -0.3, -0.05, 0.12); break;
+    // ataques cargados (cuerpo a cuerpo)
+    case 'seismic': // martillo que golpea el suelo
+      L('L', TH, [[0, -1], [0, 0.05]]); R('B', -0.6, 0.05, 1.2, 0.5); R('D', 0.1, 0.05, 0.5, 0.5);
+      L('L', th, [[-0.95, 0.88], [0.95, 0.88]]); L('W', th, [[-0.95, 0.3], [-0.8, 0.55]]); L('W', th, [[0.95, 0.3], [0.8, 0.55]]); break;
+    case 'arcane': // singularidad: núcleo oscuro con remolino
+      C('L', 0, 0, 0.78, { fill: false, w: th, a0: -2.7, a1: -0.7 }); C('L', 0, 0, 0.78, { fill: false, w: th, a0: 0.45, a1: 2.45 });
+      C('B', 0, 0, 0.44); C('D', 0, 0, 0.24); C('W', -0.2, -0.22, 0.1); break;
+    case 'hook': // látigo que acaba en gancho
+      L('B', TH, [[-1, 0.85], [-0.55, 0.35], [-0.1, 0.55], [0.3, 0.05]]);
+      C('L', 0.55, -0.3, 0.38, { fill: false, w: TH, a0: 1.2, a1: 4.9 }); break;
+    case 'flurry': // ráfaga de puñetazos
+      L('L', th, [[-1, -0.5], [-0.45, -0.5]]); L('L', th, [[-1, 0.05], [-0.3, 0.05]]); L('L', th, [[-1, 0.6], [-0.45, 0.6]]);
+      C('B', 0.25, -0.5, 0.32); C('B', 0.55, 0.05, 0.36); C('L', 0.25, 0.6, 0.32); C('W', 0.45, -0.08, 0.1); break;
+    case 'starfall': // estrella que cae dejando estela
+      L('B', TH, [[-1, -1], [-0.1, -0.1]]); L('B', th, [[-0.4, -1], [0.1, -0.5]]); L('B', th, [[-1, -0.4], [-0.5, 0.1]]);
+      STAR('L', 0.35, 0.35, 0.62); C('W', 0.35, 0.35, 0.13); break;
+    // disparos cargados y fuego continuo
+    case 'snowball': // bola de nieve con un copo
+      C('L', -0.15, 0.2, 0.68); C('W', -0.38, -0.02, 0.2);
+      L('B', th, [[0.62, -0.9], [0.62, -0.34]]); L('B', th, [[0.34, -0.62], [0.9, -0.62]]); break;
+    case 'chargedShot': // bala que atraviesa, con ondas de carga detrás
+      C('B', -1.3, 0, 0.6, { fill: false, w: th, a0: -0.9, a1: 0.9 }); C('B', -0.95, 0, 0.6, { fill: false, w: th, a0: -0.9, a1: 0.9 });
+      P('L', [[1, 0], [0.55, -0.34], [-0.25, -0.34], [-0.25, 0.34], [0.55, 0.34]]); C('W', 0.5, -0.12, 0.1); break;
+    case 'heat': // ráfaga continua que se calienta: balas y llama
+      L('L', th, [[-1, -0.5], [-0.65, -0.5]]); L('L', th, [[-0.45, -0.5], [-0.1, -0.5]]);
+      L('L', th, [[-1, 0.15], [-0.65, 0.15]]); L('L', th, [[-0.45, 0.15], [-0.1, 0.15]]);
+      P('B', [[0.55, -1], [0.95, 0.25], [0.15, 0.25]]); C('B', 0.55, 0.45, 0.42);
+      P('L', [[0.55, -0.25], [0.77, 0.5], [0.33, 0.5]]); C('L', 0.55, 0.55, 0.22); break;
+    case 'gatling': // cañones giratorios: fuego continuo sin carga
+      R('B', -1, -0.65, 0.55, 1.3); for (const yy of [-0.42, 0, 0.42]) L('L', th, [[-0.45, yy], [0.75, yy]]);
+      L('B', th, [[0.15, -0.6], [0.15, 0.6]]); C('W', 0.98, -0.42, 0.11); C('W', 0.98, 0.42, 0.11); C('W', 0.98, 0, 0.11); break;
+    // habilidades de movimiento
+    case 'stride': // zancada: bota pesada que avanza
+      L('L', th, [[-1, -0.25], [-0.75, -0.25]]); L('L', th, [[-1, 0.25], [-0.75, 0.25]]);
+      P('B', [[-0.55, -0.75], [0.1, -0.75], [0.1, 0.12], [0.8, 0.3], [0.8, 0.62], [-0.55, 0.62]]); R('D', -0.55, 0.42, 1.35, 0.2);
+      L('L', th, [[-0.9, 0.9], [0.95, 0.9]]); break;
+    case 'teleport': // desaparece y reaparece delante
+      C('B', -0.55, 0.15, 0.4, { fill: false, w: th, dash: [0.22, 0.2] }); L('B', th, [[-0.05, 0.05], [0.25, 0.05]], { dash: [0.12, 0.14] });
+      C('L', 0.62, 0.05, 0.36); C('W', 0.52, -0.06, 0.11); L('W', th, [[0.6, -0.9], [0.6, -0.56]]); L('W', th, [[0.43, -0.73], [0.77, -0.73]]); break;
+    case 'jump': // salto en arco
+      C('B', 0, 0.55, 0.82, { fill: false, w: th, a0: Math.PI, a1: Math.PI * 1.72, dash: [0.2, 0.18] });
+      C('B', 0, 0.55, 0.82, { fill: false, w: th, a0: Math.PI * 1.72, a1: Math.PI * 1.98 });
+      P('L', [[0.82, 0.95], [0.5, 0.45], [1, 0.42]]); L('L', th, [[-1, 0.95], [-0.55, 0.95]]);
+      C('L', -0.1, -0.35, 0.3); C('W', -0.18, -0.43, 0.1); break;
     // iconos de los botones táctiles
     case 'dash': L('L', th, [[-1, -0.5], [-0.4, -0.5]]); L('L', th, [[-1, 0.5], [-0.4, 0.5]]); L('B', TH, [[-0.7, 0], [0.15, 0]]); P('L', [[1, 0], [0.1, -0.62], [0.1, 0.62]]); break;
     case 'block': P('B', [[-0.75, -0.85], [0.75, -0.85], [0.75, 0.1], [0, 1], [-0.75, 0.1]]); P('D', [[0, -0.85], [0.75, -0.85], [0.75, 0.1], [0, 1]]); C('W', -0.3, -0.4, 0.13); break;
@@ -2649,7 +2707,7 @@ function drawAbilityIcon(type, cx, cy, s, col) {
       ctx.beginPath();
       if (o.k === 'l') { o.pts.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * h, y * h)); ctx.lineWidth = o.w * h + (pass ? 0 : ox * 2); ctx.stroke(); continue; }
       if (o.k === 'p') { o.pts.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * h, y * h)); ctx.closePath(); }
-      else ctx.arc(o.x * h, o.y * h, o.r * h, 0, Math.PI * 2);
+      else ctx.arc(o.x * h, o.y * h, o.r * h, o.a0 || 0, o.a1 == null ? Math.PI * 2 : o.a1);
       if (o.k === 'c' && !o.fill) { ctx.lineWidth = o.w * h + (pass ? 0 : ox * 2); ctx.stroke(); continue; }
       if (pass) ctx.fill(); else { ctx.lineWidth = ox * 2; ctx.fill(); ctx.stroke(); }
     }
@@ -2658,7 +2716,7 @@ function drawAbilityIcon(type, cx, cy, s, col) {
 }
 // Casilla de habilidad del marcador. Lista: fondo y borde con los tonos del personaje. Recargando: se rellena de abajo arriba.
 function drawPip(x, y, frac, type, color, active, disabled) {
-  const s = 18, f = Math.max(0, Math.min(1, frac)), tn = iconTones(color);
+  const s = 17, f = Math.max(0, Math.min(1, frac)), tn = iconTones(color);
   if (disabled) { // no se puede usar ahora mismo
     rrect(x, y, s, s, 4); ctx.fillStyle = '#1a1622'; ctx.fill(); ctx.strokeStyle = '#3b3349'; ctx.lineWidth = 1; ctx.stroke();
     drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.72, ICON_GREY);
@@ -3328,6 +3386,15 @@ const CHARGED_TEXT = {
   flurry: ['Ráfaga volcánica', 'Puñetazos en ráfaga; el último lanza'],
   starfall: ['Estrella fugaz', 'Golpea al caer; si acierta, recarga Embestida']
 };
+// Ranura de ataque cargado: golpe cargado, disparo cargado o, si no carga, su fuego continuo
+function chargedSlot(c) {
+  if (c.chargedMelee) { const t = CHARGED_TEXT[c.chargedMelee]; return { icon: c.chargedMelee, title: 'Golpe cargado: ' + t[0], desc: t[1] }; }
+  if (!c.canShoot) return null;
+  if (c.shotMode === 'frost') return { icon: 'snowball', title: 'Disparo cargado: Bola de nieve', desc: 'Mantén: ondas continuas y crece la bola; suelta para lanzarla' };
+  if (c.shotMode === 'heat') return { icon: 'heat', title: 'Fuego continuo: Ráfaga', desc: 'Sin carga; si no paras, se sobrecalienta' };
+  if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: 'Sin carga ni calentamiento' };
+  return { icon: 'chargedShot', title: 'Disparo cargado: Tiro perforante', desc: 'Mantén y suelta: hasta ×' + c.chargeMaxMul + ' de daño y atraviesa' };
+}
 function shotText(c) {
   if (c.shotMode === 'frost') return 'Ondas continuas; cargando, bola de nieve';
   if (c.shotStyle === 'revolver') return 'Revólver: lento y contundente, cargable';
@@ -3345,8 +3412,14 @@ function meleeText(c) {
 }
 function styleText(c) {
   if (!c.canShoot) return c.moveType === 'block' ? 'Cuerpo a cuerpo; bloquea en vez de esquivar' : 'Cuerpo a cuerpo, siempre fija a un enemigo';
-  if (!c.canMelee) return 'A distancia';
+  if (!c.canMelee) return 'A distancia; de cerca, su ataque ejecuta';
   return 'Mixto';
+}
+// Escribe en una línea reduciendo la letra si no cabe en el ancho dado
+function fitText(text, x, y, maxW, weight, size) {
+  let sz = size; ctx.font = weight + ' ' + sz + 'px ' + FONT;
+  while (sz > 8 && ctx.measureText(text).width > maxW) { sz -= 0.5; ctx.font = weight + ' ' + sz + 'px ' + FONT; }
+  ctx.fillText(text, x, y);
 }
 function drawInfoPanel(ch) {
   const [x, y, w, h] = infoRect();
@@ -3369,18 +3442,20 @@ function drawInfoPanel(ch) {
     if (note) { ctx.fillStyle = '#8f86a0'; ctx.font = '400 10.5px ' + FONT; ctx.fillText(note, x + 222, yy + 8); }
   });
   const pri = ABILITY_TEXT[ch.priType] || ['', ''], sec = ABILITY_TEXT[ch.secType] || ['', ''];
-  const cm = ch.chargedMelee ? CHARGED_TEXT[ch.chargedMelee] : null;
-  const rows = ch.canMelee
-    ? [[null, 'Cuerpo a cuerpo', meleeText(ch)], [null, 'Golpe cargado: ' + (cm ? cm[0] : 'no'), cm ? cm[1] : ''],
-       [ch.priType, 'Habilidad 1: ' + pri[0], pri[1]], [ch.secType, 'Habilidad 2: ' + sec[0], sec[1]]]
-    : [[null, 'Disparo', shotText(ch)], [null, 'Cuerpo a cuerpo', 'No; de cerca, su ataque ejecuta'],
-       [ch.priType, 'Habilidad 1: ' + pri[0], pri[1]], [ch.secType, 'Habilidad 2: ' + sec[0], sec[1]]];
+  const cs = chargedSlot(ch), mv = moveOf(ch);
+  const rows = [
+    ch.canMelee ? ['melee', 'Cuerpo a cuerpo', meleeText(ch)] : ['shot', 'Disparo', shotText(ch)],
+    cs ? [cs.icon, cs.title, cs.desc] : [null, 'Golpe cargado: no', ''],
+    [mv.icon, 'Movimiento: ' + mv.name, mv.desc],
+    [ch.priType, 'Habilidad 1: ' + pri[0], pri[1]], [ch.secType, 'Habilidad 2: ' + sec[0], sec[1]]
+  ];
   rows.forEach(([icon, title, desc], i) => {
-    const yy = y + 178 + i * 34, tx = icon ? x + 42 : x + 16;
+    const yy = y + 176 + i * 27, tx = icon ? x + 42 : x + 16;
     if (icon) { const tn = iconTones(ch.color); rrect(x + 14, yy - 12, 22, 22, 5); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = 1.5; ctx.stroke(); drawAbilityIcon(icon, x + 25, yy - 1, 16, ch.color); }
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#e6e0ef'; ctx.font = '700 12px ' + FONT; ctx.fillText(title, tx, yy);
-    ctx.fillStyle = '#9d94ad'; ctx.font = '400 11px ' + FONT; ctx.fillText(desc, tx, yy + 15);
+    const room = x + w - 10 - tx;
+    ctx.fillStyle = '#e6e0ef'; fitText(title, tx, yy, room, 700, 12);
+    ctx.fillStyle = '#9d94ad'; fitText(desc, tx, yy + 13, room, 400, 10.5);
   });
 }
 function drawSelect() {
@@ -4100,22 +4175,23 @@ function drawHUD() {
   ctx.fillStyle = '#0a0810'; ctx.fillRect(0, 0, W, HUD);
   ctx.textAlign = 'left';
   for (let i = 0; i < players.length; i++) {
-    const x = 12 + i * 112, p = players[i];
+    const x = 12 + i * 120, p = players[i];
     ctx.font = '700 13px ' + FONT; ctx.fillStyle = p.slotColor; ctx.fillText('J' + p.id, x, 21);
-    drawHpBar(p, x + 28, 9, 76, 10);
-    ctx.fillStyle = p.color; ellipse(x + 4, 36, 4, 4);
-    ctx.font = '400 11px ' + FONT; ctx.fillStyle = p.down ? '#ff8f8f' : '#b9afc9';
-    ctx.fillText(p.ch.name, x + 13, 40);
+    drawHpBar(p, x + 28, 9, 84, 10);
+    ctx.font = '600 11px ' + FONT; ctx.fillStyle = p.down ? '#ff8f8f' : '#b9afc9';
+    ctx.fillText(p.ch.name, x, 40);
+    const mv = moveOf(p.ch); // ranura de movimiento
+    drawPip(x + 56, 27, mv.hold ? 0 : p.moveCd / (p.ch.moveCd || 1), mv.icon, p.color, mv.hold ? !!p.blocking : p.moveT > 0 || !!p.jump, false);
     const tur = myTurret(p);
-    drawPip(x + 68, 27, p.priCd / (p.priCdMax || p.ch.priCd), p.ch.priType, p.color, p.cast === 'pri' || (p.ch.priType === 'turret' && !!tur) || !!p.shieldUp, !abilityReady(p, 'pri'));
-    if (p.ch.priType === 'raiseShield') bar(x + 68, 47, 18, 2, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
-    drawPip(x + 90, 27, p.secCd / (p.secCdMax || p.ch.secCd), p.ch.secType, p.color, p.cast === 'sec' || (p.ch.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'));
-    if (p.ch.secType === 'dragon') for (let i = 0; i < AB.dragon.max; i++) { ctx.fillStyle = i < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; ctx.fillRect(x + 90 + i * 6, 47, 4, 3); } // cargas
-    if (p.ch.priType === 'turret') bar(x + 68, 47, 18, 2, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
+    drawPip(x + 76, 27, p.priCd / (p.priCdMax || p.ch.priCd), p.ch.priType, p.color, p.cast === 'pri' || (p.ch.priType === 'turret' && !!tur) || !!p.shieldUp, !abilityReady(p, 'pri'));
+    if (p.ch.priType === 'raiseShield') bar(x + 76, 47, 17, 2, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
+    drawPip(x + 96, 27, p.secCd / (p.secCdMax || p.ch.secCd), p.ch.secType, p.color, p.cast === 'sec' || (p.ch.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'));
+    if (p.ch.secType === 'dragon') for (let i = 0; i < AB.dragon.max; i++) { ctx.fillStyle = i < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; ctx.fillRect(x + 96 + i * 6, 47, 4, 3); } // cargas
+    if (p.ch.priType === 'turret') bar(x + 76, 47, 17, 2, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
   }
-  ctx.font = '700 13px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + floor.depth, 462, 21);
-  ctx.font = '400 11px ' + FONT; ctx.fillStyle = '#8f86a0'; ctx.fillText('Semilla ' + seed, 462, 40);
-  if (testMode) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('Modo de prueba', 560, 21); ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#b9a96a'; ctx.fillText('clic de rueda, J o cruceta: lanzar', 560, 40); }
+  ctx.font = '700 13px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + floor.depth, 496, 21);
+  ctx.font = '400 11px ' + FONT; ctx.fillStyle = '#8f86a0'; ctx.fillText('Semilla ' + seed, 496, 40);
+  if (testMode) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('Modo de prueba', 590, 21); ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#b9a96a'; ctx.fillText('clic de rueda, J o cruceta: lanzar', 590, 40); }
   const known = [...floor.rooms.values()].filter(r => r.visited || Object.values(r.doors).some(n => n && n.visited));
   let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
   for (const r of known) { x0 = Math.min(x0, r.gx); x1 = Math.max(x1, r.gx); y0 = Math.min(y0, r.gy); y1 = Math.max(y1, r.gy); }
@@ -4209,8 +4285,9 @@ function updateTouchButtons() {
   if (!p) return;
   const c = p.ch, tur = myTurret(p), [atk, dash, q, e, lock] = TBTN;
   setBtn(atk, c.canMelee ? 'melee' : 'shot', p.color, 0, p.down, false);
-  if (c.moveType === 'block') setBtn(dash, 'block', p.color, 0, p.down, !!p.blocking);
-  else setBtn(dash, 'dash', p.color, p.moveCd / (c.moveCd || 1), p.down, p.moveT > 0);
+  const mv = moveOf(c);
+  if (mv.hold) setBtn(dash, mv.icon, p.color, 0, p.down, !!p.blocking);
+  else setBtn(dash, mv.icon, p.color, p.moveCd / (c.moveCd || 1), p.down, p.moveT > 0 || !!p.jump);
   setBtn(q, c.priType, p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
     p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
   setBtn(e, c.secType, p.color, p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
