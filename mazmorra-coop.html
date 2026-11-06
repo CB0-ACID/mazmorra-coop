@@ -39,15 +39,32 @@ body.touch footer{display:none}
 #stickZone{position:absolute; left:0; bottom:0; width:45%; height:65%; pointer-events:auto; touch-action:none}
 #ring{position:absolute; width:100px; height:100px; border-radius:50%; border:2px solid rgba(255,255,255,.4); background:rgba(20,16,30,.35); display:none}
 #knob{position:absolute; left:30px; top:30px; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,.55)}
-#btns{position:absolute; right:12px; bottom:12px; display:grid; grid-template-columns:repeat(3,auto); gap:8px; align-items:center; justify-items:center; pointer-events:auto}
+/* Botonera en arco alrededor de Atacar. Todo se mide en --A (diámetro de Atacar):
+   Movimiento a la izquierda, Hab. 2 encima, Hab. 1 en la diagonal de arriba a la izquierda, Fijar a su izquierda */
+#btns{--A:120px; position:absolute; right:14px; bottom:14px; width:var(--A); height:var(--A); pointer-events:none}
 #btns button{
-  font-family:inherit; font-weight:700; color:#fff; touch-action:none; padding:0;
+  position:absolute; pointer-events:auto; overflow:hidden;
+  font-family:inherit; font-weight:700; color:#fff; touch-action:none; padding:0; -webkit-tap-highlight-color:transparent;
   background:rgba(24,18,36,.6); border:2px solid rgba(255,255,255,.4); border-radius:50%;
+  transition:transform .08s, opacity .15s;
 }
-#btns .big{width:96px; height:96px; font-size:.9rem; grid-row:span 2} /* ataque: botón grande */
-#btns .mid{width:58px; height:58px; font-size:.66rem}
-#btns .small{width:48px; height:48px; font-size:.6rem}
-#btns button:active{background:rgba(120,90,220,.7)}
+#bAtk {width:var(--A); height:var(--A); right:0; bottom:0; font-size:calc(var(--A)*.13); border-width:3px}
+#bDash{width:calc(var(--A)*.72); height:calc(var(--A)*.72); right:calc(var(--A)*1.08); bottom:calc(var(--A)*.14); font-size:calc(var(--A)*.11)}
+#bE   {width:calc(var(--A)*.58); height:calc(var(--A)*.58); right:calc(var(--A)*.21); bottom:calc(var(--A)*1.08); font-size:calc(var(--A)*.1)}
+#bQ   {width:calc(var(--A)*.58); height:calc(var(--A)*.58); right:calc(var(--A)*.882); bottom:calc(var(--A)*.882); font-size:calc(var(--A)*.1)}
+#bLock{width:calc(var(--A)*.42); height:calc(var(--A)*.42); right:calc(var(--A)*1.542); bottom:calc(var(--A)*.962); font-size:calc(var(--A)*.085)}
+#btns button canvas{position:absolute; left:50%; top:50%; width:62%; height:62%; transform:translate(-50%,-50%); pointer-events:none}
+#bAtk canvas{width:54%; height:54%}
+#btns button.ico > span{display:none} /* con icono, el texto sobra */
+#btns button::after{ /* recarga: sector oscuro que se va vaciando */
+  content:''; position:absolute; inset:0; border-radius:50%; pointer-events:none;
+  background:conic-gradient(rgba(8,6,14,.72) calc(var(--cd,0) * 1turn), transparent 0);
+}
+#btns button.off{opacity:.45}
+#btns button.on{box-shadow:0 0 0 3px #fff inset}
+#btns button.ready{animation:btnReady .32s ease-out}
+@keyframes btnReady{0%{transform:scale(1.12); filter:brightness(1.8)} 100%{transform:scale(1); filter:none}}
+#btns button:active{transform:scale(.93); filter:brightness(1.35)}
 #bPause{position:absolute; top:8px; right:8px; width:44px; height:44px; pointer-events:auto; touch-action:none; font-family:inherit; font-weight:700; color:#fff; background:rgba(24,18,36,.6); border:2px solid rgba(255,255,255,.4); border-radius:10px}
 #bTest{position:absolute; top:8px; right:60px; height:44px; padding:0 10px; display:none; pointer-events:auto; touch-action:none; font-family:inherit; font-weight:700; color:#16121e; background:#ffd54a; border:none; border-radius:10px}
 body.touch.test #bTest{display:block}
@@ -61,10 +78,7 @@ body.touch.playing #bFull{top:auto; bottom:8px; left:50%; transform:translateX(-
 /* horizontal: controles a los lados, adaptados a la altura de la pantalla */
 body.touch.landscape{padding-left:env(safe-area-inset-left,0px); padding-right:env(safe-area-inset-right,0px)}
 body.touch.landscape #stickZone{width:42%; height:100%}
-body.touch.landscape #btns{right:8px; bottom:8px; gap:min(8px,1.6vh)}
-body.touch.landscape #btns .big{width:min(100px,28vh); height:min(100px,28vh); font-size:min(.9rem,3.6vh)}
-body.touch.landscape #btns .mid{width:min(58px,16vh); height:min(58px,16vh); font-size:min(.66rem,2.7vh)}
-body.touch.landscape #btns .small{width:min(48px,13vh); height:min(48px,13vh); font-size:min(.6rem,2.5vh)}
+body.touch.landscape #btns{--A:min(124px,33vh); right:max(10px,env(safe-area-inset-right,0px)); bottom:10px}
 body.touch.landscape #bPause{top:6px; right:6px; width:min(44px,11vh); height:min(44px,11vh)}
 body.touch.landscape #bTest{top:6px; right:calc(min(44px,11vh) + 12px); height:min(44px,11vh)}
 body.touch.landscape #ring{width:min(100px,28vh); height:min(100px,28vh)}
@@ -87,11 +101,11 @@ body.touch.portrait:not(.rotdismiss) #rotate{display:flex}
     <button id="bPause" aria-label="Pausa">II</button>
     <button id="bTest" aria-label="Lanzar al objetivo (modo de prueba)">Lanzar</button>
     <div id="btns">
-      <button id="bLock" class="small" aria-label="Fijar objetivo">Fijar</button>
-      <button id="bQ" class="mid" aria-label="Habilidad primaria">Hab. 1</button>
-      <button id="bAtk" class="big" aria-label="Atacar">Atacar</button>
-      <button id="bDash" class="mid" aria-label="Habilidad de movimiento">Movim.</button>
-      <button id="bE" class="mid" aria-label="Habilidad secundaria">Hab. 2</button>
+      <button id="bLock" aria-label="Fijar objetivo"><canvas></canvas><span>Fijar</span></button>
+      <button id="bQ" aria-label="Habilidad primaria"><canvas></canvas><span>Hab. 1</span></button>
+      <button id="bE" aria-label="Habilidad secundaria"><canvas></canvas><span>Hab. 2</span></button>
+      <button id="bDash" aria-label="Habilidad de movimiento"><canvas></canvas><span>Movim.</span></button>
+      <button id="bAtk" aria-label="Atacar"><canvas></canvas><span>Atacar</span></button>
     </div>
   </div>
 </div>
@@ -337,7 +351,7 @@ const CHARS = [
 
 // ---------- Lienzo ----------
 const cvs = document.getElementById('game');
-const ctx = cvs.getContext('2d');
+let ctx = cvs.getContext('2d'); // let: los iconos de los botones táctiles lo cambian un instante para pintar en su propio lienzo
 const stage = document.getElementById('stage');
 function resize() {
   const r = stage.getBoundingClientRect();
@@ -2503,6 +2517,13 @@ function drawAbilityIcon(type, cx, cy, s, col) {
     case 'overcharge': L('B', TH, [[-0.72, 0.8], [0, 0.12], [0.72, 0.8]]); L('L', TH, [[-0.72, 0.1], [0, -0.6], [0.72, 0.1]]); C('W', 0, -0.92, 0.15); break;
     case 'turret': L('L', th, [[0, 0.45], [-0.62, 1]]); L('L', th, [[0, 0.45], [0.62, 1]]);
       L('L', TH, [[0.25, -0.15], [1, -0.62]]); R('B', -0.6, -0.35, 1.15, 0.75); C('W', -0.3, -0.05, 0.12); break;
+    // iconos de los botones táctiles
+    case 'dash': L('L', th, [[-1, -0.5], [-0.4, -0.5]]); L('L', th, [[-1, 0.5], [-0.4, 0.5]]); L('B', TH, [[-0.7, 0], [0.15, 0]]); P('L', [[1, 0], [0.1, -0.62], [0.1, 0.62]]); break;
+    case 'block': P('B', [[-0.75, -0.85], [0.75, -0.85], [0.75, 0.1], [0, 1], [-0.75, 0.1]]); P('D', [[0, -0.85], [0.75, -0.85], [0.75, 0.1], [0, 1]]); C('W', -0.3, -0.4, 0.13); break;
+    case 'melee': L('L', TH, [[-0.6, 0.6], [0.85, -0.85]]); L('B', TH, [[-0.75, 0.05], [-0.05, 0.75]]); L('B', TH, [[-0.65, 0.65], [-0.9, 0.9]]); C('W', 0.55, -0.55, 0.1); break;
+    case 'shot': C('B', 0, 0, 0.62, { fill: false, w: th }); L('L', th, [[0, -1], [0, -0.4]]); L('L', th, [[0, 1], [0, 0.4]]); L('L', th, [[-1, 0], [-0.4, 0]]); L('L', th, [[1, 0], [0.4, 0]]); C('W', 0, 0, 0.16); break;
+    case 'lock': L('L', th, [[-0.95, -0.45], [-0.95, -0.95], [-0.45, -0.95]]); L('L', th, [[0.45, -0.95], [0.95, -0.95], [0.95, -0.45]]);
+      L('L', th, [[-0.95, 0.45], [-0.95, 0.95], [-0.45, 0.95]]); L('L', th, [[0.45, 0.95], [0.95, 0.95], [0.95, 0.45]]); C('B', 0, 0, 0.3); break;
     default: C('B', 0, 0, 0.5);
   }
   const ox = Math.max(0.9, s * 0.09); // grosor extra del contorno, en píxeles
@@ -4035,6 +4056,44 @@ function drawGame() {
   if (state === 'over') drawOver();
 }
 
+// ---------- Botones táctiles: icono de la habilidad del personaje, recarga y estado ----------
+const TBTN = ['bAtk', 'bDash', 'bQ', 'bE', 'bLock'].map(id => { const el = document.getElementById(id); return { el, cv: el.querySelector('canvas'), key: '', cd: 0 }; });
+function paintBtnIcon(b, type, color) {
+  const dpr = Math.min(3, window.devicePixelRatio || 1), sz = b.cv.clientWidth;
+  const k = type + color + sz + dpr;
+  if (b.key === k || !sz) return;
+  b.key = k; b.cv.width = b.cv.height = Math.round(sz * dpr);
+  const c2 = b.cv.getContext('2d'), keep = ctx;
+  c2.setTransform(dpr, 0, 0, dpr, 0, 0); c2.clearRect(0, 0, sz, sz);
+  ctx = c2; try { drawAbilityIcon(type, sz / 2, sz / 2, sz * 0.86, color); } finally { ctx = keep; }
+  b.el.classList.add('ico');
+}
+function setBtn(b, type, color, frac, off, on) {
+  paintBtnIcon(b, type, color);
+  const f = Math.max(0, Math.min(1, frac || 0)), el = b.el;
+  if (Math.abs(f - b.cd) > 0.004 || (f === 0) !== (b.cd === 0)) {
+    el.style.setProperty('--cd', f.toFixed(3));
+    if (f === 0 && b.cd > 0) { el.classList.remove('ready'); void el.offsetWidth; el.classList.add('ready'); } // destello al quedar lista
+    b.cd = f;
+  }
+  el.classList.toggle('off', !!off); el.classList.toggle('on', !!on);
+  const tn = iconTones(color), bc = off ? 'rgba(255,255,255,.25)' : f > 0 ? tn.D : tn.B;
+  if (el.style.borderColor !== bc) el.style.borderColor = bc;
+}
+function updateTouchButtons() {
+  const p = players.find(q => q.dev === 'touch');
+  if (!p) return;
+  const c = p.ch, tur = myTurret(p), [atk, dash, q, e, lock] = TBTN;
+  setBtn(atk, c.canMelee ? 'melee' : 'shot', p.color, 0, p.down, false);
+  if (c.moveType === 'block') setBtn(dash, 'block', p.color, 0, p.down, !!p.blocking);
+  else setBtn(dash, 'dash', p.color, p.moveCd / (c.moveCd || 1), p.down, p.moveT > 0);
+  setBtn(q, c.priType, p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
+    p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
+  setBtn(e, c.secType, p.color, p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
+    p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0));
+  setBtn(lock, 'lock', p.color, 0, p.down, !!p.lockOn);
+}
+
 let lastPlaying = null;
 function draw() {
   const playing = state === 'play';
@@ -4042,6 +4101,7 @@ function draw() {
     lastPlaying = playing; document.body.classList.toggle('playing', playing);
     if (!playing) { touch.x = touch.y = 0; for (const kk of ['a', 's', 'd', 'q', 'e', 'l', 'c', 'p', 't']) touch[kk] = false; stickId = null; ring.style.display = 'none'; }
   }
+  if (playing && isTouch) updateTouchButtons();
   const cur = state === 'play' && players.some(p => p.dev === 'kb1') ? 'crosshair' : 'default';
   if (cvs.style.cursor !== cur) cvs.style.cursor = cur;
   if (state === 'count') drawCount();
