@@ -278,6 +278,10 @@ const JUMP = {
   hangFall: 14,                        // el enemigo apenas cae mientras le pegas
   fallSpeed: 320                       // velocidad de caída al soltarte
 };
+// Doble salto de Escarcha: cada pulsación del botón de movimiento salta con una voltereta (dos saltos hasta aterrizar)
+const FLIP = { h1: 72, h2: 58, g: 900, speed: 230, drag: 1.0, spin: 0.42 }; // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
+// Estalactita de hielo: cae sobre donde estás y explota con daño de área (no te hace daño a ti ni a tus aliados)
+const STAL = { fall: 0.42, z0: 170, r: 40, dmg: 22, kb: 160 };
 const ABILITY_MUL = 1.6;   // habilidades 1 y 2
 const STUN_DMG_MUL = 1.5;  // daño extra que reciben los enemigos aturdidos (salvo el guardián) si no se les ejecuta
 const AIR_G = 380;        // gravedad reducida de los enemigos lanzados
@@ -383,7 +387,7 @@ const CHARS = [
     priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
     moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.25, moveCharges: 3, moveRecharge: 1.8 }, // teletransporte corto con 3 cargas; moveCd es solo la pausa entre usos
   { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil, escarcha', priType: 'frostburst', priCd: 7, secType: 'phase', secCd: 10,
-    shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300 }, // ondas mágicas continuas; cargando, bola de nieve
+    shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300, moveType: 'flip', moveCd: 0.1, moveInvuln: false, stalactite: true }, // ondas mágicas continuas; cargando, bola de nieve
   { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil, ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
   { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'uppercut', role: 'Brawler, ejecutor',
     meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'flurry',
@@ -565,7 +569,7 @@ bindBtn(document.getElementById('bTest'), 't');
 // count: elegir nº de jugadores · select: elegir personajes · play · over
 let state = 'count';
 let floor, room, pal = PALETTES[0];
-let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [], missiles = [], dragonFx = [];
+let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [], missiles = [], dragonFx = [], stalacs = [];
 let overT = 0, time = 0, fade = 0, shake = 0, banner = null, seed = 0, hitstop = 0, flashT = 0;
 let camKX = 0, camKY = 0; // empujón de cámara en la dirección del golpe
 const BUFFER = 0.25;      // búfer de entrada: una pulsación se recuerda 0,25 s (cubre toda la recuperación del golpe)
@@ -950,7 +954,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
   useRoom(r);
-  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = [];
+  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = [];
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
   const entry = dir ? OPP[dir] : null;
@@ -1110,6 +1114,9 @@ const MOVES = {
     } },
   jump: { name: 'Salto', desc: 'Hacia un enemigo en el aire te enganchas y sigues el combo', icon: 'jump',
     start(p, c, mx, my) { startJump(p, mx || 0, my || 0); } }, // el salto lleva su propio estado (p.jump, ver «Salto»)
+  flip: { name: 'Doble salto', desc: 'Cada pulsación salta con una voltereta (dos seguidos); en el aire, el ataque deja caer una estalactita', icon: 'jump',
+    start(p, c, mx, my) { startFlip(p, mx || 0, my || 0); },
+    update(p, c, dt) { updateFlip(p, dt); } }, // el salto usa p.flip; mientras dura, p.moveT > 0 y controla el desplazamiento
   block: { name: 'Guardia', desc: 'Mantén para bloquear; justo a tiempo, bloqueo perfecto', icon: 'block', hold: true }
 };
 function moveOf(c) { return MOVES[c.moveType] || MOVES.dash; }
@@ -1209,6 +1216,68 @@ function updateMovement(p, dt) { // devuelve true mientras la habilidad controla
   if (p.moveT <= 0) { p.postMoveT = p.postMoveUsed ? 0 : c.postMoveWindow; p.postMoveUsed = false; } // si ya se gastó durante el movimiento (Bravata), no se reabre
   return true;
 }
+// ---------- Doble salto (Escarcha) ----------
+// Cada pulsación de movimiento es un salto: el primero desde el suelo, el segundo en el aire (máximo dos hasta aterrizar).
+// Cada salto es una voltereta con impulso lateral en la dirección que pulsas; en el aire no se controla el rumbo.
+function startFlip(p, mx, my) {
+  const f = p.flip || (p.flip = { n: 0, z: p.z || 0, vz: 0, vx: 0, vy: 0, jt: 0, stal: 0, dir: 1 });
+  if (f.n >= 2) return; // ya has usado los dos saltos: hay que aterrizar
+  const m = Math.hypot(mx, my), moving = m > 0.2;
+  f.n++;
+  f.vz = Math.sqrt(2 * FLIP.g * (f.n === 1 ? FLIP.h1 : FLIP.h2)); // el segundo salto es algo más bajo
+  f.vx = moving ? mx / m * FLIP.speed : 0; f.vy = moving ? my / m * FLIP.speed : 0;
+  f.jt = 0; f.stal = 1; f.dir = f.n === 1 ? 1 : -1; // una estalactita por salto; la segunda voltereta gira al revés
+  p.mvx = p.mvy = 0; p.moveT = 1e9; // el vuelo dura hasta aterrizar (updateFlip lo corta)
+  p.slash = null; p.flurry = null; p.mHold = null; p.mCharging = false; p.cast = null;
+  burst(p.x, p.y, '#bfeaf5', 8); SFX.swing(false);
+}
+function updateFlip(p, dt) {
+  const f = p.flip;
+  if (!f) { p.moveT = 0; return; }
+  f.jt += dt;
+  const k = Math.exp(-FLIP.drag * dt); f.vx *= k; f.vy *= k;
+  p.x += f.vx * dt; p.y += f.vy * dt; collide(p, true);
+  f.vz -= FLIP.g * dt; f.z += f.vz * dt;
+  if (f.z <= 0) { // aterriza: asiento con un pequeño rebote, y se reabren los dos saltos
+    p.z = 0; p.flip = null; p.flipAng = 0; p.moveT = 0;
+    p.sqv = (p.sqv || 0) - (WEIGHT[p.ch.weight] || WEIGHT.medium).stopKick;
+    burst(p.x, p.y, '#bfeaf5', 6);
+    return;
+  }
+  p.z = f.z; p.moveT = 1e9;
+  p.flipAng = Math.min(1, f.jt / FLIP.spin) * Math.PI * 2 * f.dir; // la voltereta ocupa el primer tramo del salto
+  if (Math.random() < 0.6) particles.push({ x: p.x, y: upY(p.y, 6 + p.z), vx: 0, vy: 0, life: 0.2, max: 0.2, color: '#e8f7ff', s: 4 });
+}
+// Estalactita: se llama al atacar en pleno salto (una vez por salto)
+function dropStalactite(p) {
+  p.flip.stal = 0;
+  stalacs.push({ x: p.x, y: p.y, owner: p, t: 0, dur: STAL.fall, z: STAL.z0, done: false });
+  SFX.swing(true);
+}
+function updateStalacs(dt) {
+  for (const s of stalacs) {
+    s.t += dt;
+    const k = Math.min(1, s.t / s.dur);
+    s.z = STAL.z0 * (1 - k * k); // cae cada vez más deprisa
+    if (k < 1) continue;
+    s.done = true;
+    const dmg = STAL.dmg * ABILITY_MUL;
+    for (const e of liveTargets()) if (Math.hypot(e.x - s.x, e.y - s.y) < STAL.r + e.r) damageEnemy(e, s.x, s.y, dmg, dmg * 0.5, STAL.kb);
+    effects.push({ type: 'ring', x: s.x, y: s.y, r: STAL.r, t: 0, dur: 0.35, color: '#bfeaf5' });
+    burst(s.x, s.y - 8, '#bfeaf5', 18); burst(s.x, s.y - 4, '#e8f7ff', 8);
+    shake = Math.max(shake, 4); SFX.launch();
+  }
+  stalacs = stalacs.filter(s => !s.done);
+}
+function drawStalacs() {
+  for (const s of stalacs) {
+    const k = Math.min(1, s.t / s.dur), sh = 0.35 + 0.65 * k; // la sombra de aviso crece hasta el impacto
+    ctx.fillStyle = `rgba(120,200,235,${0.2 + 0.35 * k})`; ellipse(s.x, s.y, STAL.r * sh, STAL.r * 0.45 * sh);
+    const y = s.y - 12 - s.z;
+    ctx.fillStyle = '#e8f7ff'; ctx.strokeStyle = '#7fd8ff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(s.x - 6, y - 26); ctx.lineTo(s.x + 6, y - 26); ctx.lineTo(s.x, y + 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+}
 // Con objetivo fijado, el movimiento lateral gira alrededor de él y el frontal acerca o aleja
 function orbit(p, tgt, mx, my, speed, dt) {
   const dx = p.x - tgt.x, dy = p.y - tgt.y, dist = Math.hypot(dx, dy) || 1;
@@ -1254,6 +1323,7 @@ function updatePlayer(p, dt) {
   p.revHolding = !p.down && !!(inp.a || inp.s); // para levantar a un caído cercano
   if (p.down) {
     p.cast = null; p.charging = false; p.fan = null; p.burst = null; p.mCharging = false; p.mHold = null; p.flurry = null; p.shieldUp = false; p.shieldOn = false; p.blocking = false;
+    if (p.flip) { p.flip = null; p.flipAng = 0; p.moveT = 0; } // caído en pleno salto: el vuelo se cancela
     const k = (p.ghost ? REVIVE.ghostSpeed : REVIVE.crawl) * c.speed;
     let cx = inp.x || 0, cy = inp.y || 0; const cm = Math.hypot(cx, cy); if (cm > 1) { cx /= cm; cy /= cm; }
     p.x += cx * k * dt; p.y += cy * k * dt; collide(p, true);
@@ -1396,6 +1466,7 @@ function updatePlayer(p, dt) {
   if (p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) return; // durante embestida, caída Izuna o salto no se ataca
 
   // golpe: el tipo depende de si acabas de moverte o de cómo te mueves respecto al objetivo
+  if (c.stalactite && p.bufA > 0 && p.flip && p.flip.stal > 0 && p.flip.z > 8) { p.bufA = 0; dropStalactite(p); } // en pleno salto: una estalactita por salto, en vez de golpear
   const wantAtk = p.bufA > 0 && p.atkCd <= 0; // la pulsación guardada en el búfer se ejecuta en cuanto se puede
   const ex = wantAtk ? execCandidate(p) : null;
   if (ex) { p.atkCd = c.meleeCd; p.mHold = null; p.bufA = 0; p.charging = false; p.shotHold = true; executeEnemy(ex, p, 'melee'); } // los de distancia también ejecutan con su ataque
@@ -3800,7 +3871,7 @@ function update(dt) {
   leash();
   updateHazards(dt);
   updateChains(dt);
-  updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
+  updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateStalacs(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
 
   for (const b of bullets) {
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
@@ -4652,7 +4723,10 @@ function drawPlayer(p) {
       ctx.setLineDash([2, 5]); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffffff';
       ctx.beginPath(); ctx.moveTo(p.x, p.y - 2); ctx.lineTo(p.x, p.y - 14 * p.ch.size - pz + p.r); ctx.stroke(); ctx.restore();
     }
+    const spinA = p.flip && p.flipAng ? p.flipAng : 0; // voltereta del doble salto: gira el cuerpo sobre su centro
+    if (spinA) { const px = p.x, py = p.y - 14 * p.ch.size - (p.z || 0); ctx.save(); ctx.translate(px, py); ctx.rotate(spinA); ctx.translate(-px, -py); }
     drawFigure(p.x, p.y, p.ch, p.ch.size, (p.z || 0) + bob, { ox: vx * wt.lean, oy: vy * wt.lean * 0.6, sx: 1 - sq, sy: 1 + sq });
+    if (spinA) ctx.restore();
   }
   ctx.globalAlpha = 1;
   drawShotState(p);
@@ -5045,11 +5119,11 @@ function mouseWorld() { // el ratón en coordenadas de mundo (se recalcula cada 
 // Proyección: durante el dibujo de lo que está «de pie» (personajes, enemigos, efectos), sus «y» de mundo se
 // cambian por y·K y se restauran al terminar. Así el código de dibujo de siempre sirve tal cual: lo que dibuja
 // hacia arriba (cuerpos, altura z) no se aplasta, y las líneas entre dos entidades llegan a su sitio.
-const PROJ_KEYS = ['y', 'y1', 'y2', 'ay'];
+const PROJ_KEYS = ['y', 'y1', 'y2', 'ay', 'beamY']; // beamY: el extremo de las ondas de Escarcha también va proyectado
 let projSaved = null;
 function projectOn() {
   projSaved = []; const seen = new Set();
-  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles]) for (const o of L) {
+  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles, stalacs]) for (const o of L) {
     if (seen.has(o)) continue; seen.add(o);
     for (const k of PROJ_KEYS) { const v = o[k]; if (typeof v === 'number') { projSaved.push(o, k, v); o[k] = v * K; } }
   }
@@ -5108,7 +5182,7 @@ function drawGame() {
     for (const it of list) it.f();
     for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
-    drawArcOrbs('air'); drawGrenades(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts();
+    drawArcOrbs('air'); drawGrenades(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts();
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
