@@ -33,6 +33,8 @@ body{
 canvas{display:block; border-radius:4px; box-shadow:0 0 0 1px var(--line), 0 12px 40px rgba(20,10,40,.35); touch-action:none}
 footer{padding:.35rem .8rem .5rem; font-size:.8rem; color:var(--muted); text-align:center}
 @media (max-height:480px){ footer{display:none} }
+body.menu footer{display:none}
+body.menu canvas{border-radius:0; box-shadow:none}
 #touch{position:absolute; inset:0; display:none; pointer-events:none}
 body.touch #touch{display:block}
 body.touch footer{display:none}
@@ -137,6 +139,7 @@ body.touch.portrait:not(.rotdismiss) #rotate{display:flex}
 const T = 40, HUD = 52;
 const W = 21 * T, H = HUD + 24 + 13 * T, OY = HUD + 24; // lienzo fijo: 840 × 596 (la sala ya no tiene por qué caber)
 const VH = H - HUD;                                     // alto de la vista de juego, bajo el marcador
+let LW = W, LH = H; // tamaño lógico del lienzo: en los menús ocupa toda la pantalla y se adapta a su proporción
 // Vista tres cuartos: el suelo se aplasta en vertical (SQUASH) y los muros levantan WH píxeles de pantalla.
 // Con SQUASH = 1 se vuelve a la vista cenital de antes. Todo lo que tiene altura (z) se dibuja sin aplastar.
 const VIEW = { squash: 0.78, wallH: 38 };
@@ -436,16 +439,29 @@ const CHARS = [
 const cvs = document.getElementById('game');
 let ctx = cvs.getContext('2d'); // let: los iconos de los botones táctiles lo cambian un instante para pintar en su propio lienzo
 const stage = document.getElementById('stage');
+let lastMenu = null;
+function isMenuState() { return state === 'count' || state === 'select'; }
 function resize() {
+  const menu = isMenuState(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  document.body.classList.toggle('menu', menu); // primero se oculta el pie, para medir el espacio real
   const r = stage.getBoundingClientRect();
-  const m = isTouchDev ? 0 : 16; // en móvil se aprovecha toda la pantalla
-  const s = Math.max(0.2, Math.min((r.width - m) / W, (r.height - m) / H));
-  const dpr = Math.min(2, window.devicePixelRatio || 1); // tope de 2: con DPR 3 el relleno costaba 9 veces más
-  cvs.style.width = Math.floor(W * s) + 'px';
-  cvs.style.height = Math.floor(H * s) + 'px';
-  cvs.width = Math.floor(W * s * dpr);
-  cvs.height = Math.floor(H * s * dpr);
-  ctx.setTransform(cvs.width / W, 0, 0, cvs.height / H, 0, 0);
+  if (menu) { // menús: el lienzo ocupa toda la pantalla; el diseño se adapta a su proporción (altura 596, anchura mínima 840)
+    const s = Math.min(r.height / H, r.width / W);
+    LW = r.width / s; LH = r.height / s;
+    cvs.style.width = r.width + 'px'; cvs.style.height = r.height + 'px';
+    cvs.width = Math.floor(r.width * dpr); cvs.height = Math.floor(r.height * dpr);
+    ctx.setTransform(cvs.width / LW, 0, 0, cvs.height / LH, 0, 0);
+  } else { // juego: lienzo fijo 840 × 596 centrado y escalado
+    LW = W; LH = H;
+    const m = isTouchDev ? 0 : 16; // en móvil se aprovecha toda la pantalla
+    const s = Math.max(0.2, Math.min((r.width - m) / W, (r.height - m) / H));
+    cvs.style.width = Math.floor(W * s) + 'px';
+    cvs.style.height = Math.floor(H * s) + 'px';
+    cvs.width = Math.floor(W * s * dpr);
+    cvs.height = Math.floor(H * s * dpr);
+    ctx.setTransform(cvs.width / W, 0, 0, cvs.height / H, 0, 0);
+  }
+  lastMenu = menu;
 }
 // ---------- Móvil: orientación y pantalla completa ----------
 const isTouchDev = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
@@ -474,7 +490,6 @@ addEventListener('orientationchange', () => setTimeout(() => { updateOrientation
 if (window.visualViewport) visualViewport.addEventListener('resize', () => { updateOrientation(); resize(); });
 updateOrientation();
 addEventListener('resize', () => { updateOrientation(); resize(); });
-resize();
 
 // ---------- Azar con semilla (la mazmorra es reproducible) ----------
 function mulberry32(a) {
@@ -709,10 +724,10 @@ function npcInput(p) {
   return out;
 }
 function toggleTest() { testMode = !testMode; document.body.classList.toggle('test', testMode); }
-function testRect() { return [W / 2 - 170, 348, 340, 28]; }
+function testRect() { return [LW / 2 - 170, 300, 340, 28]; }
 
 // ---------- Menú: número de jugadores ----------
-function countBox(n) { const bw = 120, gap = 12, x0 = (W - (5 * bw + 4 * gap)) / 2; return [x0 + (n - 1) * (bw + gap), 196, bw, 130]; } // la 5.ª es 1 jugador + aliado IA
+function countBox(n) { const bw = 120, gap = 12, x0 = (LW - (5 * bw + 4 * gap)) / 2; return [x0 + (n - 1) * (bw + gap), 150, bw, 130]; } // la 5.ª es 1 jugador + aliado IA
 function updateCount() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
@@ -728,9 +743,15 @@ function goSelect(dev) {
 }
 
 // ---------- Menú: selección de personajes ----------
-function cardRect(i) { const col = i % 2, row = Math.floor(i / 2); return [486 + col * 169, 84 + row * 102, 161, 94]; } // 2 columnas × 4 filas: cada fila es una familia
-function infoRect() { return [24, 84, 450, 400]; }
-function startRect() { return [W - 24 - 196, H - 100, 196, 76]; }
+// Diseño de la selección: ficha a la izquierda y cuadrícula de personajes a la derecha, hasta el borde del botón
+function selLayout() {
+  const top = 84, ih = Math.max(400, LH - 196), iw = Math.round(Math.max(450, Math.min(560, LW * 0.44)));
+  const cx = 24 + iw + 14, cwAll = LW - 24 - cx, colW = (cwAll - 12) / 2, rowH = (ih - 3 * 8) / 4;
+  return { top, ih, iw, cx, colW, rowH };
+}
+function cardRect(i) { const L = selLayout(), col = i % 2, row = Math.floor(i / 2); return [L.cx + col * (L.colW + 12), L.top + row * (L.rowH + 8), L.colW, L.rowH]; } // 2 columnas × 4 filas: cada fila es una familia
+function infoRect() { const L = selLayout(); return [24, L.top, L.iw, L.ih]; }
+function startRect() { return [LW - 24 - 196, LH - 100, 196, 76]; }
 function backRect() { return [24, 22, 96, 30]; }
 let hoverCard = -1, hoverStart = false, lastCur = 0; // personaje que se describe en el panel
 function takenBy(ci, except) { return slots.find(s => s.locked && s.cur === ci && s !== except); }
@@ -805,7 +826,7 @@ function updateSelect(dt) {
 
 // Clic o toque sobre el lienzo para los menús
 // Ratón y toque en los menús: el ratón pertenece al Teclado A
-function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H]; }
+function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * LW, (e.clientY - r.top) / r.height * LH - menuOff()]; }
 const insideAt = (x, y, b) => x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3];
 cvs.addEventListener('mousemove', e => {
   const [x, y] = canvasPoint(e);
@@ -4202,15 +4223,21 @@ function drawFigure(x, y, ch, sc, bob, anim) {
 
 function drawMenuBg() {
   const p = PALETTES[0];
-  for (let y = 0; y < H / T + 1; y++) for (let x = 0; x < W / T; x++) { ctx.fillStyle = (x + y) % 2 ? p.f1 : p.f2; ctx.fillRect(x * T, y * T, T, T); }
-  ctx.fillStyle = 'rgba(10,8,16,0.55)'; ctx.fillRect(0, 0, W, H);
+  for (let y = 0; y < LH / T + 1; y++) for (let x = 0; x < LW / T + 1; x++) { ctx.fillStyle = (x + y) % 2 ? p.f1 : p.f2; ctx.fillRect(x * T, y * T, T, T); }
+  ctx.fillStyle = 'rgba(10,8,16,0.55)'; ctx.fillRect(0, 0, LW, LH);
+  const g = ctx.createRadialGradient(LW / 2, LH * 0.42, 60, LW / 2, LH * 0.42, Math.max(LW, LH) * 0.75); // viñeta: el centro se ilumina
+  g.addColorStop(0, 'rgba(60,40,90,0.28)'); g.addColorStop(1, 'rgba(6,4,10,0.75)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, LW, LH);
 }
-
+// Desplazamiento vertical del menú de número de jugadores (lo centra si la pantalla es más alta)
+function menuOff() { return state === 'count' ? (LH - 596) / 2 : 0; }
 function drawCount() {
   drawMenuBg();
+  const off = menuOff();
+  ctx.save(); ctx.translate(0, off);
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 36px ' + FONT; ctx.fillText('Mazmorra cooperativa', W / 2, 96);
-  ctx.fillStyle = '#b9afc9'; ctx.font = '400 17px ' + FONT; ctx.fillText('¿Cuántos vais a jugar?', W / 2, 140);
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 36px ' + FONT; ctx.fillText('Mazmorra cooperativa', LW / 2, 70);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 17px ' + FONT; ctx.fillText('¿Cuántos vais a jugar?', LW / 2, 108);
   for (let n = 1; n <= 5; n++) {
     const [x, y, w, h] = countBox(n), sel = n === countSel, yy = sel ? y - 6 : y, ia = n === 5, dots = ia ? 2 : n;
     rrect(x, yy, w, h, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
@@ -4229,10 +4256,19 @@ function drawCount() {
     ctx.textAlign = 'right'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT; ctx.fillText('clic o botón de fijar', tx + tw - 12, ty + 19);
     ctx.textAlign = 'center';
   }
+  // escaparate: los ocho personajes, con su halo de color, para ir conociéndolos antes de elegir
+  const sy = 396, sp = Math.min(118, (LW - 80) / 8);
+  CHARS.forEach((ch, i) => {
+    const x = LW / 2 + (i - 3.5) * sp, bob = Math.sin(time * 2 + i * 0.8) * 2.5, [cr, cg, cb] = hexRgb(ch.color);
+    const g = ctx.createRadialGradient(x, sy - 6, 4, x, sy - 6, 56);
+    g.addColorStop(0, `rgba(${cr},${cg},${cb},0.34)`); g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+    ctx.fillStyle = g; ctx.fillRect(x - 60, sy - 66, 120, 116);
+    drawCharPreview(x, sy + 2, ch, (ch.size > 1.1 ? 1.6 : 1.9) * (1 + bob / 200), bob);
+    ctx.fillStyle = ch.color; ctx.font = '700 12px ' + FONT; ctx.fillText(ch.name, x, sy + 60);
+  });
   ctx.fillStyle = '#d8d0e6'; ctx.font = '600 15px ' + FONT;
-  ctx.fillText(isTouch ? 'Toca una opción, o muévete y confirma con golpe' : 'Haz clic en una opción, o muévete con flechas, WASD o mando y confirma con golpe', W / 2, 414);
-  ctx.fillStyle = '#8f86a0'; ctx.font = '400 12.5px ' + FONT;
-  ctx.font = '400 12px ' + FONT;
+  ctx.fillText(isTouch ? 'Toca una opción, o muévete y confirma con golpe' : 'Haz clic en una opción, o muévete con flechas, WASD o mando y confirma con golpe', LW / 2, 484);
+  ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
   const lines = [
     'Teclado A y ratón: WASD mueve, el ratón apunta, clic izquierdo o Espacio atacan y ejecutan,',
     'Mayús izq. movimiento, Q y E habilidades, clic derecho fija objetivo, rueda o Tab lo cambia',
@@ -4240,7 +4276,8 @@ function drawCount() {
     'Mando: stick izquierdo mueve, stick derecho apunta, RT o A atacan, B movimiento,',
     'LB y RB habilidades, LT fija objetivo y el stick derecho elige otro'
   ];
-  lines.forEach((l, i) => ctx.fillText(l, W / 2, 442 + i * 20));
+  lines.forEach((l, i) => ctx.fillText(l, LW / 2, 506 + i * 18));
+  ctx.restore();
 }
 
 // Textos de la ficha de personaje
@@ -4441,8 +4478,8 @@ function interactionChips(c) {
   return out.slice(0, 8);
 }
 // Rectángulos del panel y del pop-up
-function detailBtnRect() { const [x, y] = infoRect(); return [x + 290, y + 64, 140, 20]; }
-function detailRect() { return [96, 40, 648, 516]; }
+function detailBtnRect() { const [x, y, w] = infoRect(); return [x + w - 152, y + 64, 140, 20]; }
+function detailRect() { return [(LW - 648) / 2, (LH - 516) / 2, 648, 516]; }
 let detailChar = -1; // personaje cuya ficha completa está abierta (-1: cerrada)
 let detailKeyReq = false; const detailPadPrev = {};
 addEventListener('keydown', e => { if (e.code === 'KeyV' && !e.repeat) detailKeyReq = true; }); // V: se anota en el evento, así no se pierde aunque sea un toque rápido
@@ -4453,8 +4490,10 @@ function detailOpenPressed() {
   return hit;
 }
 // Panel de información (ficha breve): cabecera, habilidades, ataque y movimiento, golpes especiales
+// Panel de información (ficha breve): cabecera, habilidades, ataque y movimiento, golpes especiales.
+// Si la pantalla es más alta, el espacio extra (ex) se reparte entre las habilidades y el resto de secciones.
 function drawInfoPanel(ch) {
-  const [x, y, w, h] = infoRect(), tn = iconTones(ch.color);
+  const [x, y, w, h] = infoRect(), tn = iconTones(ch.color), ex = Math.max(0, h - 400);
   rrect(x, y, w, h, 12); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
   ctx.save(); rrect(x, y, w, h, 12); ctx.clip();
   const [cr, cg, cb] = hexRgb(ch.color), g = ctx.createRadialGradient(x + w, y, 8, x + w, y, 260);
@@ -4469,7 +4508,7 @@ function drawInfoPanel(ch) {
   ctx.fillStyle = '#8f86a0'; fitText(styleText(ch), x + 16, y + 76, 250, 400, 11);
   const bars = [['Vida', ch.hp / 160, ch.hp + ''], ['Velocidad', ch.speed / 225, ''], ['Golpe', ch.canMelee ? ch.melee / 4 : 0, ch.canMelee ? '' : 'no'], ['Disparo', ch.canShoot ? ch.shot / 2 : 0, ch.canShoot ? '' : 'no']];
   bars.forEach(([label, f, note], i) => {
-    const yy = y + 14 + i * 12, bx = x + 302;
+    const yy = y + 14 + i * 12, bx = x + w - 148;
     ctx.fillStyle = '#b9afc9'; ctx.font = '600 10px ' + FONT; ctx.textAlign = 'right'; ctx.fillText(label, bx - 8, yy + 6);
     rrect(bx, yy, 104, 6, 3); ctx.fillStyle = '#2c2638'; ctx.fill();
     if (f > 0) { rrect(bx, yy, Math.max(6, 104 * Math.min(1, f)), 6, 3); ctx.fillStyle = ch.color; ctx.fill(); }
@@ -4482,21 +4521,23 @@ function drawInfoPanel(ch) {
   ctx.textAlign = 'left';
   // lo principal: las dos habilidades, grandes y separadas
   sectionLabel('Habilidades', x + 16, y + 92);
-  const aw = (w - 32 - 12) / 2;
-  drawAbilityCard(ch, 'pri', x + 16, y + 100, aw, 128);
-  drawAbilityCard(ch, 'sec', x + 16 + aw + 12, y + 100, aw, 128);
+  const aw = (w - 44) / 2, ab = 128 + ex * 0.35;
+  drawAbilityCard(ch, 'pri', x + 16, y + 100, aw, ab);
+  drawAbilityCard(ch, 'sec', x + 16 + aw + 12, y + 100, aw, ab);
   // lo secundario: ataque, cargado y movimiento
-  sectionLabel('Ataque y movimiento', x + 16, y + 245);
-  const cs = chargedSlot(ch), mv = moveOf(ch), tw = (w - 32 - 16) / 3, ty = y + 253, th = 86;
+  const k1 = y + 100 + ab + 17;
+  sectionLabel('Ataque y movimiento', x + 16, k1);
+  const cs = chargedSlot(ch), mv = moveOf(ch), tw = (w - 48) / 3, ty = k1 + 8, th = 86 + ex * 0.25;
   drawKitTile(ch.canMelee ? 'melee' : 'shot', 'Ataque', ch.canMelee ? 'Cuerpo a cuerpo' : 'Disparo', ch.canMelee ? meleeText(ch) : shotText(ch), ch.color, x + 16, ty, tw, th);
   if (cs) { const [k, n] = splitCharged(cs.title); drawKitTile(cs.icon, k, n, cs.desc, ch.color, x + 16 + tw + 8, ty, tw, th); }
   else drawKitTile(null, 'Cargado', 'No tiene', '', ch.color, x + 16 + tw + 8, ty, tw, th);
   drawKitTile(mv.icon, 'Movimiento', mv.name, mv.desc, ch.color, x + 16 + (tw + 8) * 2, ty, tw, th);
   // golpes especiales: salen solos según cómo atacas
-  sectionLabel('Golpes especiales', x + 16, y + 356);
+  const k2 = ty + th + 17;
+  sectionLabel('Golpes especiales', x + 16, k2);
   const sp = specialSlots(ch);
-  if (!sp.length) { ctx.fillStyle = '#5f566b'; ctx.font = '400 11px ' + FONT; ctx.fillText('No tiene: su ataque es siempre el mismo', x + 16, y + 380); }
-  sp.forEach((q, i) => drawSpecialChip(q, ch.color, x + 16 + (tw + 8) * i, y + 362, tw, 32));
+  if (!sp.length) { ctx.fillStyle = '#5f566b'; ctx.font = '400 11px ' + FONT; ctx.fillText('No tiene: su ataque es siempre el mismo', x + 16, k2 + 24); }
+  sp.forEach((q, i) => drawSpecialChip(q, ch.color, x + 16 + (tw + 8) * i, k2 + 6, tw, 32));
 }
 // Pop-up de descripción completa: todo lo que hace el personaje, por categorías
 function dLabel(txt, x, y, w) {
@@ -4516,7 +4557,7 @@ function dItem(ch, icon, kind, title, body, x, y, w, maxL = 2) {
 }
 function drawDetail(ch) {
   const [x, y, w, h] = detailRect(), tn = iconTones(ch.color), [cr, cg, cb] = hexRgb(ch.color);
-  ctx.fillStyle = 'rgba(6,4,10,0.72)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(6,4,10,0.72)'; ctx.fillRect(0, 0, LW, LH);
   rrect(x, y, w, h, 16); ctx.fillStyle = '#1c1726'; ctx.fill();
   ctx.save(); rrect(x, y, w, h, 16); ctx.clip();
   const g = ctx.createRadialGradient(x + 90, y + 90, 10, x + 90, y + 90, 320);
@@ -4598,22 +4639,31 @@ function drawStartButton() {
 }
 function drawSelectCard(i, shown) {
   const [x, y, w, h] = cardRect(i), ch = CHARS[i], owner = takenBy(i), hl = i === shown;
-  rrect(x, y, w, h, 10); ctx.fillStyle = hl ? '#262035' : '#1c1726'; ctx.fill();
-  ctx.lineWidth = 1.5; ctx.strokeStyle = hl ? '#6b5e86' : '#3b3349'; ctx.stroke();
-  const bob = slots.some(s => !s.locked && s.cur === i) || hl ? Math.sin(time * 6) * 3 : 0;
-  ctx.save(); ctx.beginPath(); ctx.rect(x + 2, y + 2, 70, h - 4); ctx.clip(); // la figura no invade el texto
-  drawCharPreview(x + 34, y + (ch.size > 1.1 ? 56 : 60), ch, ch.size > 1.1 ? 0.95 : 1.2, bob);
+  const k = Math.min(1.5, Math.max(1, h / 94)), pw = Math.round(Math.min(w * 0.44, 74 * k)), [cr, cg, cb] = hexRgb(ch.color);
+  rrect(x, y, w, h, 12); ctx.fillStyle = hl ? '#262035' : '#1c1726'; ctx.fill();
+  ctx.save(); rrect(x, y, w, h, 12); ctx.clip();
+  const gx = x + pw / 2, gy = y + h * 0.52, gr = Math.max(pw, h) * 0.62; // halo del color detrás de la figura
+  const g = ctx.createRadialGradient(gx, gy, 4, gx, gy, gr);
+  g.addColorStop(0, `rgba(${cr},${cg},${cb},${hl ? 0.42 : 0.22})`); g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = ch.color; ctx.fillRect(x, y, 3, h); // franja lateral del color
   ctx.restore();
+  rrect(x, y, w, h, 12); ctx.lineWidth = 1.5; ctx.strokeStyle = hl ? '#6b5e86' : '#3b3349'; ctx.stroke();
+  const bob = slots.some(s => !s.locked && s.cur === i) || hl ? Math.sin(time * 6) * 3 : 0;
+  ctx.save(); ctx.beginPath(); ctx.rect(x + 2, y + 2, pw, h - 4); ctx.clip(); // la figura no invade el texto
+  drawCharPreview(gx, y + h * 0.6, ch, (ch.size > 1.1 ? 0.95 : 1.2) * k * 1.2, bob);
+  ctx.restore();
+  const tx = x + pw + 8, tw = w - pw - 14, top = y + (h - 56) / 2;
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 15px ' + FONT; ctx.fillText(ch.name, x + 76, y + 40);
-  ctx.fillStyle = ch.color; fitText(ch.role, x + 76, y + 57, w - 84, 600, 11);
+  ctx.fillStyle = '#f2eefa'; fitText(ch.name, tx, top + 16, tw, 700, 16);
+  ctx.fillStyle = ch.color; fitText(ch.role, tx, top + 33, tw, 600, 11.5);
   const tag = ch.canShoot ? (ch.canMelee ? 'Mixto' : 'Distancia') : 'Cuerpo';
   ctx.font = '700 9px ' + FONT; const tgw = ctx.measureText(tag).width + 10;
-  rrect(x + 76, y + 66, tgw, 15, 7); ctx.fillStyle = ch.canShoot ? '#23324a' : '#4a2a28'; ctx.fill();
-  ctx.fillStyle = ch.canShoot ? '#9fc4ff' : '#ffb39a'; ctx.fillText(tag, x + 81, y + 77);
+  rrect(tx, top + 42, tgw, 15, 7); ctx.fillStyle = ch.canShoot ? '#23324a' : '#4a2a28'; ctx.fill();
+  ctx.fillStyle = ch.canShoot ? '#9fc4ff' : '#ffb39a'; ctx.fillText(tag, tx + 5, top + 53);
   if (owner) {
     const si = slots.indexOf(owner);
-    rrect(x, y, w, h, 10); ctx.lineWidth = 3; ctx.strokeStyle = SLOTC[si]; ctx.stroke();
+    rrect(x, y, w, h, 12); ctx.lineWidth = 3; ctx.strokeStyle = SLOTC[si]; ctx.stroke();
     rrect(x + w - 44, y + 6, 38, 18, 5); ctx.fillStyle = SLOTC[si]; ctx.fill();
     ctx.textAlign = 'center'; ctx.fillStyle = '#16121e'; ctx.font = '700 11px ' + FONT; ctx.fillText('J' + (si + 1) + ' ✓', x + w - 25, y + 19);
   }
@@ -4621,10 +4671,10 @@ function drawSelectCard(i, shown) {
 function drawSelect() {
   drawMenuBg();
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Elige personaje', W / 2, 42);
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Elige personaje', LW / 2, 42);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT;
   ctx.fillText(isTouch ? 'Toca un personaje y pulsa Confirmar abajo'
-    : 'Clic en un personaje y en Confirmar; con teclado o mando, golpe elige y otra vez empieza', W / 2, 66);
+    : 'Clic en un personaje y en Confirmar; con teclado o mando, golpe elige y otra vez empieza', LW / 2, 66);
   const [bx, by, bw, bh] = backRect();
   rrect(bx, by, bw, bh, 7); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
   ctx.fillStyle = '#d8d0e6'; ctx.font = '600 13px ' + FONT; ctx.fillText('← Atrás', bx + bw / 2, by + 20);
@@ -4640,7 +4690,7 @@ function drawSelect() {
   });
   drawInfoPanel(CHARS[shown]);
   // paneles de jugador (a la izquierda del botón)
-  const gap = 12, area = startRect()[0] - 12 - 24, pw = (area - (want - 1) * gap) / want, py = H - 100;
+  const gap = 12, area = startRect()[0] - 12 - 24, pw = (area - (want - 1) * gap) / want, py = LH - 100;
   for (let i = 0; i < want; i++) {
     const x = 24 + i * (pw + gap), s = slots[i], ch = s ? CHARS[s.cur] : null;
     rrect(x, py, pw, 76, 10); ctx.fillStyle = '#16121e'; ctx.fill();
@@ -4665,9 +4715,9 @@ function drawSelect() {
   drawStartButton();
   if (detailChar >= 0) drawDetail(CHARS[detailChar]);
   if (startT >= 0) {
-    ctx.fillStyle = 'rgba(6,4,10,0.6)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(6,4,10,0.6)'; ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 32px ' + FONT;
-    ctx.fillText('A la mazmorra', W / 2, H / 2);
+    ctx.fillText('A la mazmorra', LW / 2, LH / 2);
   }
 }
 
@@ -5821,9 +5871,11 @@ function frame(now) {
   acc += Math.min(0.1, (now - last) / 1000); last = now;
   pollPads();
   while (acc >= STEP) { update(STEP); acc -= STEP; }
+  if (isMenuState() !== lastMenu) resize(); // al cambiar entre menú y juego, el lienzo cambia de tamaño
   draw();
   requestAnimationFrame(frame);
 }
+resize();
 requestAnimationFrame(frame);
 // Gancho de depuración para pruebas automáticas: solo existe si la URL lleva ?debug
 if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS }; }, enterRoom, roomCleared, update };
