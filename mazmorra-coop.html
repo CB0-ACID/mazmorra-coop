@@ -335,7 +335,7 @@ const STAFF_KIT = {
   normal:    { name: 'Golpe de báculo',    shape: 'thrust', len: 78, width: 20, dur: 0.14, dmg: 1,   kb: 220 },
   normal2:   { name: 'Molinete',           shape: 'arc',    range: 72, arc: 1.4, dur: 0.2, dmg: 1.1, kb: 260 },
   heavy:     { name: 'Golpe arcano',       shape: 'disc',   reach: 64, r: 44, dur: 0.26, dmg: 2.2, kb: 420, launcher: true },
-  afterMove: { name: 'Remolino de báculo', shape: 'spin',   range: 70, dur: 0.24, dmg: 1.3, kb: 320 },
+  afterMove: { name: 'Onda arcana',        shape: 'spin',   range: 125, dur: 0.24, dmg: 0.3, kb: 560, wave: true }, // onda radial: empuja a todos y hace poco daño
   toward:    { name: 'Estocada de báculo', shape: 'thrust', len: 90, width: 20, dur: 0.16, dmg: 1.5, kb: 280, lunge: 300 },
   away:      { name: 'Báculo ascendente',  shape: 'thrust', len: 60, width: 28, dur: 0.16, dmg: 1,   kb: 440, lunge: -300, launcher: true }
 };
@@ -373,7 +373,7 @@ const CHARS = [
     moveType: 'stride', moveSpeed: 320, moveTime: 0.12, moveCd: 0.9 }, // el bloqueo pasa al escudo en alto; zancada corta (≈38 px)
   { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'grande', role: 'Tanque mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
     priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
-    moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.9 }, // teletransporte corto en vez de bloquear
+    moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.25, moveCharges: 3, moveRecharge: 1.8 }, // teletransporte corto con 3 cargas; moveCd es solo la pausa entre usos
   { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil, escarcha', priType: 'frostburst', priCd: 7, secType: 'phase', secCd: 10,
     shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300 }, // ondas mágicas continuas; cargando, bola de nieve
   { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil, ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
@@ -1018,7 +1018,7 @@ function roomCleared() {
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
   floor = genFloor(seed, 1);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = 0; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; for (const kk in p.prev) p.prev[kk] = true; }
+  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
@@ -1103,9 +1103,16 @@ const MOVES = {
   block: { name: 'Guardia', desc: 'Mantén para bloquear; justo a tiempo, bloqueo perfecto', icon: 'block', hold: true }
 };
 function moveOf(c) { return MOVES[c.moveType] || MOVES.dash; }
+// Fracción de recarga que muestra el HUD: con cargas, solo se ve vacía cuando no queda ninguna
+function moveFrac(p) {
+  const c = p.ch;
+  if (c.moveCharges) return (p.mCh || 0) > 0 ? Math.max(0, p.moveCd) / (c.moveCd || 1) : p.mChT / c.moveRecharge;
+  return p.moveCd / (c.moveCd || 1);
+}
 function startMovement(p, mx, my) {
   const c = p.ch, m = moveOf(c);
   p.moveCd = c.moveCd;
+  if (c.moveCharges) { p.mCh--; if (p.mChT <= 0) p.mChT = c.moveRecharge; } // gasta una carga; se recargan de una en una
   if (m.start) m.start(p, c, mx, my);
 }
 // ---------- Salto ----------
@@ -1205,7 +1212,7 @@ function orbit(p, tgt, mx, my, speed, dt) {
 function slashHits(p, s, x, y, r) {
   const d = s.def, dx = x - p.x, dy = y - p.y, dist = Math.hypot(dx, dy);
   if (d.hitFrom && s.t < s.dur * d.hitFrom) return false; // golpes con anticipación: aciertan a mitad del movimiento
-  if (d.shape === 'spin') return dist < d.range + r;
+  if (d.shape === 'spin') return dist < d.range * (d.wave ? Math.min(1, 0.25 + s.t / s.dur) : 1) + r; // la onda alcanza según se expande
   if (d.shape === 'disc') { // golpe al suelo delante: solo acierta al caer (a mitad del movimiento)
     if (s.t < s.dur * 0.45) return false;
     return Math.hypot(x - (p.x + Math.cos(s.ang) * d.reach), y - (p.y + Math.sin(s.ang) * d.reach)) < d.r + r;
@@ -1244,6 +1251,10 @@ function updatePlayer(p, dt) {
   }
   p.reviving = players.find(q => q !== p && q.down && p.revHolding && Math.hypot(q.x - p.x, q.y - p.y) < REVIVE.r) || null;
   p.inv = Math.max(0, p.inv - dt); p.atkCd -= dt; p.moveCd -= dt; p.shotCd -= dt;
+  if (c.moveCharges) { // cargas de movimiento acumulables
+    if (p.mCh == null || p.mChCh !== c) { p.mCh = c.moveCharges; p.mChT = 0; p.mChCh = c; }
+    if (p.mCh < c.moveCharges) { p.mChT -= dt; if (p.mChT <= 0) { p.mCh++; p.mChT = p.mCh < c.moveCharges ? c.moveRecharge : 0; } }
+  }
   p.priCd -= dt; p.secCd -= dt; p.stickT -= dt; p.postMoveT -= dt;
   p.shieldT = (p.shieldT || 0) - dt; p.tauntT = (p.tauntT || 0) - dt; p.recoilT = (p.recoilT || 0) - dt; p.phaseT = (p.phaseT || 0) - dt; p.overdriveT = (p.overdriveT || 0) - dt; p.overchargeT = (p.overchargeT || 0) - dt;
   p.gatSpin = (p.gatSpin || 0) + dt * (c.shotStyle === 'gatling' && inp.s ? 38 : 3); // los cañones giran al disparar
@@ -1319,7 +1330,7 @@ function updatePlayer(p, dt) {
     if (p.blocking) p.blockT += dt;
     p.bufD = 0;
   }
-  if (!special && !p.jump && !moveOf(c).hold && p.bufD > 0 && p.moveCd <= 0 && !(p.slash && p.slash.def.lunge)) { p.slash = null; p.flurry = null; p.bufD = 0; startMovement(p, mx, my); } // el dash cancela el golpe
+  if (!special && !p.jump && !moveOf(c).hold && p.bufD > 0 && p.moveCd <= 0 && (!c.moveCharges || p.mCh > 0) && !(p.slash && p.slash.def.lunge)) { p.slash = null; p.flurry = null; p.bufD = 0; startMovement(p, mx, my); } // el dash cancela el golpe
   if (!special && !(p.jump ? updateJump(p, dt) : updateMovement(p, dt))) {
     const s = p.slash;
     if (s && s.def.lunge && s.t < s.dur) {
@@ -1406,6 +1417,7 @@ function updatePlayer(p, dt) {
     }
     p.slash = { kind, def, t: 0, dur: def.dur, ang: Math.atan2(p.ay, p.ax), hit: new Set(), side: (p.punchSide = -(p.punchSide || 1)) }; // side: alterna brazo
     if (kind !== 'normal' && kind !== 'normal2') floatText(p.x, p.y - 46 * c.size, def.name, p.slotColor);
+    if (def.wave) { effects.push({ type: 'arcWave', x: p.x, y: p.y, r: def.range, a0: Math.random() * 6, t: 0, dur: 0.42, color: c.color }); shake = Math.max(shake, 3); }
     if (c.chargedMelee && !p.jump) p.mHold = 0; // si se mantiene pulsado, empieza a cargar (en el aire no)
     if (c.meleeStyle === 'claw') SFX.claw(step === 3); else SFX.swing(step === 3 || kind !== 'normal');
     }
@@ -2766,6 +2778,21 @@ function drawEffects() {
       ctx.beginPath(); ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2); ctx.stroke();
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3 * (1 - q) + 1; ctx.stroke();
       ctx.strokeStyle = f.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(f.x2, f.y2, 8 + 40 * q, 0, Math.PI * 2); ctx.stroke();
+    } else if (f.type === 'arcWave') { // Onda arcana de Musgo: anillos ondulados que se abren desde él
+      const e = 1 - Math.pow(1 - q, 3);
+      ctx.translate(f.x, f.y); ctx.scale(1, 0.6);
+      ctx.globalAlpha = (1 - q) * 0.22; ctx.fillStyle = f.color;
+      ctx.beginPath(); ctx.arc(0, 0, f.r * e, 0, Math.PI * 2); ctx.fill();
+      for (const [lag, w, col] of [[0, 5, f.color], [0.12, 3, '#c9f7e2'], [0.26, 2, f.color]]) {
+        const qq = Math.max(0, (q - lag) / (1 - lag)); if (qq <= 0) continue;
+        const R = f.r * (1 - Math.pow(1 - qq, 3)), amp = 4 * (1 - qq) + 1;
+        ctx.globalAlpha = (1 - qq) * 0.9; ctx.strokeStyle = col; ctx.lineWidth = w * (1 - qq * 0.6);
+        ctx.beginPath();
+        for (let i = 0; i <= 48; i++) { const a = i / 48 * Math.PI * 2, rr = R + Math.sin(a * 7 + f.a0 + qq * 6) * amp; i ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1 - q; ctx.fillStyle = '#e6fff3'; // chispas de energía montadas en el frente de la onda
+      for (let i = 0; i < 10; i++) { const a = f.a0 + i * 0.628, R = f.r * e * (0.9 + 0.1 * Math.sin(i * 3)); ctx.beginPath(); ctx.arc(Math.cos(a) * R, Math.sin(a) * R, 2.2 * (1 - q) + 0.8, 0, Math.PI * 2); ctx.fill(); }
     } else if (f.type === 'mossOut' || f.type === 'mossIn') { // teletransporte de Musgo: hojas en espiral, sin líneas rectas
       const out = f.type === 'mossOut', e = 1 - (1 - q) * (1 - q), S = f.s || 1, n = out ? 7 : 9;
       ctx.translate(f.x, f.y);
@@ -2896,6 +2923,9 @@ function drawAbilityIcon(type, cx, cy, s, col) {
     if (g === 'spin') { // tras moverte: giro completo
       for (const [a0, a1] of [[-2.75, -0.95], [0.4, 2.2]]) { C('B', 0, 0, 0.88, { fill: false, w: th, a0, a1 }); ARW('L', Math.cos(a1) * 0.88, Math.sin(a1) * 0.88, -Math.sin(a1), Math.cos(a1), 0.36); }
       WEAPON(w, 0, 0, 0.5, 0.75);
+    } else if (g === 'wave') { // tras moverte: onda radial alrededor del arma
+      C('B', 0, 0, 0.92, { fill: false, w: th }); C('L', 0, 0, 0.66, { fill: false, w: th, dash: [0.18, 0.16] });
+      WEAPON(w, 0, 0, 0.45, 0.7);
     } else if (g === 'rush') { // tras moverte: sale disparado desde donde estaba
       C('B', -0.62, 0, 0.32, { fill: false, w: th, dash: [0.2, 0.18] }); L('L', th, [[-0.2, -0.62], [0, -0.62]]); L('L', th, [[-0.2, 0.62], [0, 0.62]]);
       WEAPON(w, 0.42, 0, 0.6, Math.PI / 2);
@@ -3726,7 +3756,7 @@ const SPECIAL_KIND = { afterMove: 'Tras moverte', toward: 'Avanzando', away: 'Re
 const WEAPON_OF = { shield: 'hammer', staff: 'staff', fist: 'fist', claw: 'claw', blade: 'blade' };
 function specialSlots(c) {
   if (c.canMelee) return ['afterMove', 'toward', 'away'].filter(k => c.meleeKit[k]).map(k => {
-    const m = c.meleeKit[k], g = k === 'afterMove' ? (m.shape === 'spin' ? 'spin' : 'rush') : k === 'toward' ? 'thrust' : 'up';
+    const m = c.meleeKit[k], g = k === 'afterMove' ? (m.wave ? 'wave' : m.shape === 'spin' ? 'spin' : 'rush') : k === 'toward' ? 'thrust' : 'up';
     return { icon: 'sp_' + g + '_' + (WEAPON_OF[c.meleeStyle] || 'blade'), kind: SPECIAL_KIND[k], name: m.name };
   });
   const out = [];
@@ -4211,6 +4241,7 @@ function drawStaffWeapon(p) {
     else if (s.kind === 'normal2') { sa = base - 1.4 + 2.8 * k; gx = p.x; gy = p.y - lift * 0.55; weaponTrail(gx, gy, len * 0.65, base - 1.4, sa, c.color, 0.45 * (1 - k)); }
     else if (s.kind === 'heavy') { sa = k < 0.45 ? -Math.PI / 2 - 0.4 * (k / 0.45) : base; glow = k >= 0.45 ? 1 : 0.5 + k; if (k >= 0.45) { gx = p.x + Math.cos(base) * 10; gy = p.y - lift * 0.55 + Math.sin(base) * 8; } }
     else if (s.kind === 'away') { sa = base + (-Math.PI / 2 - base) * ext; }
+    else if (s.kind === 'afterMove' && s.def.wave) { sa = -Math.PI / 2; glow = 1; gx = p.x + px * 4; gy = p.y - lift * 0.55 - 6 * ext; } // alza el báculo y libera la onda
     else if (s.kind === 'afterMove') { sa = base + Math.PI * 2 * k; gx = p.x; gy = p.y - lift * 0.55; weaponTrail(gx, gy, len * 0.65, base, sa, c.color, 0.4 * (1 - k)); }
   }
   const ux = Math.cos(sa), uy = Math.sin(sa) * 0.85;
@@ -4672,7 +4703,8 @@ function drawHUD() {
     ctx.font = '600 11px ' + FONT; ctx.fillStyle = p.down ? '#ff8f8f' : '#b9afc9';
     ctx.fillText(p.ch.name, x, 40);
     const mv = moveOf(p.ch); // ranura de movimiento
-    drawPip(x + 56, 27, mv.hold ? 0 : p.moveCd / (p.ch.moveCd || 1), mv.icon, p.color, mv.hold ? !!p.blocking : p.moveT > 0 || !!p.jump, false);
+    drawPip(x + 56, 27, mv.hold ? 0 : moveFrac(p), mv.icon, p.color, mv.hold ? !!p.blocking : p.moveT > 0 || !!p.jump, false);
+    if (p.ch.moveCharges) for (let i = 0; i < p.ch.moveCharges; i++) { ctx.fillStyle = i < (p.mCh || 0) ? p.color : '#3a3342'; ctx.fillRect(x + 56 + i * 6, 47, 4, 3); } // cargas
     const tur = myTurret(p);
     drawPip(x + 76, 27, p.priCd / (p.priCdMax || p.ch.priCd), p.ch.priType, p.color, p.cast === 'pri' || (p.ch.priType === 'turret' && !!tur) || !!p.shieldUp, !abilityReady(p, 'pri'));
     if (p.ch.priType === 'raiseShield') bar(x + 76, 47, 17, 2, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
@@ -4880,7 +4912,8 @@ function updateTouchButtons() {
   setBtn(atk, c.canMelee ? 'melee' : 'shot', p.color, 0, p.down, false);
   const mv = moveOf(c);
   if (mv.hold) setBtn(dash, mv.icon, p.color, 0, p.down, !!p.blocking);
-  else setBtn(dash, mv.icon, p.color, p.moveCd / (c.moveCd || 1), p.down, p.moveT > 0 || !!p.jump);
+  else setBtn(dash, mv.icon, p.color, moveFrac(p), p.down, p.moveT > 0 || !!p.jump);
+  setPips(dash, p.mCh || 0, c.moveCharges || 0, 0);
   setBtn(q, c.priType, p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
     p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
   setBtn(e, c.secType, p.color, p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
