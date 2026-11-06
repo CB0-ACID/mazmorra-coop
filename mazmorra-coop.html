@@ -662,9 +662,10 @@ function goSelect(dev) {
 
 // ---------- Menú: selección de personajes ----------
 function cardRect(i) { const col = i % 4, row = Math.floor(i / 4); return [24 + col * 122, 92 + row * 160, 112, 150]; }
-function infoRect() { return [520, 92, 296, 310]; }
+function infoRect() { return [520, 92, 296, 392]; }
+function startRect() { return [W - 24 - 196, H - 100, 196, 76]; }
 function backRect() { return [24, 22, 96, 30]; }
-let hoverCard = -1, lastCur = 0; // personaje que se describe en el panel
+let hoverCard = -1, hoverStart = false, lastCur = 0; // personaje que se describe en el panel
 function takenBy(ci, except) { return slots.find(s => s.locked && s.cur === ci && s !== except); }
 function npcSlot() { return slots.find(q => q.dev === 'npc'); }
 // En el modo con IA, cuando el jugador confirma su personaje aparece el cursor del aliado
@@ -684,18 +685,22 @@ function moveCursor(s, dx, dy) {
   col = (col + dx + 4) % 4; row = (row + dy + 2) % 2;
   s.cur = row * 4 + col;
 }
+// Flujo: cada jugador elige personaje (queda «elegido») y después se pulsa Empezar.
+// Con teclado o mando: golpe elige; con todos listos, golpe otra vez o Start empiezan. Moverse cambia la elección.
+function selectReady() { return slots.length === want && slots.every(s => s.locked); }
+function startFromSelect() { if (startT < 0 && selectReady()) startT = 0.6; }
 function updateSelect(dt) {
   if (startT >= 0) { startT -= dt; if (startT < 0) startGame(); return; }
   if (escPressed()) { state = 'count'; return; }
   for (const dev of DEVICES) {
     const m = menuInput(dev);
+    const stNow = !!readDevice(dev).p, st = stNow && !pausePrev[dev]; pausePrev[dev] = stNow; // Start del mando
     const s = slots.find(q => q.dev === dev), ns = npcMode ? npcSlot() : null;
     if (s && s.locked && ns && ns.ctrl === dev) { // ya elegiste el tuyo: ahora eliges al aliado IA con tus controles
-      if (!ns.locked) {
-        if (m.dx || m.dy) { moveCursor(ns, m.dx, m.dy); lastCur = ns.cur; hoverCard = -1; }
-        if (m.a && !takenBy(ns.cur, ns)) ns.locked = true;
-        if (m.d) { slots.splice(slots.indexOf(ns), 1); s.locked = false; } // atrás: vuelves a elegir el tuyo
-      } else if (m.d) ns.locked = false;
+      if (m.dx || m.dy) { ns.locked = false; moveCursor(ns, m.dx, m.dy); lastCur = ns.cur; hoverCard = -1; }
+      if (m.a) { if (!ns.locked) { if (!takenBy(ns.cur, ns)) ns.locked = true; } else startFromSelect(); }
+      if (st) startFromSelect();
+      if (m.d) { if (ns.locked) ns.locked = false; else { slots.splice(slots.indexOf(ns), 1); s.locked = false; } } // atrás: vuelves a elegir el tuyo
       continue;
     }
     if (!s) {
@@ -703,14 +708,12 @@ function updateSelect(dt) {
       else if (m.d && slots.length === 0) { state = 'count'; return; }
       continue;
     }
-    if (!s.locked) {
-      if (m.dx || m.dy) { moveCursor(s, m.dx, m.dy); lastCur = s.cur; hoverCard = -1; }
-      if (m.a && !takenBy(s.cur, s)) s.locked = true;
-      if (m.d) slots.splice(slots.indexOf(s), 1);
-    } else if (m.d) s.locked = false;
+    if (m.dx || m.dy) { s.locked = false; moveCursor(s, m.dx, m.dy); lastCur = s.cur; hoverCard = -1; } // moverse cambia la elección
+    if (m.a) { if (!s.locked) { if (!takenBy(s.cur, s)) s.locked = true; } else startFromSelect(); }
+    if (st) startFromSelect();
+    if (m.d) { if (s.locked) s.locked = false; else slots.splice(slots.indexOf(s), 1); }
   }
   addNpcSlot();
-  if (slots.length === want && slots.every(s => s.locked)) startT = 0.9;
 }
 
 // Clic o toque sobre el lienzo para los menús
@@ -723,7 +726,7 @@ cvs.addEventListener('mousemove', e => {
   else if (state === 'pause') { for (let i = 0; i < 4; i++) if (insideAt(x, y, pauseRect(i))) pauseSel = i; }
   else if (state === 'over') { for (let i = 0; i < 3; i++) if (insideAt(x, y, overRect(i))) overSel = i; }
   else if (state === 'select') {
-    hoverCard = -1;
+    hoverCard = -1; hoverStart = insideAt(x, y, startRect());
     for (let i = 0; i < 8; i++) if (insideAt(x, y, cardRect(i))) hoverCard = i;
     const s = slots.find(q => q.dev === 'kb1'), ns = npcSlot();
     if (s && !s.locked && hoverCard >= 0) s.cur = hoverCard; // el cursor de J (teclado A) sigue al ratón
@@ -743,6 +746,7 @@ cvs.addEventListener('pointerdown', e => {
     for (let i = 0; i < 4; i++) if (inside(pauseRect(i))) { pauseSel = i; choosePause(i); return; }
   } else if (state === 'select' && startT < 0) {
     if (inside(backRect())) { state = 'count'; return; }
+    if (inside(startRect())) { startFromSelect(); return; }
     for (let i = 0; i < 8; i++) if (inside(cardRect(i))) {
       let s = slots.find(q => q.dev === dev) || claim(dev);
       if (!s) return;
@@ -751,7 +755,6 @@ cvs.addEventListener('pointerdown', e => {
       if (s.locked && s.cur === i) { s.locked = false; return; } // segundo clic: deshace la elección
       s.cur = i; lastCur = i; s.locked = !takenBy(i, s);
       addNpcSlot();
-      if (slots.length === want && slots.every(q => q.locked)) startT = 0.9;
     }
   }
 });
@@ -3413,7 +3416,7 @@ function meleeText(c) {
   return f ? 'Combo de 3, remata con ' + f.name + (f.launcher ? ' (lanza)' : '') : 'Tajo y golpes situacionales';
 }
 function styleText(c) {
-  if (!c.canShoot) return c.moveType === 'block' ? 'Cuerpo a cuerpo; bloquea en vez de esquivar' : 'Cuerpo a cuerpo, siempre fija a un enemigo';
+  if (!c.canShoot) return c.autoLock ? 'Cuerpo a cuerpo, siempre fija a un enemigo' : 'Cuerpo a cuerpo';
   if (!c.canMelee) return 'A distancia; de cerca, su ataque ejecuta';
   return 'Mixto';
 }
@@ -3423,50 +3426,85 @@ function fitText(text, x, y, maxW, weight, size) {
   while (sz > 8 && ctx.measureText(text).width > maxW) { sz -= 0.5; ctx.font = weight + ' ' + sz + 'px ' + FONT; }
   ctx.fillText(text, x, y);
 }
+// Texto en varias líneas dentro de un ancho; devuelve cuántas líneas ocupó
+function wrapText(txt, x, y, maxW, lh, maxLines) {
+  const words = String(txt).split(' '); let line = '', n = 0;
+  for (let i = 0; i < words.length; i++) {
+    const test = line ? line + ' ' + words[i] : words[i];
+    if (ctx.measureText(test).width > maxW && line) {
+      if (n === maxLines - 1) { line += '…'; break; }
+      ctx.fillText(line, x, y + n * lh); n++; line = words[i];
+    } else line = test;
+  }
+  if (line) { ctx.fillText(line, x, y + n * lh); n++; }
+  return n;
+}
+// Casilla de icono del panel (mismo estilo que el marcador)
+function infoIcon(type, x, y, color) {
+  const tn = iconTones(color);
+  rrect(x, y, 26, 26, 6); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = 1.5; ctx.stroke();
+  if (type) drawAbilityIcon(type, x + 13, y + 13, 19, color);
+}
 function drawInfoPanel(ch) {
   const [x, y, w, h] = infoRect();
   rrect(x, y, w, h, 12); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
+  rrect(x, y, w, 4, 2); ctx.fillStyle = ch.color; ctx.fill(); // franja del color del personaje
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 22px ' + FONT; ctx.fillText(ch.name, x + 16, y + 32);
   ctx.fillStyle = ch.color; ctx.font = '700 13px ' + FONT; ctx.fillText(ch.role, x + 16, y + 50);
   ctx.fillStyle = '#8f86a0'; ctx.font = '400 11.5px ' + FONT; ctx.fillText(styleText(ch), x + 16, y + 66);
   const bars = [
-    ['Vida', ch.hp / 160, ch.hp + ' de vida'],
+    ['Vida', ch.hp / 160, ch.hp + ''],
     ['Velocidad', ch.speed / 225, ''],
     ['Golpe', ch.canMelee ? ch.melee / 4 : 0, ch.canMelee ? '' : 'no'],
     ['Disparo', ch.canShoot ? ch.shot / 2 : 0, ch.canShoot ? '' : 'no']
   ];
   bars.forEach(([label, f, note], i) => {
-    const yy = y + 88 + i * 18;
+    const yy = y + 82 + i * 16;
     ctx.fillStyle = '#b9afc9'; ctx.font = '600 11px ' + FONT; ctx.fillText(label, x + 16, yy + 8);
-    ctx.fillStyle = '#2c2638'; ctx.fillRect(x + 88, yy, 126, 8);
-    if (f > 0) { ctx.fillStyle = ch.color; ctx.fillRect(x + 88, yy, 126 * Math.min(1, f), 8); }
-    if (note) { ctx.fillStyle = '#8f86a0'; ctx.font = '400 10.5px ' + FONT; ctx.fillText(note, x + 222, yy + 8); }
+    rrect(x + 88, yy, 150, 7, 3.5); ctx.fillStyle = '#2c2638'; ctx.fill();
+    if (f > 0) { rrect(x + 88, yy, Math.max(7, 150 * Math.min(1, f)), 7, 3.5); ctx.fillStyle = ch.color; ctx.fill(); }
+    if (note) { ctx.fillStyle = '#8f86a0'; ctx.font = '400 10.5px ' + FONT; ctx.fillText(note, x + 246, yy + 8); }
   });
   const pri = ABILITY_TEXT[ch.priType] || ['', ''], sec = ABILITY_TEXT[ch.secType] || ['', ''];
   const cs = chargedSlot(ch), mv = moveOf(ch);
   const rows = [
     ch.canMelee ? ['melee', 'Cuerpo a cuerpo', meleeText(ch)] : ['shot', 'Disparo', shotText(ch)],
-    cs ? [cs.icon, cs.title, cs.desc] : [null, 'Golpe cargado: no', ''],
+    cs ? [cs.icon, cs.title, cs.desc] : null,
     [mv.icon, 'Movimiento: ' + mv.name, mv.desc],
-    [ch.priType, 'Habilidad 1: ' + pri[0], pri[1]], [ch.secType, 'Habilidad 2: ' + sec[0], sec[1]]
-  ];
-  rows.forEach(([icon, title, desc], i) => {
-    const yy = y + 176 + i * 27, tx = icon ? x + 42 : x + 16;
-    if (icon) { const tn = iconTones(ch.color); rrect(x + 14, yy - 12, 22, 22, 5); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = 1.5; ctx.stroke(); drawAbilityIcon(icon, x + 25, yy - 1, 16, ch.color); }
+    [ch.priType, 'Habilidad 1: ' + pri[0], pri[1]],
+    [ch.secType, 'Habilidad 2: ' + sec[0], sec[1]]
+  ].filter(Boolean);
+  let yy = y + 158;
+  for (const [icon, title, desc] of rows) {
+    infoIcon(icon, x + 14, yy - 4, ch.color);
     ctx.textAlign = 'left';
-    const room = x + w - 10 - tx;
-    ctx.fillStyle = '#e6e0ef'; fitText(title, tx, yy, room, 700, 12);
-    ctx.fillStyle = '#9d94ad'; fitText(desc, tx, yy + 13, room, 400, 10.5);
-  });
+    ctx.fillStyle = '#e6e0ef'; ctx.font = '700 12px ' + FONT; ctx.fillText(title, x + 50, yy + 8);
+    ctx.fillStyle = '#9d94ad'; ctx.font = '400 11px ' + FONT;
+    const n = wrapText(desc, x + 50, yy + 22, w - 64, 13, 2);
+    yy += Math.max(30, 14 + n * 13) + 10;
+  }
+}
+function drawStartButton() {
+  const [x, y, w, h] = startRect(), ready = selectReady(), pend = slots.length < want ? want - slots.length : slots.filter(s => !s.locked).length;
+  const glow = ready ? 0.5 + 0.5 * Math.sin(time * 5) : 0;
+  if (ready) { rrect(x - 3, y - 3, w + 6, h + 6, 14); ctx.fillStyle = `rgba(255,181,71,${0.18 + glow * 0.22})`; ctx.fill(); }
+  rrect(x, y, w, h, 12);
+  ctx.fillStyle = ready ? (hoverStart ? '#ffc970' : '#ffb547') : '#1c1726'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = ready ? '#ffe2a8' : '#3b3349'; ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = ready ? '#1a1206' : '#5f566b'; ctx.font = '700 22px ' + FONT; ctx.fillText('Empezar ▶', x + w / 2, y + 36);
+  ctx.font = '600 11px ' + FONT; ctx.fillStyle = ready ? '#5a3a08' : '#8f86a0';
+  const ns = npcSlot(), wait = ns && !ns.locked && slots[0].locked ? 'Elige al aliado IA' : pend === 1 ? 'Falta 1 jugador por elegir' : 'Faltan ' + pend + ' por elegir';
+  ctx.fillText(ready ? (isTouch ? 'Toca para entrar' : 'Clic, golpe o Start') : wait, x + w / 2, y + 58);
 }
 function drawSelect() {
   drawMenuBg();
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Elige personaje', W / 2, 44);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT;
-  ctx.fillText(isTouch ? 'Toca un personaje para elegirlo; en teclado o mando, golpe para entrar y confirmar'
-    : 'Haz clic en un personaje, o pulsa golpe para entrar y confirmar; movimiento para cambiar o salir', W / 2, 70);
+  ctx.fillText(isTouch ? 'Toca un personaje para elegirlo y después pulsa Empezar'
+    : 'Elige con clic, o con golpe en teclado o mando; cuando estéis listos, Empezar', W / 2, 70);
   // botón atrás
   const [bx, by, bw, bh] = backRect();
   rrect(bx, by, bw, bh, 7); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
@@ -3476,23 +3514,22 @@ function drawSelect() {
     const [x, y, w, h] = cardRect(i), ch = CHARS[i], owner = takenBy(i), hl = i === shown;
     rrect(x, y, w, h, 10); ctx.fillStyle = hl ? '#262035' : '#1c1726'; ctx.fill();
     ctx.lineWidth = 1.5; ctx.strokeStyle = hl ? '#6b5e86' : '#3b3349'; ctx.stroke();
-    // etiqueta de estilo
     const tag = ch.canShoot ? (ch.canMelee ? 'Mixto' : 'Distancia') : 'Cuerpo';
     ctx.font = '700 9px ' + FONT; ctx.textAlign = 'left';
     const tw = ctx.measureText(tag).width + 10;
     rrect(x + 6, y + 6, tw, 15, 7); ctx.fillStyle = ch.canShoot ? '#23324a' : '#4a2a28'; ctx.fill();
     ctx.fillStyle = ch.canShoot ? '#9fc4ff' : '#ffb39a'; ctx.fillText(tag, x + 11, y + 17);
     const bob = slots.some(s => !s.locked && s.cur === i) || hl ? Math.sin(time * 6) * 3 : 0;
-    drawCharPreview(x + w / 2 - 4, y + (ch.size > 1.1 ? 78 : 90), ch, ch.size > 1.1 ? 1.15 : 1.55, bob); // personaje con su arma (los tanques, algo más pequeños para que quepan)
+    drawCharPreview(x + w / 2 - 4, y + (ch.size > 1.1 ? 78 : 90), ch, ch.size > 1.1 ? 1.15 : 1.55, bob);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f2eefa'; ctx.font = '700 14px ' + FONT; ctx.fillText(ch.name, x + w / 2, y + 120);
     ctx.fillStyle = ch.color; ctx.font = '600 11px ' + FONT; ctx.fillText(ch.role, x + w / 2, y + 137);
     if (owner) {
       const si = slots.indexOf(owner);
-      rrect(x, y, w, h, 10); ctx.fillStyle = 'rgba(10,8,16,0.45)'; ctx.fill();
+      rrect(x, y, w, h, 10); ctx.fillStyle = 'rgba(10,8,16,0.35)'; ctx.fill();
       rrect(x, y, w, h, 10); ctx.lineWidth = 3; ctx.strokeStyle = SLOTC[si]; ctx.stroke();
-      rrect(x + w - 42, y + 6, 36, 18, 5); ctx.fillStyle = SLOTC[si]; ctx.fill();
-      ctx.fillStyle = '#16121e'; ctx.font = '700 11px ' + FONT; ctx.fillText('J' + (si + 1), x + w - 24, y + 19);
+      rrect(x + w - 46, y + 6, 40, 18, 5); ctx.fillStyle = SLOTC[si]; ctx.fill();
+      ctx.fillStyle = '#16121e'; ctx.font = '700 11px ' + FONT; ctx.fillText('J' + (si + 1) + ' ✓', x + w - 26, y + 19);
     }
   }
   slots.forEach((s, si) => { // cursores de quienes aún eligen
@@ -3504,23 +3541,31 @@ function drawSelect() {
     ctx.fillStyle = '#16121e'; ctx.font = '700 11px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('J' + (si + 1), x + w - 18 - si * 26, y + h - 11);
   });
   drawInfoPanel(CHARS[shown]);
-  // paneles de jugador
-  const gap = 12, pw = (W - 48 - (want - 1) * gap) / want, py = H - 100;
+  // paneles de jugador (a la izquierda del botón Empezar)
+  const gap = 12, area = startRect()[0] - 12 - 24, pw = (area - (want - 1) * gap) / want, py = H - 100;
   for (let i = 0; i < want; i++) {
-    const x = 24 + i * (pw + gap), s = slots[i];
+    const x = 24 + i * (pw + gap), s = slots[i], ch = s ? CHARS[s.cur] : null;
     rrect(x, py, pw, 76, 10); ctx.fillStyle = '#16121e'; ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = s ? SLOTC[i] : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'left';
     ctx.fillStyle = s ? SLOTC[i] : '#5f566b'; ctx.font = '700 15px ' + FONT; ctx.fillText('J' + (i + 1), x + 12, py + 24);
-    ctx.font = '400 12px ' + FONT;
-    if (!s) { ctx.fillStyle = '#8f86a0'; ctx.fillText(npcMode && i === 1 ? 'Aliado IA: elige primero el tuyo' : (isTouch ? 'Pulsa golpe o toca un personaje' : 'Pulsa golpe o haz clic para entrar'), x + 12, py + 48); }
-    else {
-      ctx.fillStyle = '#8f86a0'; ctx.fillText(DEVLABEL[s.dev], x + 44, py + 24);
-      ctx.fillStyle = s.locked ? '#f2eefa' : '#b9afc9'; ctx.font = (s.locked ? '700 ' : '400 ') + '14px ' + FONT;
-      ctx.fillText(CHARS[s.cur].name + (s.locked ? ', listo' : ', eligiendo'), x + 12, py + 50);
-      if (takenBy(s.cur, s) && !s.locked) { ctx.fillStyle = '#ff8f8f'; ctx.font = '400 11px ' + FONT; ctx.fillText('Ya está cogido', x + 12, py + 67); }
+    if (!s) {
+      ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
+      wrapText(npcMode && i === 1 ? 'Aliado IA: elige primero el tuyo' : (isTouch ? 'Toca un personaje' : 'Pulsa golpe o haz clic para entrar'), x + 12, py + 46, pw - 24, 14, 2);
+      continue;
     }
+    ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText(DEVLABEL[s.dev], x + 44, py + 24);
+    ctx.fillStyle = s.locked ? '#f2eefa' : '#b9afc9'; ctx.font = (s.locked ? '700 ' : '400 ') + '15px ' + FONT;
+    ctx.fillText(ch.name, x + 12, py + 47);
+    // las dos habilidades del elegido, en pequeño
+    const tn = iconTones(ch.color);
+    [ch.priType, ch.secType].forEach((t, k) => { const ix = x + pw - 56 + k * 24; rrect(ix, py + 31, 20, 20, 4); ctx.fillStyle = tn.bgHi; ctx.fill(); drawAbilityIcon(t, ix + 10, py + 41, 14, ch.color); });
+    ctx.font = '600 11px ' + FONT;
+    if (takenBy(s.cur, s) && !s.locked) { ctx.fillStyle = '#ff8f8f'; ctx.fillText('Ya está cogido', x + 12, py + 65); }
+    else if (s.locked) { ctx.fillStyle = '#7ee08a'; ctx.fillText('✓ Elegido', x + 12, py + 65); }
+    else { ctx.fillStyle = '#b9afc9'; ctx.fillText('Eligiendo…', x + 12, py + 65); }
   }
+  drawStartButton();
   if (startT >= 0) {
     ctx.fillStyle = 'rgba(6,4,10,0.6)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 32px ' + FONT;

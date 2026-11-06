@@ -25,6 +25,8 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
    - Ranura de movimiento modular (`MOVES`): cada personaje elige `moveType` y cada tipo define nombre, descripción, icono y comportamiento (`start`/`update`, o `hold` para mantener). Tipos actuales: `dash` (Esquiva), `stride` (Zancada, Ceniza), `teleport` (Musgo), `jump` (Salto, Brasa y Ámbar) y `block` (Guardia, sin uso ahora).
    - Ranura de ataque cargado (`chargedSlot`): golpe cargado de cada cuerpo a cuerpo; en los tiradores, su disparo cargado o, si no cargan, su fuego continuo. Todos con icono propio.
    - El marcador muestra por jugador: movimiento, habilidad 1 y habilidad 2. El panel de selección lista ataque, carga, movimiento y habilidades con su icono.
+   - Selección de personaje: cada jugador elige (toque, clic o golpe) y después se pulsa **Empezar** (o golpe otra vez / Start con todos listos); ya no arranca sola. El panel muestra ataque, cargado, movimiento (`moveOf`), cargado (`chargedSlot`) y las dos habilidades con sus iconos.
+   - Controles táctiles: botonera en arco alrededor de Atacar (tamaño en `--A`), con el icono de cada habilidad y la recarga en el propio botón.
    - Las constantes de balance están agrupadas al principio del script (ENEMY, AB, CHARGED, BASE_STATS, REVIVE…).
 2. **laboratorio-coop.html**: banco de pruebas con 8 mecánicas coop jugables (levantar al caído, cuerda de energía, congelar y romper, placas simultáneas, escudo y tirador, lanzar al compañero, cámara compartida, golpe sincronizado), con notas de diseño de cada una.
 
