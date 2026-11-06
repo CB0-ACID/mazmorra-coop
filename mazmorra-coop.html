@@ -67,7 +67,7 @@ body.touch footer{display:none}
   content:''; position:absolute; inset:0; border-radius:50%; pointer-events:none;
   background:conic-gradient(rgba(8,6,14,.72) calc(var(--cd,0) * 1turn), transparent 0);
 }
-#btns button .pips{ /* cargas (Puño del dragón): puntos en la parte de abajo del botón */
+#btns button .pips{ /* cargas (Poder del dragón): puntos en la parte de abajo del botón */
   position:absolute; left:0; right:0; bottom:9%; z-index:1; display:flex; justify-content:center; gap:7%; pointer-events:none}
 #btns button .pips i{width:15%; aspect-ratio:1; border-radius:50%; background:#3a3342; border:1.5px solid rgba(0,0,0,.55); transition:background .12s, transform .12s}
 #btns button .pips i.full{background:#ff8a3d}
@@ -246,14 +246,15 @@ const AB = {
   turret:    { time: 10, rate: 0.3, range: 330, dmg: 1.2, hp: 8, regen: 0.5, destroyedCd: 20 }, // vida propia; se regenera guardada
   missile:   { speed: 300, maxSpeed: 560, accel: 700, turn: 6, life: 2.4, dmg: 2, r: 42, kb: 220 }, // Misil teledirigido (Ciruela y su torreta, tras moverse)
   overcharge: { time: 5, mul: 0.5, healR: 130, healEvery: 1, healPct: 0.04 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta; la torreta cura un 4 % de la vida máxima por segundo a los aliados cercanos
-  reaper:    { len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: ejecuta a los tier 1 y cura
-  dragon: {  // Puño del dragón: cargas por ejecuciones propias o de aliados cercanos
-    max: 3, step: 0.45, allyR: 240,
-    l1: { len: 110, w: 34, dmg: 3 },          // golpe corto como un rayo
-    l2: { len: 330, w: 46, dmg: 4 },          // dragón en línea larga
-    l3: { bounces: 6, dmg: 4, speed: 900 }    // se lanza como dragón rebotando entre enemigos
+  reaper:    { range: 300, speed: 1300, maxT: 0.4, len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: salta al ejecutable más cercano (o al más cercano) y golpea en cono
+  dragon: {  // Poder del dragón: el nivel 1 se recarga solo; las cargas 2 y 3 se ganan con ejecuciones propias o de aliados cercanos
+    max: 3, step: 0.45, allyR: 240, regen: 6,
+    l1: { speed: 560, range: 460, r: 12, dmg: 3, splash: 46 },                         // bola de fuego que prende
+    l2: { R: 74, dur: 5, spin: 3.4, body: 1.9, dmg: 1.4, hitR: 20, hitCd: 0.45 },       // dragón chino que gira alrededor
+    l3: { hits: 4, dmg: 4, gap: 0.2 }                                                   // forma de dragón: teletransporte a 4 enemigos
   }
 };
+const BURN = { time: 3, dps: 1.5, tick: 0.5 }; // quemadura: daño por segundo; cualquier daño de fuego reinicia el tiempo
 // Golpes cargados de cuerpo a cuerpo: lv va de 0 (carga mínima) a 1 (carga completa).
 // Lanzan siempre que el golpe tenga efecto de lanzador (el guardián nunca sale volando)
 const CHARGED = {
@@ -261,7 +262,7 @@ const CHARGED = {
   arcane:   { d0: 140, d1: 320, r0: 50, r1: 80, fly: 0.35, vortex: 0.45 }, // Singularidad arcana (Musgo)
   hook:     { len0: 120, len1: 260 },
   flurry:   { interval: 0.07 },             // Ráfaga volcánica (remate del combo de Brasa)
-  uppercut: { r0: 56, r1: 76, arc: 1.0, lunge0: 160, lunge1: 320, dur: 0.24 }, // Uppercut del dragón: lanza
+  uppercut: { len0: 70, len1: 115, w0: 40, w1: 56, lunge0: 160, lunge1: 320, dur: 0.24 }, // Uppercut del dragón: rectángulo delante; lanza
   starfall: { d0: 90, d1: 220, r0: 38, r1: 55 } // área pequeña, no lanza; si alcanza a alguien recarga la Embestida
 };
 // Salto (movimiento de Brasa y Ámbar): arco en la dirección en la que te mueves.
@@ -564,7 +565,7 @@ bindBtn(document.getElementById('bTest'), 't');
 // count: elegir nº de jugadores · select: elegir personajes · play · over
 let state = 'count';
 let floor, room, pal = PALETTES[0];
-let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [], missiles = [];
+let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [], missiles = [], dragonFx = [];
 let overT = 0, time = 0, fade = 0, shake = 0, banner = null, seed = 0, hitstop = 0, flashT = 0;
 let camKX = 0, camKY = 0; // empujón de cámara en la dirección del golpe
 const BUFFER = 0.25;      // búfer de entrada: una pulsación se recuerda 0,25 s (cubre toda la recuperación del golpe)
@@ -949,7 +950,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
   useRoom(r);
-  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = [];
+  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = [];
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
   const entry = dir ? OPP[dir] : null;
@@ -963,7 +964,7 @@ function enterRoom(r, dir) {
   players.forEach((p, i) => {
     const off = (i - (n - 1) / 2) * 30;
     if (entry === 'left' || entry === 'right') { p.x = bx; p.y = by + off; } else { p.x = bx + off; p.y = by; }
-    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.jump = null; p.leap = null; p.dragonRush = null; p.shieldCharge = null; p.shieldOn = false; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
+    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.jump = null; p.leap = null; p.dragonRush = null; p.reapDash = null; p.shieldCharge = null; p.shieldOn = false; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
   });
   if (!r.cleared) { if (!r.waves) r.waves = makeEncounter(r); r.wave = 0; spawnWave(); }
   if (r.type === 'treasure' && !r.looted) {
@@ -1027,7 +1028,7 @@ function roomCleared() {
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
   floor = genFloor(seed, 1);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; for (const kk in p.prev) p.prev[kk] = true; }
+  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
@@ -1265,10 +1266,16 @@ function updatePlayer(p, dt) {
     if (p.mCh < c.moveCharges) { p.mChT -= dt; if (p.mChT <= 0) { p.mCh++; p.mChT = p.mCh < c.moveCharges ? c.moveRecharge : 0; } }
   }
   p.priCd -= dt; p.secCd -= dt; p.stickT -= dt; p.postMoveT -= dt;
+  if (c.secType === 'dragon') { // Poder del dragón: el nivel 1 se recarga solo
+    if ((p.dragonCharges || 0) < 1 && !p.down) {
+      p.dragonRegenT = (p.dragonRegenT || 0) + dt;
+      if (p.dragonRegenT >= AB.dragon.regen) { p.dragonCharges = 1; p.dragonRegenT = 0; floatText(p.x, p.y - 62 * c.size, 'Poder del dragón listo', '#ff8a3d'); }
+    } else p.dragonRegenT = 0;
+  }
   p.shieldT = (p.shieldT || 0) - dt; p.tauntT = (p.tauntT || 0) - dt; p.recoilT = (p.recoilT || 0) - dt; p.bubbleT = (p.bubbleT || 0) - dt; p.phaseT = (p.phaseT || 0) - dt; p.overdriveT = (p.overdriveT || 0) - dt; p.overchargeT = (p.overchargeT || 0) - dt;
   p.gatSpin = (p.gatSpin || 0) + dt * (c.shotStyle === 'gatling' && inp.s ? 38 : 3); // los cañones giran al disparar
   p.castT = p.cast ? (p.castT || 0) + dt : 0;
-  { const wt = WEIGHT[c.weight] || WEIGHT.medium; p.sqv = (p.sqv || 0) + (-320 * (p.sq || 0) - wt.damping * (p.sqv || 0)) * dt; p.sq = Math.max(-0.35, Math.min(0.35, (p.sq || 0) + p.sqv * dt)); } // tiempo con la habilidad pulsada (nivel del Puño del dragón)
+  { const wt = WEIGHT[c.weight] || WEIGHT.medium; p.sqv = (p.sqv || 0) + (-320 * (p.sq || 0) - wt.damping * (p.sqv || 0)) * dt; p.sq = Math.max(-0.35, Math.min(0.35, (p.sq || 0) + p.sqv * dt)); } // tiempo con la habilidad pulsada (nivel del Poder del dragón)
   if (p.hurtFx > 0) p.hurtFx -= dt; if (p.healFx > 0) p.healFx -= dt;
   if (p.turretHp != null && !myTurret(p)) p.turretHp = Math.min(AB.turret.hp, p.turretHp + AB.turret.regen * dt); // la torreta guardada se repara
   if (p.comboT > 0) { p.comboT -= dt; if (p.comboT <= 0) p.combo = 0; }
@@ -1331,7 +1338,7 @@ function updatePlayer(p, dt) {
   if (tgt && mm > 0.2) { const dx = tgt.x - p.x, dy = tgt.y - p.y, d = Math.hypot(dx, dy) || 1; radial = (inp.x * dx + inp.y * dy) / (d * mm); }
 
   // desplazamiento: habilidad de movimiento > impulso del golpe > órbita > libre
-  const special = (p.rush || p.drop || p.leap || p.dragonRush || p.shieldCharge) ? updateSpecial(p, dt) : false;
+  const special = (p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) ? updateSpecial(p, dt) : false;
   if (moveOf(c).hold) { // el botón de movimiento sube la guardia mientras se mantiene
     const want = !!inp.d && !special && !p.flurry;
     if (want && !p.blocking) { p.blocking = true; p.blockT = 0; p.perfectUsed = false; p.slash = null; p.mHold = null; p.mCharging = false; }
@@ -1386,7 +1393,7 @@ function updatePlayer(p, dt) {
   } else if (p.stickT <= 0) { p.ax = p.fx; p.ay = p.fy; }
 
   if (p.reviving) { p.charging = false; p.beaming = false; p.slash = null; p.bufA = 0; p.shotHold = true; return; } // levantando a un aliado: no ataca
-  if (p.rush || p.drop || p.leap || p.dragonRush || p.shieldCharge) return; // durante embestida, caída Izuna o salto no se ataca
+  if (p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) return; // durante embestida, caída Izuna o salto no se ataca
 
   // golpe: el tipo depende de si acabas de moverte o de cómo te mueves respecto al objetivo
   const wantAtk = p.bufA > 0 && p.atkCd <= 0; // la pulsación guardada en el búfer se ejecuta en cuanto se puede
@@ -1684,6 +1691,7 @@ function abilityReady(p, slot) {
   if (t === 'frostburst') return !!frostTarget(p); // necesita a alguien a tiro
   if (t === 'raiseShield') return !p.shieldBroken; // roto: hay que esperar a que se recupere
   if (t === 'dragon') return (p.dragonCharges || 0) > 0; // sin cargas no se puede usar
+  if (t === 'reaper') return !!reaperTarget(p); // necesita un enemigo a tiro
   return true;
 }
 function secReady(p) { return abilityReady(p, 'sec'); }
@@ -1779,23 +1787,40 @@ function updateSpecial(p, dt) {
     if (collide(p, true) || R.left <= 0 || !p.shieldUp) p.shieldCharge = null;
     return true;
   }
-  if (p.dragonRush) { // Furia del dragón: vuela de enemigo en enemigo
-    const R = p.dragonRush; R.t += dt; R.tt += dt;
-    if (!R.target || R.target.dead || R.tt > 0.6) {
-      R.target = null; R.tt = 0;
-      let bd = 1e9;
-      if (R.left > 0 && R.t < 3) for (const e of liveTargets()) { if (R.hit.has(e)) continue; const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; R.target = e; } }
-      if (!R.target) { p.dragonRush = null; p.inv = Math.max(p.inv, 0.3); return false; }
-    }
-    const e = R.target, dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1, step = AB.dragon.l3.speed * dt;
+  if (p.reapDash) { // Puño ejecutor: salta hasta su objetivo y golpea al llegar
+    const R = p.reapDash, e = R.e; R.t += dt;
+    if (e.dead || !enemies.includes(e)) { p.reapDash = null; return false; }
+    const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1, gap = d - (e.r + p.r + 6), step = AB.reaper.speed * dt;
     p.ax = dx / d; p.ay = dy / d;
-    if (d <= e.r + p.r + step) {
-      const dmg = AB.dragon.l3.dmg * ABILITY_MUL;
-      damageEnemy(e, p.x, p.y, dmg, dmg, 220); R.hit.add(e); R.left--; R.target = null; R.tt = 0;
-      effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 22, t: 0, dur: 0.3, color: '#ff8a3d' });
-      burst(e.x, e.y - 12, '#ff8a3d', 12); shake = Math.max(shake, 5);
-    } else { p.x += dx / d * step; p.y += dy / d * step; }
-    for (let i = 0; i < 2; i++) particles.push({ x: p.x + (Math.random() - 0.5) * 10, y: p.y - 12 + (Math.random() - 0.5) * 10, vx: 0, vy: -20, life: 0.35, max: 0.35, color: i ? '#ffd54a' : p.color, s: 7 });
+    if (gap <= step || R.t > AB.reaper.maxT) {
+      if (gap > 0) { p.x += p.ax * Math.min(gap, step); p.y += p.ay * Math.min(gap, step); }
+      collide(p, true); p.reapDash = null; reaperStrike(p, e);
+      return true;
+    }
+    p.x += p.ax * step; p.y += p.ay * step; collide(p, true);
+    effects.push({ type: 'ghost', x: p.x, y: p.y - 14 * c.size, r: 12 * c.size, t: 0, dur: 0.16, color: c.color });
+    return true;
+  }
+  if (p.dragonRush) { // Forma de dragón: se teletransporta de enemigo en enemigo
+    const R = p.dragonRush; R.t += dt; R.wait -= dt;
+    if (R.wait > 0) return true;
+    const all = liveTargets().filter(e => !e.grabbed);
+    if (R.left <= 0 || !all.length) { p.dragonRush = null; p.inv = Math.max(p.inv, 0.4); burst(p.x, p.y - 14, '#ff8a3d', 16); return false; }
+    let pool = all.filter(e => !R.hit.has(e));
+    if (!pool.length) { R.hit.clear(); pool = all; } // menos de 4 enemigos: vuelve a empezar con los que quedan
+    let e = null, bd = 1e9;
+    for (const o of pool) { const d = Math.hypot(o.x - p.x, o.y - p.y); if (d < bd && (o !== R.last || pool.length === 1)) { bd = d; e = o; } }
+    if (!e) e = pool[0];
+    const ox = p.x, oy = p.y, dx = e.x - ox, dy = e.y - oy, d = Math.hypot(dx, dy);
+    const ux = d > 1 ? dx / d : p.ax, uy = d > 1 ? dy / d : p.ay;
+    p.x = e.x - ux * (e.r + p.r + 6); p.y = e.y - uy * (e.r + p.r + 6); collide(p, true); p.ax = ux; p.ay = uy;
+    if (d > 20) effects.push({ type: 'dragon', x: ox, y: oy, ax: ux, ay: uy, len: d, w: 40, t: 0, dur: 0.35, color: c.color }); // estela del teletransporte
+    const dmg = AB.dragon.l3.dmg * ABILITY_MUL;
+    fireHit(e, p, dmg, 220, p.x, p.y);
+    effects.push({ type: 'kanji', x: e.x, y: upY(e.y, 34 + (e.z || 0)), t: 0, dur: 0.9 });
+    effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 22, t: 0, dur: 0.3, color: '#ff8a3d' });
+    burst(e.x, upY(e.y, 12 + (e.z || 0)), '#ff8a3d', 14); shake = Math.max(shake, 6); hitstop = Math.max(hitstop, 0.05);
+    R.hit.add(e); R.last = e; R.left--; R.wait = AB.dragon.l3.gap;
     return true;
   }
   if (p.leap) { // Estrella fugaz: salto en arco hasta el punto de caída
@@ -1984,7 +2009,7 @@ function updateCover(dt) {
     if (cz.covering && (!cz.shieldUp || cz.down || cz.covering.down)) { detachCover(cz.covering); continue; }
     if (!cz.shieldUp || cz.down || cz.covering) continue;
     for (const a of players) {
-      if (a === cz || a.down || a.coverBy || a.covering || a.coverCd > 0 || a.rush || a.drop || a.leap || a.dragonRush) continue;
+      if (a === cz || a.down || a.coverBy || a.covering || a.coverCd > 0 || a.rush || a.drop || a.leap || a.dragonRush || a.reapDash) continue;
       if (Math.hypot(a.x - cz.x, a.y - cz.y) < cz.r + a.r + AB.wall.coverR) {
         a.coverBy = cz; cz.covering = a;
         floatText(a.x, a.y - 46 * a.ch.size, 'A cubierto', a.slotColor); SFX.hit(false);
@@ -2211,44 +2236,194 @@ function updateTurrets(dt) {
   }
   turrets = turrets.filter(t => !t.gone);
 }
-// Puño ejecutor (Brasa): golpe en cono; ejecuta a los tier 1 pase lo que pase y cura si lo consigue
+// Puño ejecutor (Brasa): salta al enemigo ejecutable más cercano (tier 1 o aturdido) o, si no hay, al más cercano
+function reaperExecutable(e) { return e.tier === 1 || e.stunT > 0; }
+function reaperTarget(p) {
+  let ex = null, exD = 1e9, any = null, anyD = 1e9;
+  for (const e of liveTargets()) {
+    if (e.airborne || e.grabbed) continue;
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (d > AB.reaper.range + e.r) continue;
+    if (reaperExecutable(e) && d < exD) { exD = d; ex = e; }
+    if (d < anyD) { anyD = d; any = e; }
+  }
+  return ex || any;
+}
 function castReaper(p) {
+  const e = reaperTarget(p);
+  if (!e) return false;
+  p.reapDash = { e, t: 0 }; p.lockOn = true; p.target = e; p.slash = null; p.flurry = null;
+  floatText(p.x, p.y - 46 * p.ch.size, 'Puño ejecutor', p.slotColor);
+}
+// Al llegar: golpe en cono hacia el objetivo. Ejecuta al objetivo si es ejecutable y a los tier 1 del cono; daña al resto
+function reaperStrike(p, main) {
   const a = Math.atan2(p.ay, p.ax), R = AB.reaper.len, dmg = AB.reaper.dmg * ABILITY_MUL;
   let reaped = 0;
   for (const e of liveTargets()) {
     const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
-    if (d > R + e.r) continue;
-    let da = Math.atan2(dy, dx) - a; da = Math.atan2(Math.sin(da), Math.cos(da));
-    if (Math.abs(da) > AB.reaper.arc && d > e.r + p.r + 6) continue;
-    if (e.tier === 1) { executeEnemy(e, p, 'reap'); reaped++; }
+    if (e !== main) {
+      if (d > R + e.r) continue;
+      let da = Math.atan2(dy, dx) - a; da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (Math.abs(da) > AB.reaper.arc && d > e.r + p.r + 6) continue;
+    }
+    if (e.tier === 1 || (e === main && reaperExecutable(e))) { executeEnemy(e, p, 'reap'); reaped++; }
     else { damageEnemy(e, p.x, p.y, dmg, dmg, 260); if (e.dead) grantDragonCharge(p); } // matar con el Puño ejecutor cuenta como ejecución para las cargas
   }
   effects.push({ type: 'cone', x: p.x, y: p.y, ang: a, r: R, arc: AB.reaper.arc, t: 0, dur: 0.3, color: p.color });
-  if (reaped && p.hp < p.maxHp) {
-    healPlayer(p, AB.reaper.heal); burst(p.x, p.y - 14, '#7ee08a', 12);
-  }
+  if (reaped && p.hp < p.maxHp) { healPlayer(p, AB.reaper.heal); burst(p.x, p.y - 14, '#7ee08a', 12); }
   shake = Math.max(shake, 4);
 }
-// Puño del dragón (Brasa): mantener el botón sube el nivel (hasta las cargas que tengas); soltar gasta ese número
+// ---------- Fuego: quemadura ----------
+function applyBurn(e, p) {
+  if (e.dead) return;
+  if (!(e.burnT > 0)) e.burnTick = BURN.tick;
+  e.burnT = BURN.time; e.burnBy = p; // reinicia el tiempo si ya ardía
+}
+function fireHit(e, p, dmg, kb, sx, sy) { damageEnemy(e, sx, sy, dmg, dmg, kb); applyBurn(e, p); }
+function updateBurns(dt) {
+  for (const e of enemies) {
+    if (!(e.burnT > 0) || e.dead) continue;
+    e.burnT -= dt; e.burnTick -= dt;
+    if (e.burnTick <= 0) {
+      e.burnTick += BURN.tick; e.hp -= BURN.dps * BURN.tick; e.flash = Math.max(e.flash || 0, 0.05);
+      if (e.hp <= 0) { killEnemy(e, false); continue; }
+    }
+    if (Math.random() < 0.55) particles.push({ x: e.x + (Math.random() - 0.5) * e.r * 1.4, y: upY(e.y, 6 + (e.z || 0) + Math.random() * e.r * 1.6), vx: (Math.random() - 0.5) * 16, vy: -50 - Math.random() * 40,
+      life: 0.35, max: 0.35, color: Math.random() < 0.4 ? '#ffd54a' : '#ff6a2a', s: 3 + Math.random() * 3 });
+  }
+}
+// ---------- Poder del dragón (Brasa) ----------
+// Mantener el botón sube el nivel (hasta las cargas que tengas); soltar gasta ese número
 function dragonLevel(p) { return Math.max(0, Math.min(p.dragonCharges || 0, 1 + Math.floor((p.castT || 0) / AB.dragon.step))); }
+function dragonRegenFrac(p) { return (p.dragonCharges || 0) < 1 ? 1 - (p.dragonRegenT || 0) / AB.dragon.regen : 0; }
 function castDragon(p) {
   const lv = dragonLevel(p), cfg = AB.dragon;
   if (lv < 1) return false;
-  p.dragonCharges -= lv;
-  if (lv < 3) {
-    const L = lv === 1 ? cfg.l1 : cfg.l2, len = beamLength(p.x, p.y, p.ax, p.ay, L.len), dmg = L.dmg * ABILITY_MUL;
-    for (const e of liveTargets()) {
-      const dx = e.x - p.x, dy = e.y - p.y, t = Math.max(0, Math.min(len, dx * p.ax + dy * p.ay));
-      if (Math.hypot(e.x - (p.x + p.ax * t), e.y - (p.y + p.ay * t)) < L.w / 2 + e.r) damageEnemy(e, p.x, p.y, dmg, dmg, lv === 1 ? 300 : 380);
-    }
-    effects.push({ type: lv === 1 ? 'beam' : 'dragon', x: p.x, y: p.y, ax: p.ax, ay: p.ay, len, w: L.w, t: 0, dur: lv === 1 ? 0.3 : 0.55, color: p.color });
-    floatText(p.x, p.y - 46 * p.ch.size, lv === 1 ? 'Puño del dragón' : 'Dragón de fuego', '#ff8a3d');
-    shake = Math.max(shake, lv * 4);
-  } else {
-    p.dragonRush = { left: cfg.l3.bounces, hit: new Set(), target: null, t: 0, tt: 0 };
-    floatText(p.x, p.y - 46 * p.ch.size, 'Furia del dragón', '#ff8a3d');
-    shake = Math.max(shake, 8);
+  p.dragonCharges -= lv; p.dragonRegenT = 0; // la recarga del nivel 1 empieza de cero
+  if (lv === 1) { // bola de fuego
+    dragonFx.push({ kind: 'ball', owner: p, x: p.x + p.ax * 16, y: p.y + p.ay * 16, z: 16, dx: p.ax, dy: p.ay, left: cfg.l1.range, t: 0 });
+    floatText(p.x, p.y - 46 * p.ch.size, 'Bola de fuego', '#ff8a3d'); SFX.swing(false);
+  } else if (lv === 2) { // dragón chino que gira a su alrededor
+    for (const f of dragonFx) if (f.kind === 'orbit' && f.owner === p) f.done = true;
+    dragonFx.push({ kind: 'orbit', owner: p, t: 0, ang: Math.atan2(p.ay, p.ax), cd: new Map() });
+    floatText(p.x, p.y - 46 * p.ch.size, 'Dragón de fuego', '#ff8a3d');
+    effects.push({ type: 'ring', x: p.x, y: p.y, r: cfg.l2.R, t: 0, dur: 0.4, color: '#ff8a3d' }); shake = Math.max(shake, 5);
+  } else { // forma de dragón
+    p.dragonRush = { left: cfg.l3.hits, hit: new Set(), t: 0, wait: 0.12, last: null };
+    p.slash = null; p.flurry = null; p.mHold = null; p.mCharging = false;
+    floatText(p.x, p.y - 46 * p.ch.size, 'Forma de dragón', '#ff8a3d');
+    burst(p.x, p.y - 14, '#ff8a3d', 22); shake = Math.max(shake, 8);
   }
+}
+function dragonBallBoom(f, main) {
+  const L1 = AB.dragon.l1, dmg = L1.dmg * ABILITY_MUL;
+  for (const e of liveTargets()) {
+    if (e !== main && Math.hypot(e.x - f.x, e.y - f.y) > L1.splash + e.r) continue;
+    fireHit(e, f.owner, e === main ? dmg : dmg * 0.5, e === main ? 260 : 140, f.x, f.y);
+  }
+  effects.push({ type: 'ring', x: f.x, y: f.y, r: L1.splash, t: 0, dur: 0.35, color: '#ff8a3d' });
+  burst(f.x, upY(f.y, f.z), '#ff8a3d', 18); burst(f.x, upY(f.y, f.z), '#ffd54a', 8); shake = Math.max(shake, 4);
+  f.done = true;
+}
+// Puntos del cuerpo del dragón que gira (cabeza primero), en coordenadas de suelo y altura
+function orbitPoints(f) {
+  const L2 = AB.dragon.l2, o = f.owner, N = 18, pts = [];
+  for (let i = 0; i <= N; i++) {
+    const a = f.ang - i * (L2.body / N), r = L2.R + Math.sin(f.t * 7 - i * 0.7) * 5;
+    pts.push({ x: o.x + Math.cos(a) * r, y: o.y + Math.sin(a) * r, h: 24 + Math.sin(f.t * 5 - i * 0.5) * 7 });
+  }
+  return pts;
+}
+function updateDragonFx(dt) {
+  const L1 = AB.dragon.l1, L2 = AB.dragon.l2;
+  for (const f of dragonFx) {
+    if (f.done) continue;
+    f.t += dt;
+    if (f.kind === 'ball') {
+      const step = L1.speed * dt;
+      f.x += f.dx * step; f.y += f.dy * step; f.left -= step;
+      if (Math.random() < 0.9) particles.push({ x: f.x - f.dx * 8 + (Math.random() - 0.5) * 6, y: upY(f.y, f.z) + (Math.random() - 0.5) * 6, vx: -f.dx * 40, vy: -20, life: 0.3, max: 0.3, color: Math.random() < 0.5 ? '#ffd54a' : '#ff6a2a', s: 5 });
+      if (f.left <= 0 || isSolid(Math.floor(f.x / T), Math.floor(f.y / T), false)) { dragonBallBoom(f, null); continue; }
+      const hit = liveTargets().find(e => Math.hypot(e.x - f.x, e.y - f.y) < e.r + L1.r && Math.abs((e.z || 0) - f.z + 16) < 60);
+      if (hit) dragonBallBoom(f, hit);
+    } else if (f.kind === 'orbit') {
+      if (f.t > L2.dur || f.owner.down || !players.includes(f.owner)) { f.done = true; continue; }
+      f.ang += L2.spin * dt;
+      const pts = orbitPoints(f);
+      for (const e of liveTargets()) {
+        if ((f.cd.get(e) || 0) > f.t) continue;
+        if (pts.some((q, i) => i % 3 === 0 && Math.hypot(e.x - q.x, e.y - q.y) < e.r + L2.hitR)) {
+          fireHit(e, f.owner, L2.dmg * ABILITY_MUL, 200, f.owner.x, f.owner.y); f.cd.set(e, f.t + L2.hitCd);
+        }
+      }
+      if (Math.random() < 0.7) { const q = pts[pts.length - 1]; particles.push({ x: q.x, y: upY(q.y, q.h), vx: (Math.random() - 0.5) * 30, vy: -30, life: 0.3, max: 0.3, color: Math.random() < 0.5 ? '#ffd54a' : '#ff6a2a', s: 5 }); }
+    }
+  }
+  dragonFx = dragonFx.filter(f => !f.done);
+}
+// Dragón chino: cuerpo serpenteante con escamas doradas, aletas, cuernos y bigotes. pts en coordenadas de pantalla, cabeza primero
+function drawLoong(pts, s, alpha) {
+  if (pts.length < 2) return;
+  ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const N = pts.length - 1;
+  for (let i = N; i > 0; i--) { // aletas dorsales
+    if (i % 2) continue;
+    const a = pts[i], b = pts[i - 1], ang = Math.atan2(b.y - a.y, b.x - a.x), w = s * (9 - 5 * i / N);
+    const nx = Math.sin(ang), ny = -Math.cos(ang), side = ny <= 0 ? 1 : -1; // siempre hacia arriba en pantalla
+    ctx.fillStyle = '#ffd54a'; ctx.beginPath();
+    ctx.moveTo(a.x + nx * w * 0.6 * side, a.y + ny * w * 0.6 * side);
+    ctx.lineTo(a.x + nx * w * 1.6 * side - Math.cos(ang) * w * 0.6, a.y + ny * w * 1.6 * side - Math.sin(ang) * w * 0.6);
+    ctx.lineTo(b.x + nx * w * 0.6 * side, b.y + ny * w * 0.6 * side); ctx.closePath(); ctx.fill();
+  }
+  for (const [col, k] of [['#4a0f06', 1.35], ['#e8361c', 1], ['#ff7a2a', 0.62], ['#ffd54a', 0.22]]) { // cuerpo por capas, más fino hacia la cola
+    ctx.strokeStyle = col;
+    for (let i = N; i > 0; i--) {
+      const w = s * (16 - 11 * i / N) * k;
+      ctx.lineWidth = Math.max(1, w); ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[i - 1].x, pts[i - 1].y); ctx.stroke();
+    }
+  }
+  const tl = pts[N]; // cola en llamas
+  for (let i = 0; i < 3; i++) { ctx.fillStyle = i % 2 ? '#ffd54a' : '#ff6a2a'; ctx.beginPath(); ctx.arc(tl.x + (Math.random() - 0.5) * 6, tl.y + (Math.random() - 0.5) * 6, s * (5 - i * 1.3), 0, Math.PI * 2); ctx.fill(); }
+  const h = pts[0], n = pts[1], ang = Math.atan2(h.y - n.y, h.x - n.x); // cabeza
+  ctx.translate(h.x, h.y); ctx.rotate(ang); if (Math.cos(ang) < 0) ctx.scale(1, -1); ctx.scale(s, s);
+  ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 1.6; // bigotes largos
+  ctx.beginPath(); ctx.moveTo(10, 3); ctx.quadraticCurveTo(4, 16, -14, 14); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, -1); ctx.quadraticCurveTo(2, -10, -16, -6); ctx.stroke();
+  ctx.lineWidth = 2.6; // cuernos
+  ctx.beginPath(); ctx.moveTo(-2, -6); ctx.lineTo(-12, -15); ctx.lineTo(-15, -12); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(2, -6); ctx.lineTo(-6, -17); ctx.stroke();
+  ctx.fillStyle = '#ff7a2a'; for (const [x, y] of [[-8, -7], [-12, -3], [-14, 2]]) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 7, y - 3); ctx.lineTo(x - 2, y + 4); ctx.closePath(); ctx.fill(); } // melena
+  ctx.fillStyle = '#e8361c'; ctx.strokeStyle = '#4a0f06'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(-9, -7); ctx.quadraticCurveTo(2, -10, 15, -3); ctx.lineTo(16, 2); ctx.lineTo(6, 3); ctx.lineTo(14, 7); ctx.quadraticCurveTo(0, 10, -9, 6); ctx.closePath(); ctx.fill(); ctx.stroke(); // hocico y mandíbula abierta
+  ctx.fillStyle = '#ffd54a'; ctx.beginPath(); ctx.arc(14, 4.5, 2.2, 0, Math.PI * 2); ctx.fill(); // fuego en la boca
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(3, -4, 2.8, 2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#16121e'; ctx.beginPath(); ctx.arc(3.8, -4, 1.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function drawDragonFx() {
+  for (const f of dragonFx) {
+    if (f.kind === 'ball') {
+      const y = upY(f.y, f.z), fl = 1 + Math.sin(f.t * 40) * 0.12;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(f.x, f.y, 8, 3.5);
+      ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#ff6a2a'; ctx.beginPath(); ctx.arc(f.x, y, AB.dragon.l1.r * 1.9 * fl, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = '#ff6a2a'; ctx.beginPath(); ctx.arc(f.x, y, AB.dragon.l1.r * fl, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffd54a'; ctx.beginPath(); ctx.arc(f.x + f.dx * 2, y, AB.dragon.l1.r * 0.55, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    } else if (f.kind === 'orbit') {
+      const pts = orbitPoints(f), L2 = AB.dragon.l2, a = Math.min(1, f.t * 4, (L2.dur - f.t) * 3);
+      ctx.save(); ctx.globalAlpha = 0.18 * a; ctx.strokeStyle = '#ff8a3d'; ctx.lineWidth = 2; ctx.setLineDash([4, 6]);
+      ctx.beginPath(); ctx.ellipse(f.owner.x, f.owner.y, L2.R, L2.R, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      for (const q of pts) { ctx.fillStyle = 'rgba(0,0,0,0.12)'; ellipse(q.x, q.y, 5, 2); }
+      drawLoong(pts.map(q => ({ x: q.x, y: upY(q.y, q.h) })), 0.95, a);
+    }
+  }
+}
+// Brasa transformado: dragón enroscado en el sitio
+function drawDragonForm(p) {
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ellipse(p.x, p.y, p.r * 1.3, p.r * 0.55);
+  const pts = [];
+  for (let i = 0; i <= 13; i++) { const a = time * 9 - i * 0.55, r = 8 + i * 1.3; pts.push({ x: p.x + Math.cos(a) * r, y: upY(p.y + Math.sin(a) * r * 0.5, 44 - i * 2.8) }); }
+  drawLoong(pts, 1.05, 1);
+  ctx.font = '700 10px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = p.slotColor; ctx.fillText('J' + p.id, p.x, upY(p.y, 62));
 }
 // Sobrecarga (Ciruela): más cadencia para ella y para su torreta
 function castOvercharge(p) {
@@ -2537,9 +2712,9 @@ function releaseChargedMelee(p, lv) {
     }
   } else if (type === 'uppercut') { // Uppercut del dragón: avanza con un gancho ascendente de fuego que lanza
     p.kbx += p.ax * (cfg.lunge0 + (cfg.lunge1 - cfg.lunge0) * lv); p.kby += p.ay * (cfg.lunge0 + (cfg.lunge1 - cfg.lunge0) * lv);
-    const def = { name: '', shape: 'arc', range: cfg.r0 + (cfg.r1 - cfg.r0) * lv, arc: cfg.arc, dur: cfg.dur, dmg: 1 + 2 * lv, kb: 160, launcher: true, hitFrom: 0.25 };
+    const def = { name: '', shape: 'thrust', len: cfg.len0 + (cfg.len1 - cfg.len0) * lv, width: cfg.w0 + (cfg.w1 - cfg.w0) * lv, dur: cfg.dur, dmg: 1 + 2 * lv, kb: 160, launcher: true, hitFrom: 0.25 };
     p.slash = { kind: 'uppercut', def, t: 0, dur: def.dur, ang: Math.atan2(p.ay, p.ax), hit: new Set(), side: 1 };
-    const fx = p.x + p.ax * def.range * 0.6, fy = p.y + p.ay * def.range * 0.6;
+    const fx = p.x + p.ax * def.len * 0.6, fy = p.y + p.ay * def.len * 0.6;
     for (let i = 0; i < 22; i++) particles.push({ x: fx + (Math.random() - 0.5) * 26, y: fy - 10 - Math.random() * 20, vx: (Math.random() - 0.5) * 50, vy: -160 - Math.random() * 220,
       life: 0.45, max: 0.45, color: i % 3 ? '#ff6a2a' : '#ffd54a', s: 5 + Math.random() * 5 }); // columna de fuego ascendente
     shake = Math.max(shake, 4 + lv * 4);
@@ -2661,31 +2836,35 @@ function drawPreviews() {
       }
       ctx.setLineDash([]);
     } else if (type === 'overdrive') circle(p.x, p.y, AB.overdrive.r);
-    else if (type === 'reaper') {
-      const a = Math.atan2(p.ay, p.ax);
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, AB.reaper.len, a - AB.reaper.arc, a + AB.reaper.arc); ctx.closePath();
-      ctx.globalAlpha = pulse; ctx.fill(); dashed();
-      for (const e of liveTargets()) if (e.tier === 1) { // marca a los que ejecutaría
-        const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy); let da = Math.atan2(dy, dx) - a; da = Math.atan2(Math.sin(da), Math.cos(da));
-        if (d <= AB.reaper.len + e.r && (Math.abs(da) <= AB.reaper.arc || d <= e.r + p.r + 6)) { ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(e.x, upY(e.y, 12 + e.z), e.r + 5, (e.r + 5) / K, 0, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = p.slotColor; }
+    else if (type === 'reaper') { // salto al objetivo: dorado si lo ejecutará
+      const e = reaperTarget(p);
+      if (e) {
+        const ex = reaperExecutable(e);
+        ctx.globalAlpha = 0.85; ctx.setLineDash([6, 5]); ctx.lineWidth = 2.5; if (ex) ctx.strokeStyle = '#ffd54a';
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(e.x, e.y); ctx.stroke(); ctx.setLineDash([]);
+        ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(e.x, upY(e.y, 12 + e.z), e.r + 6, (e.r + 6) / K, 0, 0, Math.PI * 2); ctx.stroke();
+        if (ex) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 11px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('Ejecutar', e.x, upY(e.y, 30 + e.r + e.z)); }
+        ctx.strokeStyle = p.slotColor; ctx.fillStyle = p.slotColor;
       }
     } else if (type === 'dragon') {
       const lv = dragonLevel(p), cfg = AB.dragon;
-      if (lv < 3) {
-        const L = lv === 1 ? cfg.l1 : cfg.l2, len = beamLength(p.x, p.y, p.ax, p.ay, L.len);
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.ay, p.ax));
-        ctx.globalAlpha = pulse; ctx.fillRect(0, -L.w / 2, len, L.w);
-        ctx.globalAlpha = 0.9; ctx.setLineDash([6, 5]); ctx.strokeRect(0, -L.w / 2, len, L.w); ctx.setLineDash([]); ctx.restore();
-      } else { // ruta prevista de rebotes
-        const used = new Set(); let cx = p.x, cy = p.y;
-        ctx.globalAlpha = 0.85; ctx.setLineDash([6, 5]); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cx, cy);
-        for (let i = 0; i < cfg.l3.bounces; i++) {
+      if (lv === 1) { // trayectoria de la bola de fuego
+        const len = beamLength(p.x, p.y, p.ax, p.ay, cfg.l1.range);
+        ctx.globalAlpha = 0.85; ctx.setLineDash([6, 5]); ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.ax * len, p.y + p.ay * len); ctx.stroke(); ctx.setLineDash([]);
+        circle(p.x + p.ax * len, p.y + p.ay * len, cfg.l1.splash);
+      } else if (lv === 2) circle(p.x, p.y, cfg.l2.R); // radio por el que girará el dragón
+      else if (lv >= 3) { // orden de los impactos (repite si hay menos de 4)
+        const all = liveTargets().filter(e => !e.grabbed), seen = new Set(), marks = new Map(); let cx = p.x, cy = p.y, last = null;
+        for (let i = 0; i < cfg.l3.hits && all.length; i++) {
+          let pool = all.filter(e => !seen.has(e)); if (!pool.length) { seen.clear(); pool = all; }
           let best = null, bd = 1e9;
-          for (const e of liveTargets()) { if (used.has(e)) continue; const d = Math.hypot(e.x - cx, e.y - cy); if (d < bd) { bd = d; best = e; } }
-          if (!best) break;
-          used.add(best); cx = best.x; cy = best.y; ctx.lineTo(cx, cy);
+          for (const o of pool) { const d = Math.hypot(o.x - cx, o.y - cy); if (d < bd && (o !== last || pool.length === 1)) { bd = d; best = o; } }
+          if (!best) best = pool[0];
+          seen.add(best); last = best; cx = best.x; cy = best.y; marks.set(best, (marks.get(best) || []).concat(i + 1));
         }
-        ctx.stroke(); ctx.setLineDash([]);
+        ctx.globalAlpha = 1; ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
+        for (const [e, ns] of marks) { ctx.fillStyle = '#ff8a3d'; ctx.fillText(ns.join(' · '), e.x, upY(e.y, 30 + e.r + e.z)); }
       }
       ctx.globalAlpha = 1; ctx.fillStyle = '#ff8a3d'; ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
       ctx.save(); ctx.translate(p.x, p.y + 26 / K); ctx.scale(1, 1 / K); ctx.fillText('Nivel ' + lv + ' de ' + (p.dragonCharges || 0), 0, 0); ctx.restore();
@@ -2723,9 +2902,10 @@ function drawChargeHints() {
       const L = beamLength(p.x, p.y, p.ax, p.ay, cfg.len0 + (cfg.len1 - cfg.len0) * lv);
       ctx.globalAlpha = 0.85; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.ax * L, p.y + p.ay * L); ctx.stroke(); ctx.setLineDash([]);
-    } else if (c.chargedMelee === 'uppercut') {
-      const a = Math.atan2(p.ay, p.ax), R = cfg.r0 + (cfg.r1 - cfg.r0) * lv;
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, R, a - cfg.arc, a + cfg.arc); ctx.closePath();
+    } else if (c.chargedMelee === 'uppercut') { // rectángulo delante
+      const a = Math.atan2(p.ay, p.ax), L = cfg.len0 + (cfg.len1 - cfg.len0) * lv, w = cfg.w0 + (cfg.w1 - cfg.w0) * lv;
+      const ux = Math.cos(a), uy = Math.sin(a), nx = -uy * w / 2, ny = ux * w / 2;
+      ctx.beginPath(); ctx.moveTo(p.x + nx, p.y + ny); ctx.lineTo(p.x + ux * L + nx, p.y + uy * L + ny); ctx.lineTo(p.x + ux * L - nx, p.y + uy * L - ny); ctx.lineTo(p.x - nx, p.y - ny); ctx.closePath();
       ctx.globalAlpha = 0.15 + 0.15 * lv; ctx.fill(); ctx.globalAlpha = 0.85; ctx.stroke();
     } else if (c.chargedMelee === 'starfall') { const [x, y] = starfallPoint(p, lv); area(x, y, cfg.r0 + (cfg.r1 - cfg.r0) * lv); }
     ctx.restore();
@@ -2874,6 +3054,15 @@ function drawEffects() {
     } else if (f.type === 'cone') { // barrido del Puño ejecutor
       ctx.fillStyle = f.color; ctx.globalAlpha = 0.5 * (1 - q);
       ctx.beginPath(); ctx.moveTo(f.x, f.y - 10); ctx.arc(f.x, f.y - 10, f.r * (0.6 + 0.4 * q), f.ang - f.arc, f.ang + f.arc); ctx.closePath(); ctx.fill();
+    } else if (f.type === 'kanji') { // 火: kanji de fuego en cada impacto de la forma de dragón
+      const pop = 1 + 0.7 * Math.max(0, 1 - q * 5);
+      ctx.globalAlpha = q < 0.6 ? 1 : (1 - q) / 0.4;
+      ctx.translate(f.x, f.y - q * 22); ctx.scale(pop, pop);
+      ctx.font = '900 44px "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#3a0a04'; ctx.lineWidth = 7; ctx.strokeText('火', 0, 0);
+      ctx.fillStyle = '#ff6a2a'; ctx.fillText('火', 0, 0);
+      ctx.globalAlpha *= 0.85; ctx.fillStyle = '#ffd54a'; ctx.font = '900 30px "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", sans-serif'; ctx.fillText('火', 0, 1);
     } else if (f.type === 'dragon') { // dragón de fuego serpenteante
       ctx.translate(f.x, f.y - 14); ctx.rotate(Math.atan2(f.ay, f.ax));
       const L = f.len * Math.min(1, q * 3), amp = f.w * 0.35, ph = q * 14, w = f.w * 0.55 * (1 - q * 0.5);
@@ -3150,7 +3339,7 @@ function healPlayer(p, amt) {
 }
 function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
-  if (p.down || p.inv > 0 || p.phaseT > 0 || p.jump || p.rush || p.drop || p.leap || p.dragonRush || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
+  if (p.down || p.inv > 0 || p.phaseT > 0 || p.jump || p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
   if (dmg == null) dmg = srcEnemy ? edmg(srcEnemy, 'touch') : 20;
   p.hp -= dmg; p.inv = 1.0; p.hurtFx = 0.5; SFX.hurt();
   floatText(p.x + (Math.random() - 0.5) * 14, p.y - 50 * p.ch.size, '-' + Math.round(dmg), '#ff5a6e');
@@ -3294,7 +3483,7 @@ function executeEnemy(e, p, how) {
   }
   grantDragonCharge(p);
 }
-// Cada ejecución propia, o de un aliado cercano, da una carga al Puño del dragón
+// Cada ejecución propia, o de un aliado cercano, da una carga al Poder del dragón
 function grantDragonCharge(executor) {
   for (const q of players) {
     if (q.down || q.ch.secType !== 'dragon') continue;
@@ -3594,7 +3783,7 @@ function update(dt) {
   leash();
   updateHazards(dt);
   updateChains(dt);
-  updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateMissiles(dt);
+  updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
 
   for (const b of bullets) {
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
@@ -3760,8 +3949,8 @@ const ABILITY_TEXT = {
   frostburst: ['Estallido helado', 'Congela al fijado; en el aire, se rompe'],
   phase: ['Intangible', 'Más rápida e inmune al daño unos segundos'],
   roots: ['Raíces', 'Inmovilizan a los enemigos de una zona'],
-  reaper: ['Puño ejecutor', 'Daña; ejecuta a los tier 1 y te cura'],
-  dragon: ['Puño del dragón', 'Gasta cargas de ejecución: 1, 2 o 3']
+  reaper: ['Puño ejecutor', 'Salta al ejecutable más cercano y lo ejecuta; si no hay, golpea al más cercano'],
+  dragon: ['Poder del dragón', 'Nivel 1: bola de fuego · 2: dragón que gira · 3: forma de dragón']
 };
 const CHARGED_TEXT = {
   seismic: ['Martillo sísmico', 'El martillo golpea el suelo en área y lanza'],
@@ -3796,7 +3985,7 @@ function specialSlots(c) {
 // Requisitos de uso que conviene saber al elegir
 const ABILITY_NEEDS = {
   drop: 'Necesita un enemigo en el aire', suspend: 'Necesita enemigos en el aire', ricochet: 'Necesita un objetivo',
-  frostburst: 'Necesita un enemigo a tiro', dragon: 'Usa cargas: se ganan ejecutando', raiseShield: 'Se desgasta; si se rompe, espera',
+  frostburst: 'Necesita un enemigo a tiro', dragon: 'Nivel 1 se recarga solo; 2 y 3, ejecutando', reaper: 'Necesita un enemigo cerca', raiseShield: 'Se desgasta; si se rompe, espera',
   turret: 'Una torreta a la vez', grenade: 'Va al enemigo fijado'
 };
 const fmtS = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
@@ -4393,6 +4582,7 @@ function drawTexts() {
   ctx.globalAlpha = 1;
 }
 function drawPlayer(p) {
+  if (p.dragonRush && !p.down) { drawDragonForm(p); return; }
   ctx.font = '700 10px ' + FONT; ctx.textAlign = 'center';
   if (p.down) { // caído: radio de rescate, tiempo antes de ser fantasma (rojo) y progreso del rescate (verde)
     ctx.save();
@@ -4756,7 +4946,7 @@ function drawHUD() {
     const tur = myTurret(p);
     drawPip(x + 76, 27, p.priCd / (p.priCdMax || p.ch.priCd), p.ch.priType, p.color, p.cast === 'pri' || (p.ch.priType === 'turret' && !!tur) || !!p.shieldUp, !abilityReady(p, 'pri'));
     if (p.ch.priType === 'raiseShield') bar(x + 76, 47, 17, 2, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
-    drawPip(x + 96, 27, p.secCd / (p.secCdMax || p.ch.secCd), p.ch.secType, p.color, p.cast === 'sec' || (p.ch.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'));
+    drawPip(x + 96, 27, p.ch.secType === 'dragon' ? Math.max(p.secCd / (p.secCdMax || p.ch.secCd), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || p.ch.secCd), p.ch.secType, p.color, p.cast === 'sec' || (p.ch.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'));
     if (p.ch.secType === 'dragon') for (let i = 0; i < AB.dragon.max; i++) { ctx.fillStyle = i < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; ctx.fillRect(x + 96 + i * 6, 47, 4, 3); } // cargas
     if (p.ch.priType === 'turret') bar(x + 76, 47, 17, 2, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
   }
@@ -4888,7 +5078,7 @@ function drawGame() {
     for (const it of list) it.f();
     for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
-    drawArcOrbs('air'); drawGrenades(); drawMissiles(); drawEffects(); drawTexts();
+    drawArcOrbs('air'); drawGrenades(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts();
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
@@ -4995,10 +5185,10 @@ function updateTouchButtons() {
   setPips(dash, p.mCh || 0, c.moveCharges || 0, 0);
   setBtn(q, c.priType, p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
     p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
-  setBtn(e, c.secType, p.color, p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
+  setBtn(e, c.secType, p.color, c.secType === 'dragon' ? Math.max(p.secCd / (p.secCdMax || c.secCd || 1), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
     p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0));
   setBtn(lock, 'lock', p.color, 0, p.down, !!p.lockOn);
-  for (const [b, slot, t] of [[q, 'pri', c.priType], [e, 'sec', c.secType]]) // cargas del Puño del dragón
+  for (const [b, slot, t] of [[q, 'pri', c.priType], [e, 'sec', c.secType]]) // cargas del Poder del dragón
     setPips(b, p.dragonCharges || 0, t === 'dragon' ? AB.dragon.max : 0, t === 'dragon' && p.cast === slot ? dragonLevel(p) : 0);
 }
 
