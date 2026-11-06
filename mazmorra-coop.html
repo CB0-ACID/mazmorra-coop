@@ -55,6 +55,13 @@ body.touch footer{display:none}
 #bLock{width:calc(var(--A)*.42); height:calc(var(--A)*.42); right:calc(var(--A)*1.542); bottom:calc(var(--A)*.962); font-size:calc(var(--A)*.085)}
 #btns button canvas{position:absolute; left:50%; top:50%; width:62%; height:62%; transform:translate(-50%,-50%); pointer-events:none}
 #bAtk canvas{width:54%; height:54%}
+#bAtk::before{ /* carga del ataque: sector claro que se va llenando mientras mantienes */
+  content:''; position:absolute; inset:0; border-radius:50%; pointer-events:none;
+  background:conic-gradient(var(--chgc, rgba(255,255,255,.35)) calc(var(--chg,0) * 1turn), transparent 0);
+}
+#bAtk.alt{box-shadow:0 0 14px 2px var(--altc, rgba(255,255,255,.5))} /* golpe especial disponible */
+#bAtk.swap canvas{animation:icoSwap .18s ease-out}
+@keyframes icoSwap{0%{transform:translate(-50%,-50%) scale(.55); opacity:.3} 100%{transform:translate(-50%,-50%) scale(1); opacity:1}}
 #btns button.ico > span{display:none} /* con icono, el texto sobra */
 #btns button::after{ /* recarga: sector oscuro que se va vaciando */
   content:''; position:absolute; inset:0; border-radius:50%; pointer-events:none;
@@ -4905,11 +4912,42 @@ function setPips(b, n, max, lv) {
     d.classList.toggle('full', i < n); d.classList.toggle('lv', i < lv);
   }
 }
+// Botón de atacar contextual: qué saldrá si pulsas ahora (o qué estás cargando)
+// Devuelve { icon, lv (0–1 de carga, o null), alt (golpe especial listo) }
+function attackContext(p) {
+  const c = p.ch, base = c.canMelee ? 'melee' : 'shot', post = p.moveT > 0 || p.postMoveT > 0;
+  if (c.canMelee) {
+    if (p.mCharging) return { icon: c.chargedMelee, lv: meleeLv(p) };
+    const am = post && !p.jump && specialSlots(c).find(sp => sp.kind === SPECIAL_KIND.afterMove);
+    if (am) return { icon: am.icon, lv: null, alt: true };
+    return { icon: base, lv: null };
+  }
+  if (p.charging && (c.shotMode === 'frost' || c.shotMode === 'charge')) { // solo los disparos que se cargan
+    const cs = chargedSlot(c); return { icon: cs ? cs.icon : base, lv: p.chargeT / (c.chargeTime || 1) };
+  }
+  if (post && c.ammo > 0 && p.ammo > 0 && p.reloadT <= 0) return { icon: 'fanFire', lv: null, alt: true };
+  if (post && c.postMoveMissile) return { icon: 'missile', lv: null, alt: true };
+  return { icon: base, lv: null };
+}
+const ATK_UI = { icon: '', chg: -1 };
+function updateAttackButton(b, p) {
+  const ac = attackContext(p), el = b.el, tn = iconTones(p.color);
+  if (ac.icon !== ATK_UI.icon) { // cambio de símbolo: pequeño salto para que se note
+    if (ATK_UI.icon) { el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap'); }
+    ATK_UI.icon = ac.icon;
+  }
+  const full = ac.lv != null && ac.lv >= 0.999;
+  setBtn(b, ac.icon, p.color, 0, p.down, full);
+  const chg = ac.lv == null ? 0 : Math.max(0, Math.min(1, ac.lv));
+  if (Math.abs(chg - ATK_UI.chg) > 0.004) { el.style.setProperty('--chg', chg.toFixed(3)); el.style.setProperty('--chgc', tn.B + '88'); ATK_UI.chg = chg; }
+  el.classList.toggle('alt', !!ac.alt);
+  if (ac.alt) el.style.setProperty('--altc', tn.L);
+}
 function updateTouchButtons() {
   const p = players.find(q => q.dev === 'touch');
   if (!p) return;
   const c = p.ch, tur = myTurret(p), [atk, dash, q, e, lock] = TBTN;
-  setBtn(atk, c.canMelee ? 'melee' : 'shot', p.color, 0, p.down, false);
+  updateAttackButton(atk, p);
   const mv = moveOf(c);
   if (mv.hold) setBtn(dash, mv.icon, p.color, 0, p.down, !!p.blocking);
   else setBtn(dash, mv.icon, p.color, moveFrac(p), p.down, p.moveT > 0 || !!p.jump);
