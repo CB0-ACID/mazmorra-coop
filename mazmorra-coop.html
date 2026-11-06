@@ -287,8 +287,8 @@ const FROST_MODE = [
   { key: 'missile', name: 'Misiles de cristal', icon: 'icemissile', desc: 'Mantén para invocar hasta 3 cristales; al soltar van al objetivo' },
   { key: 'snow', name: 'Bola de nieve', icon: 'snowball', desc: 'Mantén para cargar tamaño y alcance; rebota una vez en la pared' }
 ];
-const BEAM_RAMP = { time: 3, mul: 2 };   // la estamina de cada tic sube lineal hasta ×2 tras 3 s de rayo continuo
-const MISSILE = { max: 3, step: 0.4, speed: 340, steer: 6, life: 2.4, lifeFree: 1.0, dmg: 9, sta: 0.12, slow: 2.5, seek: 220 };
+const BEAM_RAMP = { time: 3, mul: 2, base: 0.85 }; // base: fracción del daño de estamina base del rayo   // la estamina de cada tic sube lineal hasta ×2 tras 3 s de rayo continuo
+const MISSILE = { max: 3, step: 0.4, speed: 460, steer: 11, life: 2.4, lifeFree: 1.0, dmg: 9, sta: 0.12, slow: 2.5, seek: 220 };
 const ABILITY_MUL = 1.6;   // habilidades 1 y 2
 const STUN_DMG_MUL = 1.5;  // daño extra que reciben los enemigos aturdidos (salvo el guardián) si no se les ejecuta
 const AIR_G = 380;        // gravedad reducida de los enemigos lanzados
@@ -2569,7 +2569,7 @@ function frostBeamTick(p, staMul) {
 // Bola de nieve: crece mientras cargas; al soltarla avanza atravesando enemigos
 function throwSnowball(p, lv) {
   const c = p.ch, r = 6 + 16 * lv, sp = 320, range = 300 + 260 * lv; // cargada: más grande y llega más lejos
-  pBullets.push({ x: p.x + p.ax * (p.r + r), y: p.y + p.ay * (p.r + r), vx: p.ax * sp, vy: p.ay * sp, r, life: range / sp, dmg: c.shot * (2 + 6 * lv), color: '#e8f7ff',
+  pBullets.push({ x: p.x + p.ax * (p.r + r), y: p.y + p.ay * (p.r + r), vx: p.ax * sp, vy: p.ay * sp, r, life: range / sp, dmg: c.shot * (3 + 9 * lv), color: '#e8f7ff',
     pierce: true, hit: new Set(), owner: p, aim: null, d0: 0, trav: 0, h: 12 + r * 0.3, tz: 0, vh: 0, snow: true, bounces: 1 });
   SFX.swing(true); shake = Math.max(shake, 2 + lv * 3);
 }
@@ -2623,7 +2623,7 @@ function updateFrostShot(p, inp, dt) {
   if (mode === 0) { // rayo: mantener lo mantiene activo; el daño de estamina de cada tic sube con el tiempo
     if (!holding) { p.rayT = 0; return; }
     p.rayT += dt; p.beamTick -= dt;
-    if (p.beamTick <= 0) { p.beamTick = c.shotCd; frostBeamTick(p, 1 + (BEAM_RAMP.mul - 1) * Math.min(1, p.rayT / BEAM_RAMP.time)); }
+    if (p.beamTick <= 0) { p.beamTick = c.shotCd; frostBeamTick(p, BEAM_RAMP.base * (1 + (BEAM_RAMP.mul - 1) * Math.min(1, p.rayT / BEAM_RAMP.time))); }
     p.beaming = true; return;
   }
   if (mode === 1) { // misiles: mantener invoca cristales (hasta 3); al soltar salen hacia el objetivo
@@ -2643,7 +2643,7 @@ function updateFrostShot(p, inp, dt) {
 function launchMissiles(p, n) {
   const tg = frostTarget(p), volley = { hits: new Map() }, base = Math.atan2(p.ay, p.ax);
   for (let i = 0; i < n; i++) {
-    const a = base + (i - (n - 1) / 2) * 0.4, sp = MISSILE.speed * 0.5;
+    const a = base + (i - (n - 1) / 2) * 0.28, sp = MISSILE.speed * 0.6;
     iceMissiles.push({ owner: p, volley, tg, x: p.x + Math.cos(a) * (p.r + 6), y: p.y + Math.sin(a) * (p.r + 6), h: 14 * p.ch.size,
       vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: tg ? MISSILE.life : MISSILE.lifeFree, t: 0 });
   }
@@ -2666,7 +2666,7 @@ function updateIceMissiles(dt) {
     m.h += ((m.tg ? (m.tg.z || 0) + 12 : 14) - m.h) * Math.min(1, 6 * dt);
     if (Math.random() < 0.7) particles.push({ x: m.x, y: m.y - m.h, vx: 0, vy: 0, life: 0.25, max: 0.25, color: '#bfeaf5', s: 3 });
     if (isSolid(Math.floor(m.x / T), Math.floor(m.y / T), false)) { m.life = 0; burst(m.x, m.y - m.h, '#e8f7ff', 4); continue; }
-    const hit = liveTargets().find(e => Math.hypot(e.x - m.x, e.y - m.y) < e.r + 5);
+    const hit = liveTargets().find(e => Math.hypot(e.x - m.x, e.y - m.y) < e.r + 7);
     if (hit) { hitIceMissile(m, hit); m.life = 0; }
   }
   iceMissiles = iceMissiles.filter(m => m.life > 0);
