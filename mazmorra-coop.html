@@ -230,7 +230,7 @@ const AB = {
   wall:      { max: 220, bulletCost: 8, hitCost: 15, drain: 2, coverR: 26, coverCd: 1, regen: 28, regenDelay: 0.6, reflectDmg: 2.5, arc: 1.05, speed: 0.6,
                chargeTime: 1.2, chargeDist0: 100, chargeDist1: 240, chargeSpeed: 520, chargeDmg: 0.5, chargeKb: 680 }, // Escudo en alto (Ceniza) y su embestida cargada
   grenade:   { range: 320, r: 55, dmg: 1, fly: 0.55 },
-  ricochet:  { chargeTime: 1, maxMul: 2, groundHops: 2 }, // Disparo rebotante (Marea): mantener carga hasta ×2 de daño; en el suelo salta a dos más
+  ricochet:  { chargeTime: 1, maxMul: 2, groundHops: 2, firstMul: 1.6 }, // el primer objetivo siempre recibe ×1,6 // Disparo rebotante (Marea): mantener carga hasta ×2 de daño; en el suelo salta a dos más
   frostburst: { range: 360, r: 50, dmg: 1, time: 2.5 }, // Estallido helado (Escarcha): congela; en el aire, se rompe
   phase:     { time: 3, speed: 1.5 },                    // Intangible (Escarcha)
   roots:     { dist: 160, r: 80, delay: 0.3, time: 2.5, sta: 0.3 }, // Raíces (Musgo): inmovilizan
@@ -396,7 +396,9 @@ const CHARS = [
     shotStyle: 'revolver', shotCd: 0.08, shot: 2.7, shotKb: 2.5,        // revólver: dispara a cada pulsación, contundente y con empuje
     hitscanRange: 4000,                                                 // alcance ilimitado: la bala sigue hasta chocar con algo
     ammo: 6, reloadTime: 1.1,                                           // tambor de seis balas; al vaciarse, recarga breve
-    fanInterval: 0.075,                                                 // tras el movimiento: vacía el tambor sobre los objetivos a tiro
+    fanInterval: 0.075,                                                 // disparo cargado: vacía el tambor sobre los objetivos a tiro
+    autoReload: 3,                                                      // segundos sin disparar ni usar habilidades para recargar sola
+    braveMul: 1.5, bubbleTime: 1,                                       // Bravata (disparar tras moverse): recarga y el tambor recargado hace ×1,5
     secType: 'ricochet', secCd: 4, ricDmg: 3 },  // disparo rebotante (cargable)
   { name: 'Ciruela',  color: '#c07af0', mark: 'cross',   family: 'tirador', role: 'Tirador, torreta',
     priType: 'turret', secType: 'overcharge', priCd: 1, secCd: 10,
@@ -1025,7 +1027,7 @@ function roomCleared() {
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
   floor = genFloor(seed, 1);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; for (const kk in p.prev) p.prev[kk] = true; }
+  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
@@ -1203,7 +1205,7 @@ function updateMovement(p, dt) { // devuelve true mientras la habilidad controla
   if (p.moveT <= 0) return false;
   p.moveT -= dt;
   if (m.update) m.update(p, c, dt);
-  if (p.moveT <= 0) p.postMoveT = c.postMoveWindow;
+  if (p.moveT <= 0) { p.postMoveT = p.postMoveUsed ? 0 : c.postMoveWindow; p.postMoveUsed = false; } // si ya se gastó durante el movimiento (Bravata), no se reabre
   return true;
 }
 // Con objetivo fijado, el movimiento lateral gira alrededor de él y el frontal acerca o aleja
@@ -1263,7 +1265,7 @@ function updatePlayer(p, dt) {
     if (p.mCh < c.moveCharges) { p.mChT -= dt; if (p.mChT <= 0) { p.mCh++; p.mChT = p.mCh < c.moveCharges ? c.moveRecharge : 0; } }
   }
   p.priCd -= dt; p.secCd -= dt; p.stickT -= dt; p.postMoveT -= dt;
-  p.shieldT = (p.shieldT || 0) - dt; p.tauntT = (p.tauntT || 0) - dt; p.recoilT = (p.recoilT || 0) - dt; p.phaseT = (p.phaseT || 0) - dt; p.overdriveT = (p.overdriveT || 0) - dt; p.overchargeT = (p.overchargeT || 0) - dt;
+  p.shieldT = (p.shieldT || 0) - dt; p.tauntT = (p.tauntT || 0) - dt; p.recoilT = (p.recoilT || 0) - dt; p.bubbleT = (p.bubbleT || 0) - dt; p.phaseT = (p.phaseT || 0) - dt; p.overdriveT = (p.overdriveT || 0) - dt; p.overchargeT = (p.overchargeT || 0) - dt;
   p.gatSpin = (p.gatSpin || 0) + dt * (c.shotStyle === 'gatling' && inp.s ? 38 : 3); // los cañones giran al disparar
   p.castT = p.cast ? (p.castT || 0) + dt : 0;
   { const wt = WEIGHT[c.weight] || WEIGHT.medium; p.sqv = (p.sqv || 0) + (-320 * (p.sq || 0) - wt.damping * (p.sqv || 0)) * dt; p.sq = Math.max(-0.35, Math.min(0.35, (p.sq || 0) + p.sqv * dt)); } // tiempo con la habilidad pulsada (nivel del Puño del dragón)
@@ -1494,10 +1496,13 @@ function updatePlayer(p, dt) {
       p.reloadT -= dt;
       if (p.reloadT <= 0) { p.reloadT = 0; p.ammo = c.ammo; SFX.reload(true); floatText(p.x, p.y - 46 * c.size, 'Recargada', p.slotColor); }
     }
-    // disparar justo después de moverse vacía el tambor sobre todos los objetivos a tiro
-    if (mag && aP && (p.moveT > 0 || p.postMoveT > 0) && p.ammo > 0 && p.reloadT <= 0 && !p.fan && !p.shotHold) {
-      startFan(p); p.shotHold = true; p.charging = false; p.burst = null; p.postMoveT = 0;
+    // recarga sola tras un rato sin disparar ni usar habilidades
+    if (mag) {
+      p.idleT = p.charging || p.fan || p.cast ? 0 : (p.idleT || 0) + dt;
+      if (p.idleT >= c.autoReload && p.ammo < c.ammo && p.reloadT <= 0) { p.ammo = c.ammo; p.idleT = 0; SFX.reload(true); floatText(p.x, p.y - 46 * c.size, 'Recargada', p.slotColor); }
     }
+    // Bravata: disparar justo después de moverse recarga el tambor y potencia esas balas
+    if (mag && aP && (p.moveT > 0 || p.postMoveT > 0) && !p.fan && !p.shotHold) startBravado(p);
     const empty = mag && (p.ammo <= 0 || p.reloadT > 0);
     // con tambor, cada pulsación es una bala: si llega antes de tiempo, se guarda y sale en cuanto se puede
     if (mag && aP && !p.charging && (p.shotCd > 0 || p.burst) && !p.shotHold && !empty) p.shotQ = true;
@@ -1509,7 +1514,8 @@ function updatePlayer(p, dt) {
       if (!inp.s) {
         const lv = p.chargeT / c.chargeTime;
         p.charging = false; p.shotCd = c.shotCd;
-        if (c.shotStyle === 'revolver' && lv >= 0.35) { p.burst = { n: 0, t: 0, lv }; p.shotCd = c.shotCd * 1.6; } // tres disparos seguidos
+        if (mag && lv >= 0.35) startFan(p, lv); // cargado: vacía el tambor sobre todos los objetivos a tiro
+        else if (c.shotStyle === 'revolver' && lv >= 0.35) { p.burst = { n: 0, t: 0, lv }; p.shotCd = c.shotCd * 1.6; } // tres disparos seguidos
         else if (useAmmo(p)) fireShot(p, c.shot * (1 + (c.chargeMaxMul - 1) * lv), lv);
       }
     }
@@ -1548,7 +1554,8 @@ function updatePlayer(p, dt) {
 function useAmmo(p) {
   if (!(p.ch.ammo > 0)) return true;
   if (p.ammo <= 0 || p.reloadT > 0) return false;
-  p.ammo--;
+  p.ammo--; p.idleT = 0;
+  p.braveShot = (p.braveN || 0) > 0; if (p.braveShot) p.braveN--; // bala potenciada por la Bravata
   if (p.ammo <= 0) { p.reloadT = p.ch.reloadTime; p.charging = false; SFX.reload(false); floatText(p.x, p.y - 46 * p.ch.size, 'Recargando', '#c9c2d6'); }
   return true;
 }
@@ -1562,8 +1569,8 @@ function fanTargets(p) {
   const tg = p.lockOn && p.target && L.includes(p.target) ? p.target : null;
   return tg ? [tg].concat(L.filter(e => e !== tg)) : L;
 }
-function startFan(p) {
-  p.fan = { list: fanTargets(p), n: 0, t: 0 };
+function startFan(p, lv) {
+  p.fan = { list: fanTargets(p), n: 0, t: 0, lv: lv || 0 };
   floatText(p.x, p.y - 46 * p.ch.size, 'Vaciar el tambor', p.slotColor);
 }
 // Dispara bala a bala, repartiéndolas entre los objetivos, hasta quedarse sin munición
@@ -1582,15 +1589,28 @@ function updateFan(p, dt) {
     effects.push({ type: 'reticle', x: e.x, y: e.y, t: 0, dur: 0.15, color: p.slotColor });
   }
   useAmmo(p);
-  fireShot(p, c.shot, 0.2);
+  fireShot(p, c.shot * (1 + 0.5 * F.lv), 0.2);
   if (e) { p.ax = ax0; p.ay = ay0; p.lockOn = lk0; p.target = tg0 && !tg0.dead ? tg0 : null; }
   F.n++; F.t = c.fanInterval;
   if (p.ammo <= 0) p.fan = null;
 }
 
+// Bravata (Marea): tras moverse, el disparo se cambia por recargar con chulería; las balas de ese tambor hacen más daño
+function startBravado(p) {
+  const c = p.ch;
+  p.ammo = c.ammo; p.reloadT = 0; p.braveN = c.ammo; p.idleT = 0;
+  p.shotHold = true; p.charging = false; p.burst = null; p.shotQ = false; p.postMoveT = 0; p.postMoveUsed = p.moveT > 0;
+  p.bubbleT = c.bubbleTime;
+  SFX.reload(true); shake = Math.max(shake, 2);
+  effects.push({ type: 'ring', x: p.x, y: p.y, r: p.r + 16, t: 0, dur: 0.3, color: '#ffb347' });
+  burst(p.x, upY(p.y, 16), '#ffd54a', 10);
+}
+
 // lv: nivel de carga de 0 a 1. Con carga completa el disparo atraviesa enemigos
 function fireShot(p, dmg, lv) {
-  const c = p.ch, full = lv >= 1;
+  const c = p.ch, full = lv >= 1, brave = p.braveShot;
+  p.braveShot = false;
+  if (brave) dmg *= c.braveMul;
   dmg = Math.round(dmg * 10) / 10;
   if (c.shotType === 'hitscan') {
     const w = 3 + lv * 6, wallLen = beamLength(p.x, p.y, p.ax, p.ay, c.hitscanRange);
@@ -1612,7 +1632,7 @@ function fireShot(p, dmg, lv) {
     const gs = c.shotStyle === 'dual' ? (p.gunSide = -(p.gunSide || 1)) : 0; // pistolas: alterna mano
     const ox = p.x - p.ay * gs * 8, oy = p.y + p.ax * gs * 8;
     for (const [, e] of hits) shotHit(p, e, dmg, (90 + lv * 120) * (c.shotKb || 1), p.x, p.y);
-    effects.push({ type: 'tracer', x: ox, y: oy, ax: p.ax, ay: p.ay, len, w: rev ? w + 2 : w, z2, t: 0, dur: rev ? 0.07 + lv * 0.1 : 0.1 + lv * 0.12, color: rev ? '#fff3c4' : p.color });
+    effects.push({ type: 'tracer', x: ox, y: oy, ax: p.ax, ay: p.ay, len, w: rev ? w + 2 : w, z2, t: 0, dur: rev ? 0.07 + lv * 0.1 + (brave ? 0.05 : 0) : 0.1 + lv * 0.12, color: brave ? '#ff9d2e' : rev ? '#fff3c4' : p.color });
     if (c.shotStyle === 'dual' || c.shotStyle === 'gatling') { // fogonazo pequeño en el cañón que dispara
       const reach = c.shotStyle === 'gatling' ? p.r + 22 : p.r + 10;
       effects.push({ type: 'muzzle', x: ox + p.ax * reach, y: oy - 14 + p.ay * reach * 0.8, ang: Math.atan2(p.ay, p.ax), t: 0, dur: 0.05, color: '#ffd54a', s: c.shotStyle === 'gatling' ? 0.75 : 0.55 });
@@ -1686,7 +1706,7 @@ function startRicochet(p) {
   if (!e) return;
   if (air) { p.lockOn = true; p.target = e; } // fija al instante al enemigo en el aire
   const lv = ricochetLevel(p), dmg = Math.round(p.ch.ricDmg * (1 + (AB.ricochet.maxMul - 1) * lv) * 10) / 10; // mantener la habilidad carga más daño
-  chains.push({ t: 0, delay: 0, fx: p.x, fy: p.y, fz: 0, to: e, dmg, owner: p, next: air ? 'all' : 'one', hops: AB.ricochet.groundHops, hit: new Set(), color: lv >= 1 ? '#ffffff' : p.color });
+  chains.push({ t: 0, delay: 0, fx: p.x, fy: p.y, fz: 0, to: e, dmg, first: true, owner: p, next: air ? 'all' : 'one', hops: AB.ricochet.groundHops, hit: new Set(), color: lv >= 1 ? '#ffffff' : p.color });
   if (lv >= 1) { shake = Math.max(shake, 4); floatText(p.x, p.y - 46 * p.ch.size, 'Rebote cargado', p.slotColor); }
 }
 // Cada tramo impacta y genera los siguientes: uno más si era en el suelo, uno hacia cada enemigo si era en el aire
@@ -1700,7 +1720,8 @@ function updateChains(dt) {
     const ex = e.x, ey = e.y, ez = e.z || 0;
     effects.push({ type: 'zap', x1: ch.fx, y1: upY(ch.fy, 12 + ch.fz), x2: ex, y2: upY(ey, 12 + ez), t: 0, dur: 0.25, color: ch.color });
     burst(ex, upY(ey, 12 + ez), ch.color, 8);
-    shotHit(ch.owner, e, ch.dmg, 140, ch.fx, ch.fy, true);
+    shotHit(ch.owner, e, ch.first ? Math.round(ch.dmg * AB.ricochet.firstMul * 10) / 10 : ch.dmg, ch.first ? 220 : 140, ch.fx, ch.fy, true); // el primero recibe más
+    if (ch.first) burst(ex, upY(ey, 12 + ez), '#ffffff', 8);
     const hit = ch.hit || new Set(); hit.add(e);
     const nxt = { t: 0, fx: ex, fy: ey, fz: ez, dmg: ch.dmg, owner: ch.owner, next: null, hit, color: ch.color };
     if (ch.next === 'one' && (ch.hops || 0) > 0) { // en el suelo: salta al más cercano que aún no ha recibido, tantas veces como rebotes queden
@@ -1831,6 +1852,7 @@ function useAbility(p, slot) {
   if (!abilityReady(p, slot)) return;
   const fn = ABILITIES[abilityType(p, slot)];
   if (!fn || fn(p) === false) return;
+  p.idleT = 0; // usar habilidades también retrasa la recarga automática
   setCd(p, slot, slot === 'pri' ? p.ch.priCd : p.ch.secCd);
 }
 function lockNearestOf(p, list) {
@@ -3721,7 +3743,7 @@ const ABILITY_TEXT = {
   area: ['Onda', 'Lanza por los aires a los cercanos'],
   rush: ['Embestida', 'Embiste y levanta al primer enemigo'],
   drop: ['Caída Izuna', 'Estampa contra el suelo a un aéreo'],
-  ricochet: ['Disparo rebotante', 'Rebota en dos más; desde el aire, en todos. Cargable'],
+  ricochet: ['Disparo rebotante', 'Fuerte al primero; rebota en dos más, desde el aire en todos. Cargable'],
   shield: ['Bastión', 'Cúpula que destruye las balas enemigas'],
   pillar: ['Erupción', 'Columnas a distancia que lanzan'],
   pull: ['Atracción', 'Arrastra hacia sí a los cercanos'],
@@ -3780,7 +3802,7 @@ const ABILITY_NEEDS = {
 const fmtS = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
 function shotText(c) {
   if (c.shotMode === 'frost') return 'Ondas continuas; cargando, bola de nieve';
-  if (c.shotStyle === 'revolver') return 'Revólver de 6 balas, alcance ilimitado; tras moverte, vacía el tambor';
+  if (c.shotStyle === 'revolver') return 'Revólver de 6 balas; cargado vacía el tambor; tras moverte, Bravata';
   if (!c.canShoot) return 'Sin disparo';
   if (c.shotMode === 'auto') return c.postMoveMissile ? 'Continuo; tras moverte, misil teledirigido (y otro de la torreta)' : 'Instantáneo y continuo, sin carga';
   if (c.shotMode === 'heat') return 'Ráfaga instantánea que se sobrecalienta';
@@ -4338,6 +4360,22 @@ function drawClaws(p) {
   }
   ctx.restore();
 }
+// Bocadillo de cómic sobre la cabeza: aparece con un saltito, tiembla un poco y se desvanece al final
+function drawSpeech(p, text, k) {
+  const pop = k < 0.15 ? 1 + 0.35 * Math.sin(k / 0.15 * Math.PI) : 1;
+  const alpha = k > 0.8 ? (1 - k) / 0.2 : 1;
+  const sx = p.x + 14 + (k < 0.4 ? Math.sin(time * 60) * 1.2 : 0), sy = p.y - 46 * p.ch.size - 18 - (p.z || 0);
+  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(sx, sy); ctx.scale(pop * 0.6 + 0.4 * Math.min(1, k * 8), pop * 0.6 + 0.4 * Math.min(1, k * 8));
+  ctx.font = '800 13px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const w = ctx.measureText(text).width + 16, h = 22, r = 9, x = -w / 2, y = -h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.lineTo(-w * 0.1, y + h); ctx.lineTo(-w * 0.32, y + h + 9); ctx.lineTo(-w * 0.28, y + h); // rabito hacia Marea
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  ctx.fillStyle = '#fffaf0'; ctx.strokeStyle = '#1a1424'; ctx.lineWidth = 2.5; ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#e8641c'; ctx.fillText(text, 0, 1);
+  ctx.restore();
+}
 function drawTexts() {
   // barrita sobre la cabeza durante un momento al recibir daño o curarse (útil con cuatro jugadores)
   for (const p of players) if (!p.down && ((p.hurtFx || 0) > 0 || (p.healFx || 0) > 0)) {
@@ -4345,6 +4383,7 @@ function drawTexts() {
     bar(p.x - 16, p.y - 40 * p.ch.size - 12 - (p.z || 0), 32, 3, p.hp / p.maxHp, p.hp / p.maxHp <= 0.25 ? '#ff9aa8' : '#ff4d6d');
     ctx.globalAlpha = 1;
   }
+  for (const p of players) if (!p.down && (p.bubbleT || 0) > 0) drawSpeech(p, '¡Bravata!', 1 - p.bubbleT / p.ch.bubbleTime);
   ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
   for (const f of texts) {
     ctx.globalAlpha = 1 - f.t / f.dur;
@@ -4661,8 +4700,10 @@ function drawShotState(p) {
       const gap = 6, x0 = p.x - gap * (c.ammo - 1) / 2;
       for (let i = 0; i < c.ammo; i++) {
         ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.arc(x0 + i * gap, y, 2.6, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = i < p.ammo ? (p.ammo <= 2 ? '#ffb347' : '#fff3c4') : '#3a3342';
-        ctx.beginPath(); ctx.arc(x0 + i * gap, y, 1.8, 0, Math.PI * 2); ctx.fill();
+        const bv = i < p.ammo && i < (p.braveN || 0); // bala potenciada por la Bravata
+        if (bv) { ctx.fillStyle = 'rgba(255,140,40,' + (0.35 + 0.25 * Math.sin(time * 10)).toFixed(2) + ')'; ctx.beginPath(); ctx.arc(x0 + i * gap, y, 4.2, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = i < p.ammo ? (bv ? '#ff9d2e' : p.ammo <= 2 ? '#ffb347' : '#fff3c4') : '#3a3342';
+        ctx.beginPath(); ctx.arc(x0 + i * gap, y, bv ? 2.2 : 1.8, 0, Math.PI * 2); ctx.fill();
       }
     }
   }
