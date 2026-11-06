@@ -164,6 +164,16 @@ const MELEE_MUL = 0.6;     // golpes cuerpo a cuerpo
 const SHOT_MUL = 0.6;      // disparos normales
 const AIR_SHOT_MUL = 1.4;  // extra de los disparos normales a enemigos en el aire
 const SHOT_GROUND_MUL = 0.6; // los disparos normales a enemigos en el suelo quitan aún menos
+// Fijado automático de los cuerpo a cuerpo (tanques y Brawlers): eligen al enemigo más cercano dentro del cono hacia el que miras
+const AIM = {
+  range: 280,      // hueco máximo (px, de borde a borde) para fijar a un enemigo
+  cone: 1.1,       // semiángulo del cono de mirada en radianes (≈63°)
+  angW: 1.5,       // cuánto pesa el ángulo frente a la distancia al puntuar candidatos
+  switchMul: 0.7,  // para cambiar de objetivo, el nuevo debe puntuar al menos un 30 % mejor
+  holdClose: 26,   // pegado al fijado y alejándote de él (golpe ascendente) no se cambia de objetivo
+  stepMax: 70,     // hueco máximo que cierra el paso de entrada al empezar un golpe
+  stepRange: 130   // con un hueco mayor no hay paso de entrada largo, solo el pasito de siempre
+};
 const SHIELD_BASH = { name: 'Empujón de escudo', shape: 'thrust', len: 52, width: 52, dur: 0.16, dmg: 0.4, kb: 560 }; // golpe con el escudo alzado: empuja mucho, daña poco
 // Parámetros de las habilidades (el daño se multiplica por ABILITY_MUL)
 const AB = {
@@ -918,6 +928,20 @@ function cycleTarget(p, dir) {
   const i = list.indexOf(p.target);
   p.target = i < 0 ? nearestTarget(p) : list[(i + dir + list.length) % list.length];
 }
+// Puntuación de un enemigo según el cono de mirada (más baja = mejor; Infinity = fuera del cono o lejos)
+function facingScore(p, e, fx, fy) {
+  const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1;
+  const gap = Math.max(0, d - e.r - p.r);
+  if (gap > AIM.range) return Infinity;
+  const ang = Math.acos(Math.max(-1, Math.min(1, (dx * fx + dy * fy) / d)));
+  if (ang > AIM.cone) return Infinity;
+  return (gap + 20) * (1 + AIM.angW * ang);
+}
+function facingTarget(p) {
+  let best = null, bs = Infinity;
+  for (const e of liveTargets()) { const s = facingScore(p, e, p.fx, p.fy); if (s < bs) { bs = s; best = e; } }
+  return best;
+}
 // Con el objetivo fijado, el stick derecho elige al enemigo que está en esa dirección
 function targetInDirection(p, ang) {
   let best = p.target, bd = 1e9;
@@ -1032,15 +1056,26 @@ function updatePlayer(p, dt) {
   if (c.autoLock) {
     if (lP || cP || rFlick || (p.dev === 'kb1' && wheelSteps)) p.manualT = 2; // si el jugador elige objetivo, se respeta 2 s
     p.manualT = (p.manualT || 0) - dt;
-    // fijado automático al enemigo más cercano: no cambia en mitad de un golpe ni si el objetivo está en el aire (para rematarlo)
+    // fijado automático al enemigo más cercano hacia el que miras (AIM): al moverte hacia un enemigo pasa a ser el fijado.
+    // No cambia en mitad de un golpe, ni si el objetivo está en el aire (para rematarlo), ni estando quieto
     const cur = p.target && !p.target.dead && enemies.includes(p.target) ? p.target : null;
     if (p.manualT <= 0 && !p.slash && !(cur && cur.airborne)) {
-      const n = nearestTarget(p);
-      if (n && n !== cur && (!cur || Math.hypot(n.x - p.x, n.y - p.y) < Math.hypot(cur.x - p.x, cur.y - p.y) - 25)) p.target = n; // margen para no saltar de uno a otro
+      if (!cur) p.target = facingTarget(p) || nearestTarget(p);
+      else if (mm > 0.2) {
+        const cand = facingTarget(p);
+        if (cand && cand !== cur) {
+          const dc = Math.hypot(cur.x - p.x, cur.y - p.y) || 1;
+          const away = ((cur.x - p.x) * mx + (cur.y - p.y) * my) / (dc * mm) < -0.4; // te alejas del fijado
+          if (!(away && dc - cur.r - p.r < AIM.holdClose)) { // pegado y alejándote: es el golpe ascendente, se mantiene
+            const sc = facingScore(p, cur, p.fx, p.fy);
+            if (sc === Infinity || facingScore(p, cand, p.fx, p.fy) < sc * AIM.switchMul) p.target = cand;
+          }
+        }
+      }
     }
   }
   if (p.lockOn) {
-    if (!p.target || p.target.dead || !enemies.includes(p.target)) p.target = nearestAirborne(p) || nearestTarget(p); // si queda alguno en el aire, pasa a él
+    if (!p.target || p.target.dead || !enemies.includes(p.target)) p.target = nearestAirborne(p) || (c.autoLock && facingTarget(p)) || nearestTarget(p); // si queda alguno en el aire, pasa a él; si no, al que tienes delante
     if (cP) cycleTarget(p, 1);
     if (p.dev === 'kb1' && wheelSteps) cycleTarget(p, wheelSteps > 0 ? 1 : -1);
     if (rFlick) p.target = targetInDirection(p, Math.atan2(inp.ry, inp.rx));
@@ -1133,7 +1168,12 @@ function updatePlayer(p, dt) {
     p.combo = c.finisher && step < 3 ? step : 0; p.comboT = p.combo ? c.comboWindow : 0;
     const def = c.meleeKit[kind];
     p.atkCd = c.meleeCd * (step === 3 ? 1.6 : 1);
-    if (kind !== 'away' && (!tgt || Math.hypot(tgt.x - p.x, tgt.y - p.y) > tgt.r + p.r + 12)) { const st = tgt ? 280 : 180; p.kbx += p.ax * st; p.kby += p.ay * st; } // paso hacia el fijado
+    if (kind !== 'away') { // paso de entrada hacia el fijado: cierra el hueco para que el golpe conecte
+      const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) - tgt.r - p.r - 6 : Infinity;
+      // el impulso se frena a 12/s, así que recorre impulso / 12 px
+      const st = !tgt ? 180 : gap < AIM.stepRange ? Math.min(gap, AIM.stepMax) * 12 : 280;
+      if (gap > 6) { p.kbx += p.ax * st; p.kby += p.ay * st; }
+    }
     p.slash = { kind, def, t: 0, dur: def.dur, ang: Math.atan2(p.ay, p.ax), hit: new Set(), side: (p.punchSide = -(p.punchSide || 1)) }; // side: alterna brazo
     if (kind !== 'normal' && kind !== 'normal2') floatText(p.x, p.y - 46 * c.size, def.name, p.slotColor);
     if (c.chargedMelee) p.mHold = 0; // si se mantiene pulsado, empieza a cargar
