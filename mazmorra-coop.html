@@ -1016,12 +1016,12 @@ const MOVES = {
     start(p, c) { MOVES.dash.start(p, c); }, update(p, c, dt) { MOVES.dash.update(p, c, dt); } },
   teleport: { name: 'Teletransporte', desc: 'Reaparece un poco más adelante; las paredes lo frenan', icon: 'teleport',
     start(p, c) { // aparece al instante un poco más adelante
-      const x0 = p.x, y0 = p.y, d = beamLength(x0, y0, p.fx, p.fy, c.moveDist);
-      burst(x0, y0 - 12, p.color, 10);
+      const x0 = p.x, y0 = p.y, d = beamLength(x0, y0, p.fx, p.fy, c.moveDist), a0 = Math.random() * Math.PI * 2;
       p.x = x0 + p.fx * d; p.y = y0 + p.fy * d; collide(p, true);
       p.moveT = c.moveTime; p.mdx = p.mdy = 0; // breve ventana invulnerable y de "golpe tras movimiento"
-      effects.push({ type: 'tracer', x: x0, y: y0, ax: p.fx, ay: p.fy, len: d, w: 10, z2: 0, t: 0, dur: 0.25, color: p.color });
-      burst(p.x, p.y - 12, p.color, 12);
+      // Efecto orgánico: las hojas se enroscan y desaparecen en el origen y brotan en espiral en el destino
+      effects.push({ type: 'mossOut', x: x0, y: y0, a0, s: c.size, t: 0, dur: 0.32, color: p.color });
+      effects.push({ type: 'mossIn',  x: p.x, y: p.y, a0: a0 + 0.4, s: c.size, t: 0, dur: 0.5, color: p.color });
     } },
   jump: { name: 'Salto', desc: 'Hacia un enemigo en el aire te enganchas y sigues el combo', icon: 'jump',
     start(p, c, mx, my) { startJump(p, mx || 0, my || 0); } }, // el salto lleva su propio estado (p.jump, ver «Salto»)
@@ -2525,6 +2525,29 @@ function drawEffects() {
       ctx.beginPath(); ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2); ctx.stroke();
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3 * (1 - q) + 1; ctx.stroke();
       ctx.strokeStyle = f.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(f.x2, f.y2, 8 + 40 * q, 0, Math.PI * 2); ctx.stroke();
+    } else if (f.type === 'mossOut' || f.type === 'mossIn') { // teletransporte de Musgo: hojas en espiral, sin líneas rectas
+      const out = f.type === 'mossOut', e = 1 - (1 - q) * (1 - q), S = f.s || 1, n = out ? 7 : 9;
+      ctx.translate(f.x, f.y);
+      ctx.save(); ctx.scale(1, 0.55); // halo en el suelo, aplastado por la perspectiva
+      ctx.globalAlpha = (1 - q) * 0.45; ctx.fillStyle = f.color;
+      ctx.beginPath(); ctx.arc(0, 0, (out ? 30 * (1 - e) + 6 : 10 + 30 * e) * S, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.globalAlpha = 1 - q;
+      for (let i = 0; i < n; i++) {
+        const k = i / n, a = f.a0 + k * Math.PI * 2 + (out ? q * 4 : -q * 2.5);
+        const r = (out ? 28 * (1 - e) : 6 + 30 * e) * S, z = 14 * S + (out ? 0 : 10 * q * (k - 0.5));
+        const lx = Math.cos(a) * r, ly = Math.sin(a) * r * 0.6 - z;
+        const L = (out ? 9 * (1 - q) + 2 : 4 + 7 * Math.min(1, q * 3)) * S;
+        ctx.save(); ctx.translate(lx, ly); ctx.rotate(a + (out ? 2.2 : 0.9)); // hoja inclinada siguiendo el giro
+        ctx.fillStyle = i % 3 ? f.color : '#c9f7e2';
+        ctx.beginPath(); ctx.moveTo(-L, 0); ctx.quadraticCurveTo(0, -L * 0.55, L, 0); ctx.quadraticCurveTo(0, L * 0.55, -L, 0); ctx.fill();
+        ctx.restore();
+      }
+      if (!out) for (let i = 0; i < 6; i++) { // esporas que suben despacio
+        const a = f.a0 * 3 + i * 1.7, r = (8 + i * 4) * S;
+        ctx.globalAlpha = (1 - q) * 0.8; ctx.fillStyle = '#e6fff3';
+        ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r * 0.5 - 10 * S - q * (24 + i * 4), 1.6 + (i % 2), 0, Math.PI * 2); ctx.fill();
+      }
     } else if (f.type === 'muzzle') { // fogonazo del revólver
       ctx.translate(f.x, f.y); ctx.rotate(f.ang); ctx.fillStyle = f.color;
       for (const [a, L] of [[0, 18 * (f.s || 1)], [0.7, 9 * (f.s || 1)], [-0.7, 9 * (f.s || 1)]]) { ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(Math.cos(a) * L * (1 + q), Math.sin(a) * L * (1 + q)); ctx.lineTo(0, 3); ctx.closePath(); ctx.fill(); }
