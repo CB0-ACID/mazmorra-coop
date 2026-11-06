@@ -2986,6 +2986,10 @@ function drawAbilityIcon(type, cx, cy, s, col) {
       C('B', -0.38, 0.15, 0.6); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; C('D', -0.38 + Math.cos(a) * 0.34, 0.15 + Math.sin(a) * 0.34, 0.11); }
       C('W', -0.38, 0.15, 0.1);
       L('L', th, [[0.35, -0.2], [0.95, -0.85]]); L('L', th, [[0.4, 0.15], [1, 0.15]]); L('L', th, [[0.35, 0.5], [0.95, 1]]); break;
+    case 'missile': // misil teledirigido: estela curva que busca al objetivo
+      L('B', th, [[-1, 0.85], [-0.55, 0.35], [-0.35, 0.65], [0, 0.2]], { dash: [0.16, 0.14] });
+      P('L', [[0.95, -0.75], [0.55, -0.05], [0.12, -0.42]]); P('B', [[0.12, -0.42], [0.55, -0.05], [0.25, 0.25], [-0.15, -0.15]]);
+      P('D', [[-0.15, -0.15], [0.25, 0.25], [0.1, 0.42], [-0.32, 0.02]]); C('W', 0.5, -0.4, 0.09); break;
     case '': break; // ya dibujado (golpe especial compuesto)
     // iconos de los botones táctiles
     case 'dash': L('L', th, [[-1, -0.5], [-0.4, -0.5]]); L('L', th, [[-1, 0.5], [-0.4, 0.5]]); L('B', TH, [[-0.7, 0], [0.15, 0]]); P('L', [[1, 0], [0.1, -0.62], [0.1, 0.62]]); break;
@@ -3707,8 +3711,10 @@ function specialSlots(c) {
     const m = c.meleeKit[k], g = k === 'afterMove' ? (m.shape === 'spin' ? 'spin' : 'rush') : k === 'toward' ? 'thrust' : 'up';
     return { icon: 'sp_' + g + '_' + (WEAPON_OF[c.meleeStyle] || 'blade'), kind: SPECIAL_KIND[k], name: m.name };
   });
-  if (c.shotStyle === 'revolver') return [{ icon: 'fanFire', kind: 'Tras moverte', name: 'Vaciar el tambor' }];
-  return [];
+  const out = [];
+  if (c.shotStyle === 'revolver') out.push({ icon: 'fanFire', kind: 'Tras moverte', name: 'Vaciar el tambor' });
+  if (c.postMoveMissile) out.push({ icon: 'missile', kind: 'Tras moverte', name: 'Misil teledirigido' });
+  return out;
 }
 // Requisitos de uso que conviene saber al elegir
 const ABILITY_NEEDS = {
