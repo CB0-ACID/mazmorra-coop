@@ -402,23 +402,23 @@ const ROLES = {
   tirador: { role: 'Tirador', shot: 2, shotType: 'hitscan', shotStagger: 0.34, canMelee: false }
 };
 const CHARS = [
-  { name: 'Ceniza',   color: '#a9a2b4', mark: 'bars',    family: 'grande', role: 'Tanque defensor', meleeKit: SHIELD_KIT, meleeStyle: 'shield',
+  { name: 'Ceniza',   color: '#a9a2b4', mark: 'bars',    family: 'grande', role: 'Tanque · Bastión', meleeKit: SHIELD_KIT, meleeStyle: 'shield',
     priType: 'raiseShield', priCd: 0.3, secType: 'taunt', secCd: 12, chargedMelee: 'seismic',
     moveType: 'stride', moveSpeed: 320, moveTime: 0.12, moveCd: 0.9 }, // el bloqueo pasa al escudo en alto; zancada corta (≈38 px)
-  { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'grande', role: 'Tanque mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
+  { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'grande', role: 'Tanque · Mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
     priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
     moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.25, moveCharges: 3, moveRecharge: 1.8 }, // teletransporte corto con 3 cargas; moveCd es solo la pausa entre usos
-  { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil, escarcha', priType: 'frostburst', priCd: 7, secType: 'frostMode', secCd: 0.3,
+  { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil · Escarcha', priType: 'frostburst', priCd: 7, secType: 'frostMode', secCd: 0.3,
     shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300, moveType: 'flip', moveCd: 0.1, moveInvuln: false, stalactite: true }, // ondas mágicas continuas; cargando, bola de nieve
-  { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil, ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
-  { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'uppercut', role: 'Brawler, ejecutor',
+  { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
+  { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'uppercut', role: 'Brawler · Ejecutor',
     meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'flurry',
     priType: 'reaper', priCd: 5, secType: 'dragon', secCd: 1,
     moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
-  { name: 'Ámbar',    color: '#f5c542', mark: 'star',    family: 'golpe', chargedMelee: 'starfall', role: 'Brawler ninja',
+  { name: 'Ámbar',    color: '#f5c542', mark: 'star',    family: 'golpe', chargedMelee: 'starfall', role: 'Brawler · Sombra',
     meleeKit: CLAW_KIT, meleeStyle: 'claw', finisher: 'heavy',
     moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
-  { name: 'Marea',    color: '#3f8ff5', mark: 'ring',    family: 'tirador', role: 'Tirador, rebote',
+  { name: 'Marea',    color: '#3f8ff5', mark: 'ring',    family: 'tirador', role: 'Tirador · Rebote',
     priType: 'grenade', priCd: 5,                                      // granada en arco al objetivo fijado
     shotStyle: 'revolver', shotCd: 0.08, shot: 2.7, shotKb: 2.5,        // revólver: dispara a cada pulsación, contundente y con empuje
     hitscanRange: 4000,                                                 // alcance ilimitado: la bala sigue hasta chocar con algo
@@ -427,7 +427,7 @@ const CHARS = [
     autoReload: 3,                                                      // segundos sin disparar ni usar habilidades para recargar sola
     braveMul: 1.5, bubbleTime: 1,                                       // Bravata (disparar tras moverse): recarga y el tambor recargado hace ×1,5
     secType: 'ricochet', secCd: 4, ricDmg: 3 },  // disparo rebotante (cargable)
-  { name: 'Ciruela',  color: '#c07af0', mark: 'cross',   family: 'tirador', role: 'Tirador, torreta',
+  { name: 'Ciruela',  color: '#c07af0', mark: 'cross',   family: 'tirador', role: 'Tirador · Torreta',
     priType: 'turret', secType: 'overcharge', priCd: 1, secCd: 10,
     shotMode: 'auto', shotCd: 0.3, shot: 1.5, shotStagger: 0.18, shotStyle: 'gatling', postMoveMissile: true } // gatling: disparo continuo, sin carga
 ].map(c => Object.assign({}, BASE_STATS, ROLES[c.family], c));
@@ -771,6 +771,13 @@ function selectReady() { return slots.length === want && slots.every(s => s.lock
 function startFromSelect() { if (startT < 0 && selectReady()) startT = 0.6; }
 function updateSelect(dt) {
   if (startT >= 0) { startT -= dt; if (startT < 0) startGame(); return; }
+  if (detailChar >= 0) { // ficha completa abierta: golpe, Start, Esc o Select la cierran; el resto de controles se ignoran
+    let go = escPressed() || detailOpenPressed();
+    for (const dev of DEVICES) { const m = menuInput(dev), stNow = !!readDevice(dev).p; if (m.a || m.d || (stNow && !pausePrev[dev])) go = true; pausePrev[dev] = stNow; }
+    if (go) detailChar = -1;
+    return;
+  }
+  if (detailOpenPressed()) { detailChar = hoverCard >= 0 ? hoverCard : lastCur; return; }
   if (escPressed()) { state = 'count'; return; }
   for (const dev of DEVICES) {
     const m = menuInput(dev);
@@ -817,6 +824,7 @@ cvs.addEventListener('mouseleave', () => { hoverCard = -1; });
 cvs.addEventListener('pointerdown', e => {
   const [x, y] = canvasPoint(e), inside = b => insideAt(x, y, b);
   const dev = e.pointerType === 'touch' ? 'touch' : 'kb1';
+  if (state === 'select' && detailChar >= 0) { detailChar = -1; return; } // cualquier toque cierra la ficha completa
   if (state === 'count') {
     if (inside(testRect())) { toggleTest(); return; }
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
@@ -825,6 +833,7 @@ cvs.addEventListener('pointerdown', e => {
   } else if (state === 'pause') {
     for (let i = 0; i < 4; i++) if (inside(pauseRect(i))) { pauseSel = i; choosePause(i); return; }
   } else if (state === 'select' && startT < 0) {
+    if (inside(detailBtnRect())) { detailChar = hoverCard >= 0 ? hoverCard : lastCur; return; }
     if (inside(backRect())) { // con el aliado IA a medio elegir, «Atrás» vuelve a tu personaje
       const me = slots.find(q => q.dev === dev), ns = npcSlot();
       if (me && me.locked && ns && ns.ctrl === dev && !ns.locked) { slots.splice(slots.indexOf(ns), 1); me.locked = false; lastCur = me.cur; return; }
@@ -4283,11 +4292,17 @@ const WEAPON_OF = { shield: 'hammer', staff: 'staff', fist: 'fist', claw: 'claw'
 function specialSlots(c) {
   if (c.canMelee) return ['afterMove', 'toward', 'away'].filter(k => c.meleeKit[k]).map(k => {
     const m = c.meleeKit[k], g = k === 'afterMove' ? (m.wave ? 'wave' : m.shape === 'spin' ? 'spin' : 'rush') : k === 'toward' ? 'thrust' : 'up';
-    return { icon: 'sp_' + g + '_' + (WEAPON_OF[c.meleeStyle] || 'blade'), kind: SPECIAL_KIND[k], name: m.name };
+    const parts = [];
+    if (m.lunge > 0) parts.push('Avanza hacia el fijado'); else if (m.lunge < 0) parts.push('Retrocede');
+    if (m.launcher) parts.push('lanza'); if (m.pass) parts.push('atraviesa al enemigo');
+    if (m.wave) parts.push('onda radial que empuja a todos');
+    parts.push('daño ×' + String(m.dmg).replace('.', ','));
+    const body = parts.join(', ') + '.';
+    return { icon: 'sp_' + g + '_' + (WEAPON_OF[c.meleeStyle] || 'blade'), kind: SPECIAL_KIND[k], name: m.name, body: body[0].toUpperCase() + body.slice(1) };
   });
   const out = [];
-  if (c.shotStyle === 'revolver') out.push({ icon: 'fanFire', kind: 'Tras moverte', name: 'Vaciar el tambor' });
-  if (c.postMoveMissile) out.push({ icon: 'missile', kind: 'Tras moverte', name: 'Misil teledirigido' });
+  if (c.shotStyle === 'revolver') out.push({ icon: 'fanFire', kind: 'Tras moverte', name: 'Vaciar el tambor', body: 'Bravata: recarga y, con el tambor recargado, hace ×1,5 de daño.' });
+  if (c.postMoveMissile) out.push({ icon: 'missile', kind: 'Tras moverte', name: 'Misil teledirigido', body: 'Un misil que sigue al objetivo.' });
   return out;
 }
 // Requisitos de uso que conviene saber al elegir
@@ -4382,23 +4397,89 @@ function drawSpecialChip(sp, color, x, y, w, h) {
   ctx.textAlign = 'left'; ctx.fillStyle = '#7d7390'; fitText(sp.kind.toUpperCase(), x + 37, y + 15, w - 42, 700, 8.5);
   ctx.fillStyle = '#ece6f4'; fitText(sp.name, x + 37, y + 29, w - 42, 700, 11.5);
 }
+// Divide «Cargado: Nombre» en etiqueta y nombre (para las casillas del panel)
+function splitCharged(t) { const k = t.indexOf(': '); return k < 0 ? ['Cargado', t] : [t.slice(0, k), t.slice(k + 2)]; }
+// Pastilla con el rol estandarizado (color del personaje)
+function rolePill(ch, x, y) {
+  const label = ch.role.toUpperCase(); ctx.font = '700 10.5px ' + FONT;
+  const tw = ctx.measureText(label).width + 20;
+  rrect(x, y, tw, 17, 8.5); ctx.fillStyle = ch.color; ctx.fill();
+  ctx.textAlign = 'left'; ctx.fillStyle = '#16121e'; ctx.fillText(label, x + 10, y + 12.5);
+  return tw;
+}
+// Texto del uso de una habilidad: descripción, recarga y requisito
+function abilityBody(type, cd) {
+  const t = ABILITY_TEXT[type] || ['', ''], need = ABILITY_NEEDS[type];
+  let s = t[1] + '.';
+  if (cd > 0.35 && type !== 'turret') s += ' Recarga ' + fmtS(cd) + '.';
+  if (need) s += ' ' + need + '.';
+  return s;
+}
+// Etiquetas de interacción: con qué hace el personaje daño, control o apoyo (sacadas de su kit y habilidades)
+const ABILITY_CHIP = {
+  beam: 'Daño lineal', area: 'Lanza en área', rush: 'Embiste', drop: 'Caída Izuna', ricochet: 'Rebota',
+  shield: 'Bloquea balas', raiseShield: 'Bloquea balas', volley: 'Cono de disparos', overdrive: 'Purga de calor',
+  turret: 'Torreta', overcharge: 'Cura aliados', taunt: 'Provoca', grenade: 'Explota', frostburst: 'Congela',
+  frostMode: 'Cambia de disparo', vine: 'Barrido', roots: 'Inmoviliza', reaper: 'Ejecuta', dragon: 'Multiobjetivo'
+};
+function interactionChips(c) {
+  const out = [], add = t => { if (t && !out.includes(t)) out.push(t); };
+  if (c.autoLock) add('Fija objetivo');
+  if (c.canMelee && Object.values(c.meleeKit).some(m => m.launcher)) add('Lanza');
+  if (c.finisher) add('Remate de combo');
+  if (c.chargedMelee) add('Golpe cargado');
+  if (c.moveType === 'jump') add('Engancha en el aire');
+  if (c.moveType === 'block') add('Bloqueo');
+  if (c.moveType === 'teleport') add('Teletransporte');
+  if (c.moveType === 'flip') add('Doble salto');
+  if (c.moveType === 'dash' || c.moveType === 'stride') add('Invulnerable al esquivar');
+  if (c.shotStyle === 'revolver') add('Tambor de 6');
+  if (c.shotMode === 'heat') add('Sobrecalentamiento');
+  if (c.shotMode === 'auto') add('Fuego continuo');
+  if (c.stalactite) add('Estalactitas');
+  add(ABILITY_CHIP[c.priType]); add(ABILITY_CHIP[c.secType]);
+  return out.slice(0, 8);
+}
+// Rectángulos del panel y del pop-up
+function detailBtnRect() { const [x, y] = infoRect(); return [x + 290, y + 64, 140, 20]; }
+function detailRect() { return [96, 40, 648, 516]; }
+let detailChar = -1; // personaje cuya ficha completa está abierta (-1: cerrada)
+let detailKeyReq = false; const detailPadPrev = {};
+addEventListener('keydown', e => { if (e.code === 'KeyV' && !e.repeat) detailKeyReq = true; }); // V: se anota en el evento, así no se pierde aunque sea un toque rápido
+// Pulsación nueva de V (teclado) o Select (mandos): abre la ficha completa
+function detailOpenPressed() {
+  let hit = detailKeyReq; detailKeyReq = false;
+  for (let i = 0; i < 4; i++) { const gp = pads[i], v = !!(gp && gp.connected && gp.buttons[8] && gp.buttons[8].pressed); if (v && !detailPadPrev[i]) hit = true; detailPadPrev[i] = v; }
+  return hit;
+}
+// Panel de información (ficha breve): cabecera, habilidades, ataque y movimiento, golpes especiales
 function drawInfoPanel(ch) {
-  const [x, y, w, h] = infoRect();
+  const [x, y, w, h] = infoRect(), tn = iconTones(ch.color);
   rrect(x, y, w, h, 12); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
-  ctx.save(); rrect(x, y, w, h, 12); ctx.clip(); ctx.fillStyle = ch.color; ctx.fillRect(x, y, w, 4); ctx.restore(); // franja del color del personaje
+  ctx.save(); rrect(x, y, w, h, 12); ctx.clip();
+  const [cr, cg, cb] = hexRgb(ch.color), g = ctx.createRadialGradient(x + w, y, 8, x + w, y, 260);
+  g.addColorStop(0, `rgba(${cr},${cg},${cb},0.18)`); g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = ch.color; ctx.fillRect(x, y, w, 4); // franja del color del personaje
+  ctx.restore();
   // cabecera: quién es
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 24px ' + FONT; ctx.fillText(ch.name, x + 16, y + 34);
-  ctx.fillStyle = ch.color; ctx.font = '700 13px ' + FONT; ctx.fillText(ch.role, x + 16, y + 53);
-  ctx.fillStyle = '#8f86a0'; fitText(styleText(ch), x + 16, y + 70, 220, 400, 11);
+  rolePill(ch, x + 16, y + 42);
+  ctx.fillStyle = '#8f86a0'; fitText(styleText(ch), x + 16, y + 76, 250, 400, 11);
   const bars = [['Vida', ch.hp / 160, ch.hp + ''], ['Velocidad', ch.speed / 225, ''], ['Golpe', ch.canMelee ? ch.melee / 4 : 0, ch.canMelee ? '' : 'no'], ['Disparo', ch.canShoot ? ch.shot / 2 : 0, ch.canShoot ? '' : 'no']];
   bars.forEach(([label, f, note], i) => {
-    const yy = y + 18 + i * 14, bx = x + 302;
-    ctx.fillStyle = '#b9afc9'; ctx.font = '600 10px ' + FONT; ctx.textAlign = 'right'; ctx.fillText(label, bx - 8, yy + 7);
+    const yy = y + 14 + i * 12, bx = x + 302;
+    ctx.fillStyle = '#b9afc9'; ctx.font = '600 10px ' + FONT; ctx.textAlign = 'right'; ctx.fillText(label, bx - 8, yy + 6);
     rrect(bx, yy, 104, 6, 3); ctx.fillStyle = '#2c2638'; ctx.fill();
     if (f > 0) { rrect(bx, yy, Math.max(6, 104 * Math.min(1, f)), 6, 3); ctx.fillStyle = ch.color; ctx.fill(); }
-    ctx.textAlign = 'left'; if (note) { ctx.fillStyle = '#8f86a0'; ctx.font = '400 10px ' + FONT; ctx.fillText(note, bx + 110, yy + 7); }
+    ctx.textAlign = 'left'; if (note) { ctx.fillStyle = '#8f86a0'; ctx.font = '400 10px ' + FONT; ctx.fillText(note, bx + 110, yy + 6); }
   });
+  // botón de la ficha completa
+  const [dx, dy, dw, dh] = detailBtnRect();
+  rrect(dx, dy, dw, dh, 10); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = ch.color; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 10.5px ' + FONT; ctx.fillText('Descripción completa ›', dx + dw / 2, dy + 13.5);
+  ctx.textAlign = 'left';
   // lo principal: las dos habilidades, grandes y separadas
   sectionLabel('Habilidades', x + 16, y + 92);
   const aw = (w - 32 - 12) / 2;
@@ -4407,9 +4488,8 @@ function drawInfoPanel(ch) {
   // lo secundario: ataque, cargado y movimiento
   sectionLabel('Ataque y movimiento', x + 16, y + 245);
   const cs = chargedSlot(ch), mv = moveOf(ch), tw = (w - 32 - 16) / 3, ty = y + 253, th = 86;
-  const split = t => { const k = t.indexOf(': '); return k < 0 ? ['Cargado', t] : [t.slice(0, k), t.slice(k + 2)]; };
   drawKitTile(ch.canMelee ? 'melee' : 'shot', 'Ataque', ch.canMelee ? 'Cuerpo a cuerpo' : 'Disparo', ch.canMelee ? meleeText(ch) : shotText(ch), ch.color, x + 16, ty, tw, th);
-  if (cs) { const [k, n] = split(cs.title); drawKitTile(cs.icon, k, n, cs.desc, ch.color, x + 16 + tw + 8, ty, tw, th); }
+  if (cs) { const [k, n] = splitCharged(cs.title); drawKitTile(cs.icon, k, n, cs.desc, ch.color, x + 16 + tw + 8, ty, tw, th); }
   else drawKitTile(null, 'Cargado', 'No tiene', '', ch.color, x + 16 + tw + 8, ty, tw, th);
   drawKitTile(mv.icon, 'Movimiento', mv.name, mv.desc, ch.color, x + 16 + (tw + 8) * 2, ty, tw, th);
   // golpes especiales: salen solos según cómo atacas
@@ -4418,6 +4498,81 @@ function drawInfoPanel(ch) {
   if (!sp.length) { ctx.fillStyle = '#5f566b'; ctx.font = '400 11px ' + FONT; ctx.fillText('No tiene: su ataque es siempre el mismo', x + 16, y + 380); }
   sp.forEach((q, i) => drawSpecialChip(q, ch.color, x + 16 + (tw + 8) * i, y + 362, tw, 32));
 }
+// Pop-up de descripción completa: todo lo que hace el personaje, por categorías
+function dLabel(txt, x, y, w) {
+  ctx.textAlign = 'left'; ctx.fillStyle = '#7d7390'; ctx.font = '700 10px ' + FONT; ctx.fillText(txt.toUpperCase(), x, y);
+  const tw = ctx.measureText(txt.toUpperCase()).width;
+  ctx.fillStyle = '#2c2638'; ctx.fillRect(x + tw + 8, y - 4, Math.max(0, w - tw - 8), 1);
+}
+// Entrada con icono, categoría, nombre y texto (hasta 3 líneas); devuelve la altura ocupada
+function dItem(ch, icon, kind, title, body, x, y, w, maxL = 2) {
+  infoIcon(icon, x, y + 2, ch.color, 26);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#7d7390'; ctx.font = '700 8.5px ' + FONT; ctx.fillText(kind.toUpperCase(), x + 34, y + 10);
+  ctx.fillStyle = '#f2eefa'; fitText(title, x + 34, y + 25, w - 34, 700, 13);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 11px ' + FONT;
+  const n = body ? wrapText(body, x + 34, y + 37, w - 34, 12, maxL) : 0;
+  return 37 + Math.max(n, 1) * 12 + 4;
+}
+function drawDetail(ch) {
+  const [x, y, w, h] = detailRect(), tn = iconTones(ch.color), [cr, cg, cb] = hexRgb(ch.color);
+  ctx.fillStyle = 'rgba(6,4,10,0.72)'; ctx.fillRect(0, 0, W, H);
+  rrect(x, y, w, h, 16); ctx.fillStyle = '#1c1726'; ctx.fill();
+  ctx.save(); rrect(x, y, w, h, 16); ctx.clip();
+  const g = ctx.createRadialGradient(x + 90, y + 90, 10, x + 90, y + 90, 320);
+  g.addColorStop(0, `rgba(${cr},${cg},${cb},0.30)`); g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = ch.color; ctx.fillRect(x, y, w, 4);
+  ctx.restore();
+  rrect(x, y, w, h, 16); ctx.lineWidth = 2; ctx.strokeStyle = ch.color; ctx.stroke();
+  // retrato del personaje
+  const px = x + 88, py = y + 86, R = 54;
+  ctx.save(); ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fillStyle = '#16121e'; ctx.fill(); ctx.clip();
+  drawCharPreview(px, py + 12, ch, 2.1, 0);
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.lineWidth = 3; ctx.strokeStyle = ch.color; ctx.stroke();
+  // cabecera
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText(ch.name, x + 168, y + 72);
+  rolePill(ch, x + 168, y + 84);
+  ctx.fillStyle = '#b9afc9'; fitText(styleText(ch), x + 168, y + 120, 300, 400, 13);
+  // cerrar
+  const cx = x + w - 42, cy = y + 16;
+  rrect(cx, cy, 26, 26, 13); ctx.fillStyle = '#2c2638'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#4a4160'; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 13px ' + FONT; ctx.fillText('✕', cx + 13, cy + 17.5);
+  // columna izquierda: ataque
+  const lx = x + 22, rx = x + 346, cw = 280;
+  let ly = y + 150, ry = y + 150;
+  dLabel('Ataque', lx, ly, cw); ly += 14;
+  ly += dItem(ch, ch.canMelee ? 'melee' : 'shot', 'Ataque básico', ch.canMelee ? 'Cuerpo a cuerpo' : 'Disparo', ch.canMelee ? meleeText(ch) : shotText(ch), lx, ly, cw) + 4;
+  const cs = chargedSlot(ch);
+  if (cs) { const [k, n] = splitCharged(cs.title); ly += dItem(ch, cs.icon, k, n, cs.desc, lx, ly, cw) + 4; }
+  else ly += dItem(ch, null, 'Cargado', 'No tiene', 'Su ataque no se carga.', lx, ly, cw) + 4;
+  const sp = specialSlots(ch);
+  if (sp.length) for (const q of sp) ly += dItem(ch, q.icon, q.kind, q.name, q.body, lx, ly, cw) + 4;
+  else ly += dItem(ch, null, 'Golpes especiales', 'Ninguno', 'Su ataque es siempre el mismo.', lx, ly, cw) + 4;
+  // columna derecha: habilidades, movimiento e interacciones
+  dLabel('Habilidades', rx, ry, cw); ry += 14;
+  const p1 = ABILITY_TEXT[ch.priType] || ['', ''], s2 = ABILITY_TEXT[ch.secType] || ['', ''];
+  ry += dItem(ch, ch.priType, 'Habilidad 1', p1[0], abilityBody(ch.priType, ch.priCd), rx, ry, cw, 3) + 4;
+  ry += dItem(ch, ch.secType, 'Habilidad 2', s2[0], abilityBody(ch.secType, ch.secCd), rx, ry, cw, 3) + 4;
+  dLabel('Movimiento', rx, ry + 6, cw); ry += 20;
+  const mv = moveOf(ch);
+  ry += dItem(ch, mv.icon, 'Movimiento', mv.name, mv.desc + '.', rx, ry, cw) + 4;
+  dLabel('Interacciones', rx, ry + 6, cw); ry += 20;
+  let chx = rx, chy = ry;
+  for (const t of interactionChips(ch)) {
+    ctx.font = '600 10px ' + FONT; const cwid = ctx.measureText(t).width + 16;
+    if (chx + cwid > rx + cw) { chx = rx; chy += 21; }
+    rrect(chx, chy, cwid, 16, 8); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = tn.B; ctx.stroke();
+    ctx.textAlign = 'left'; ctx.fillStyle = tn.L; ctx.fillText(t, chx + 8, chy + 11.5);
+    chx += cwid + 5;
+  }
+  // pie
+  ctx.textAlign = 'center'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT;
+  ctx.fillText(isTouch ? 'Toca en cualquier sitio para cerrar' : 'Clic, golpe, Start o Esc para cerrar · V o Select para abrir', x + w / 2, y + h - 12);
+}
+
 // Botón de abajo: Confirmar (paso 2 del puntero) o Empezar cuando estáis todos
 function startButtonState() {
   const pdev = isTouch ? 'touch' : 'kb1', me = slots.find(q => q.dev === pdev), t = pointerTarget(pdev), ns = npcSlot();
@@ -4508,6 +4663,7 @@ function drawSelect() {
     else { ctx.fillStyle = '#b9afc9'; ctx.fillText(s.dev === 'touch' || s.dev === 'kb1' && !isTouch ? 'Pulsa Confirmar' : s.dev === 'npc' ? 'Elige al aliado' : 'Golpe para confirmar', x + 12, py + 65); }
   }
   drawStartButton();
+  if (detailChar >= 0) drawDetail(CHARS[detailChar]);
   if (startT >= 0) {
     ctx.fillStyle = 'rgba(6,4,10,0.6)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 32px ' + FONT;
