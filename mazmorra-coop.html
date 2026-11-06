@@ -192,7 +192,8 @@ const AIM = {
   snapAng: 0.45,   // si apuntas a menos de ≈26° de otro enemigo y el fijado queda a más del doble, cambia al instante (incluso golpeando)
   holdClose: 26,   // pegado al fijado y alejándote de él (golpe ascendente) no se cambia de objetivo
   stepMax: 70,     // hueco máximo que cierra el paso de entrada al empezar un golpe
-  stepRange: 130   // con un hueco mayor no hay paso de entrada largo, solo el pasito de siempre
+  stepRange: 130,  // con un hueco mayor no hay paso de entrada largo, solo el pasito de siempre
+  airHold: 70      // un enemigo lanzado se mantiene fijado mientras estés a menos de este hueco; más lejos se suelta al ir hacia otro
 };
 const SHIELD_BASH = { name: 'Empujón de escudo', shape: 'thrust', len: 52, width: 52, dur: 0.16, dmg: 0.4, kb: 560 }; // golpe con el escudo alzado: empuja mucho, daña poco
 // Parámetros de las habilidades (el daño se multiplica por ABILITY_MUL)
@@ -1199,18 +1200,19 @@ function updatePlayer(p, dt) {
     if (lP || cP || rFlick || (p.dev === 'kb1' && wheelSteps)) p.manualT = 2; // si el jugador elige objetivo, se respeta 2 s
     p.manualT = (p.manualT || 0) - dt;
     // fijado automático al enemigo más cercano hacia el que miras (AIM): al moverte hacia un enemigo pasa a ser el fijado.
-    // No cambia si el objetivo está en el aire (para rematarlo) ni estando quieto. En mitad de un golpe solo cambia
+    // No cambia estando quieto. Un enemigo en el aire se mantiene mientras estés cerca (para rematarlo); si te alejas, se suelta como cualquier otro. En mitad de un golpe solo cambia
     // si apuntas claramente a otro enemigo, y al pulsar ataque se reevalúa sin margen para que el golpe vaya a quien miras
     const cur = p.target && !p.target.dead && enemies.includes(p.target) ? p.target : null;
     const atkNow = p.bufA > 0 && p.atkCd <= 0; // el golpe va a salir este frame
-    if (p.manualT <= 0 && !(cur && cur.airborne)) {
+    if (p.manualT <= 0) {
       if (!cur) p.target = facingTarget(p) || nearestTarget(p);
       else if (mm > 0.2) {
         const cand = facingTarget(p);
         if (cand && cand !== cur) {
           const dc = Math.hypot(cur.x - p.x, cur.y - p.y) || 1;
           const away = ((cur.x - p.x) * mx + (cur.y - p.y) * my) / (dc * mm) < -0.4; // te alejas del fijado
-          if (!(away && dc - cur.r - p.r < AIM.holdClose)) { // pegado y alejándote: es el golpe ascendente, se mantiene
+          const airClose = cur.airborne && dc - cur.r - p.r < AIM.airHold; // rematando en el aire: no se suelta
+          if (!airClose && !(away && dc - cur.r - p.r < AIM.holdClose)) { // pegado y alejándote: es el golpe ascendente, se mantiene
             const sc = facingScore(p, cur, p.fx, p.fy), cs = facingScore(p, cand, p.fx, p.fy);
             const snap = facingAng(p, cand) < AIM.snapAng && facingAng(p, cur) > AIM.snapAng * 2; // apuntas de lleno al nuevo
             if (snap || (!p.slash || atkNow) && (sc === Infinity || cs < sc * (atkNow ? 1 : AIM.switchMul))) {
@@ -1223,7 +1225,7 @@ function updatePlayer(p, dt) {
     }
   }
   if (p.lockOn) {
-    if (!p.target || p.target.dead || !enemies.includes(p.target)) p.target = nearestAirborne(p) || (c.autoLock && facingTarget(p)) || nearestTarget(p); // si queda alguno en el aire, pasa a él; si no, al que tienes delante
+    if (!p.target || p.target.dead || !enemies.includes(p.target)) p.target = (c.autoLock && facingTarget(p)) || nearestAirborne(p) || nearestTarget(p); // cuerpo a cuerpo: al que tienes delante; si no, al que esté en el aire
     if (cP) cycleTarget(p, 1);
     if (p.dev === 'kb1' && wheelSteps) cycleTarget(p, wheelSteps > 0 ? 1 : -1);
     if (rFlick) p.target = targetInDirection(p, Math.atan2(inp.ry, inp.rx));
