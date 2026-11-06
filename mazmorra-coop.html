@@ -4576,6 +4576,62 @@ function drawGame() {
   if (state === 'over') drawOver();
 }
 
+// ---------- Botones táctiles: icono de la habilidad del personaje, recarga y estado ----------
+const TBTN = ['bAtk', 'bDash', 'bQ', 'bE', 'bLock'].map(id => { const el = document.getElementById(id); return { el, cv: el.querySelector('canvas'), key: '', cd: 0 }; });
+function paintBtnIcon(b, type, color) {
+  const dpr = Math.min(3, window.devicePixelRatio || 1), sz = b.cv.clientWidth;
+  const k = type + color + sz + dpr;
+  if (b.key === k || !sz) return;
+  b.key = k; b.cv.width = b.cv.height = Math.round(sz * dpr);
+  const c2 = b.cv.getContext('2d'), keep = ctx;
+  c2.setTransform(dpr, 0, 0, dpr, 0, 0); c2.clearRect(0, 0, sz, sz);
+  ctx = c2; try { drawAbilityIcon(type, sz / 2, sz / 2, sz * 0.86, color); } finally { ctx = keep; }
+  b.el.classList.add('ico');
+}
+function setBtn(b, type, color, frac, off, on) {
+  paintBtnIcon(b, type, color);
+  const f = Math.max(0, Math.min(1, frac || 0)), el = b.el;
+  if (Math.abs(f - b.cd) > 0.004 || (f === 0) !== (b.cd === 0)) {
+    el.style.setProperty('--cd', f.toFixed(3));
+    if (f === 0 && b.cd > 0) { el.classList.remove('ready'); void el.offsetWidth; el.classList.add('ready'); } // destello al quedar lista
+    b.cd = f;
+  }
+  el.classList.toggle('off', !!off); el.classList.toggle('on', !!on);
+  const tn = iconTones(color), bc = off ? 'rgba(255,255,255,.25)' : f > 0 ? tn.D : tn.B;
+  if (el.style.borderColor !== bc) el.style.borderColor = bc;
+}
+// Puntos de cargas dentro de un botón: n llenas de max; lv: las que se gastarán al soltar
+function setPips(b, n, max, lv) {
+  let box = b.el.querySelector('.pips');
+  if (!max) { if (box) box.remove(); return; }
+  if (!box || box.children.length !== max) {
+    if (box) box.remove();
+    box = document.createElement('div'); box.className = 'pips';
+    for (let i = 0; i < max; i++) box.appendChild(document.createElement('i'));
+    b.el.appendChild(box);
+  }
+  for (let i = 0; i < max; i++) {
+    const d = box.children[i];
+    d.classList.toggle('full', i < n); d.classList.toggle('lv', i < lv);
+  }
+}
+function updateTouchButtons() {
+  const p = players.find(q => q.dev === 'touch');
+  if (!p) return;
+  const c = p.ch, tur = myTurret(p), [atk, dash, q, e, lock] = TBTN;
+  setBtn(atk, c.canMelee ? 'melee' : 'shot', p.color, 0, p.down, false);
+  const mv = moveOf(c);
+  if (mv.hold) setBtn(dash, mv.icon, p.color, 0, p.down, !!p.blocking);
+  else setBtn(dash, mv.icon, p.color, p.moveCd / (c.moveCd || 1), p.down, p.moveT > 0 || !!p.jump);
+  setBtn(q, c.priType, p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
+    p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
+  setBtn(e, c.secType, p.color, p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
+    p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0));
+  setBtn(lock, 'lock', p.color, 0, p.down, !!p.lockOn);
+  for (const [b, slot, t] of [[q, 'pri', c.priType], [e, 'sec', c.secType]]) // cargas del Puño del dragón
+    setPips(b, p.dragonCharges || 0, t === 'dragon' ? AB.dragon.max : 0, t === 'dragon' && p.cast === slot ? dragonLevel(p) : 0);
+}
+
 let lastPlaying = null;
 function draw() {
   const playing = state === 'play';
