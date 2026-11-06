@@ -223,6 +223,7 @@ const AB = {
   wall:      { max: 220, bulletCost: 8, hitCost: 15, drain: 2, coverR: 26, coverCd: 1, regen: 28, regenDelay: 0.6, reflectDmg: 2.5, arc: 1.05, speed: 0.6,
                chargeTime: 1.2, chargeDist0: 100, chargeDist1: 240, chargeSpeed: 520, chargeDmg: 0.5, chargeKb: 680 }, // Escudo en alto (Ceniza) y su embestida cargada
   grenade:   { range: 320, r: 55, dmg: 1, fly: 0.55 },
+  ricochet:  { chargeTime: 1, maxMul: 2, groundHops: 2 }, // Disparo rebotante (Marea): mantener carga hasta ×2 de daño; en el suelo salta a dos más
   frostburst: { range: 360, r: 50, dmg: 1, time: 2.5 }, // Estallido helado (Escarcha): congela; en el aire, se rompe
   phase:     { time: 3, speed: 1.5 },                    // Intangible (Escarcha)
   roots:     { dist: 160, r: 80, delay: 0.3, time: 2.5, sta: 0.3 }, // Raíces (Musgo): inmovilizan
@@ -383,8 +384,11 @@ const CHARS = [
     moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
   { name: 'Marea',    color: '#3f8ff5', mark: 'ring',    family: 'tirador', role: 'Tirador, rebote',
     priType: 'grenade', priCd: 5,                                      // granada en arco al objetivo fijado
-    shotStyle: 'revolver', shotCd: 0.6, shot: 2.4, shotKb: 2.5,         // revólver: más lento, más daño y empuje
-    secType: 'ricochet', secCd: 4, ricDmg: 3 },  // disparo rebotante
+    shotStyle: 'revolver', shotCd: 0.08, shot: 2.7, shotKb: 2.5,        // revólver: dispara a cada pulsación, contundente y con empuje
+    hitscanRange: 4000,                                                 // alcance ilimitado: la bala sigue hasta chocar con algo
+    ammo: 6, reloadTime: 1.1,                                           // tambor de seis balas; al vaciarse, recarga breve
+    fanInterval: 0.075,                                                 // tras el movimiento: vacía el tambor sobre los objetivos a tiro
+    secType: 'ricochet', secCd: 4, ricDmg: 3 },  // disparo rebotante (cargable)
   { name: 'Ciruela',  color: '#c07af0', mark: 'cross',   family: 'tirador', role: 'Tirador, torreta',
     priType: 'turret', secType: 'overcharge', priCd: 1, secCd: 10,
     shotMode: 'auto', shotCd: 0.3, shot: 1.5, shotStagger: 0.18, shotStyle: 'gatling' } // gatling: disparo continuo, sin carga
@@ -607,6 +611,7 @@ const SFX = {
   launch() { if (!sfxOk('launch', 0.05)) { return; } tone(0.22, 220, 700, 0.3, 'triangle'); noise(0.2, 500, 2500, 0.25, 'bandpass', 1); },
   hurt() { if (sfxOk('hurt', 0.1)) tone(0.2, 300, 90, 0.45, 'square'); },
   beam() { if (sfxOk('beam', 0.1)) tone(0.08, 880 + Math.random() * 120, 1200, 0.05, 'sine'); },
+  reload(done) { if (sfxOk('rld', 0.08)) { noise(0.04, done ? 3200 : 2200, done ? 2600 : 1600, 0.4, 'bandpass', 0.7); tone(0.05, done ? 900 : 520, done ? 1200 : 380, 0.25, 'square'); } },
   revolver(lv) { if (sfxOk('rev', 0.05)) { noise(0.2, 1400, 180, 0.75, 'lowpass', 0.8); tone(0.14, 170 - lv * 40, 45, 0.8, 'triangle'); noise(0.03, 6000, 3000, 0.4, 'highpass', 0.6); } },
   claw(heavy) { if (sfxOk('swing', 0.03)) { noise(heavy ? 0.14 : 0.07, heavy ? 5000 : 7000, heavy ? 1500 : 2500, heavy ? 0.45 : 0.3, 'highpass', 0.8); tone(0.05, 1400, 900, 0.08, 'triangle'); } }
 };
@@ -805,7 +810,7 @@ function startGame() {
       x: 0, y: 0, fx: 1, fy: 0, hp: ch.hp, maxHp: ch.hp, inv: 0,
       atkCd: 0, shotCd: 0, moveT: 0, moveCd: 0, postMoveT: 0, mdx: 0, mdy: 0, kbx: 0, kby: 0, slash: null, down: false,
       ax: 1, ay: 0, stickT: 0, prevRm: 0, priCd: 0, secCd: 0, cast: null, lockOn: false, target: null,
-      charging: false, chargeT: 0, heat: 0, overheat: 0, heatDelay: 0,
+      charging: false, chargeT: 0, heat: 0, overheat: 0, heatDelay: 0, ammo: ch.ammo || 0, reloadT: 0, fan: null,
       prev: { a: true, s: true, d: true, q: true, e: true, l: true, c: true }
     };
   });
@@ -1011,7 +1016,7 @@ function roomCleared() {
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
   floor = genFloor(seed, 1);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = 0; p.priCdMax = p.secCdMax = 0; p.shotHold = true; for (const kk in p.prev) p.prev[kk] = true; }
+  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = 0; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
@@ -1229,7 +1234,7 @@ function updatePlayer(p, dt) {
   if (p.shotHold && !inp.s) p.shotHold = false; // tras la pausa, hay que soltar antes de volver a disparar
   p.revHolding = !p.down && !!(inp.a || inp.s); // para levantar a un caído cercano
   if (p.down) {
-    p.cast = null; p.charging = false; p.mCharging = false; p.mHold = null; p.flurry = null; p.shieldUp = false; p.shieldOn = false; p.blocking = false;
+    p.cast = null; p.charging = false; p.fan = null; p.burst = null; p.mCharging = false; p.mHold = null; p.flurry = null; p.shieldUp = false; p.shieldOn = false; p.blocking = false;
     const k = (p.ghost ? REVIVE.ghostSpeed : REVIVE.crawl) * c.speed;
     let cx = inp.x || 0, cy = inp.y || 0; const cm = Math.hypot(cx, cy); if (cm > 1) { cx /= cm; cy /= cm; }
     p.x += cx * k * dt; p.y += cy * k * dt; collide(p, true);
@@ -1448,14 +1453,29 @@ function updatePlayer(p, dt) {
   } else if (c.shotMode === 'auto') { // disparo continuo sin calentamiento (Ciruela)
     if (inp.s && p.shotCd <= 0 && p.moveT <= 0 && !p.shotHold) { p.shotCd = c.shotCd * (p.overchargeT > 0 ? AB.overcharge.mul : 1); fireShot(p, c.shot, 0); }
   } else {
-    if (inp.s && !p.charging && p.shotCd <= 0 && !p.shotHold) { p.charging = true; p.chargeT = 0; }
+    const mag = c.ammo > 0; // con tambor (Marea): cada bala gasta munición y al vaciarse recarga
+    if (mag && p.reloadT > 0) {
+      p.charging = false;
+      p.reloadT -= dt;
+      if (p.reloadT <= 0) { p.reloadT = 0; p.ammo = c.ammo; SFX.reload(true); floatText(p.x, p.y - 46 * c.size, 'Recargada', p.slotColor); }
+    }
+    // disparar justo después de moverse vacía el tambor sobre todos los objetivos a tiro
+    if (mag && aP && (p.moveT > 0 || p.postMoveT > 0) && p.ammo > 0 && p.reloadT <= 0 && !p.fan && !p.shotHold) {
+      startFan(p); p.shotHold = true; p.charging = false; p.burst = null; p.postMoveT = 0;
+    }
+    const empty = mag && (p.ammo <= 0 || p.reloadT > 0);
+    // con tambor, cada pulsación es una bala: si llega antes de tiempo, se guarda y sale en cuanto se puede
+    if (mag && aP && !p.charging && (p.shotCd > 0 || p.burst) && !p.shotHold && !empty) p.shotQ = true;
+    if (p.fan || empty || p.shotHold) p.shotQ = false;
+    if (p.shotQ && !inp.s && p.shotCd <= 0 && !p.burst) { p.shotQ = false; p.shotCd = c.shotCd; if (useAmmo(p)) fireShot(p, c.shot, 0); }
+    if (inp.s && !p.charging && p.shotCd <= 0 && !p.shotHold && !p.fan && !p.burst && !empty) { p.charging = true; p.chargeT = 0; p.shotQ = false; }
     if (p.charging) {
       p.chargeT = Math.min(c.chargeTime, p.chargeT + dt);
       if (!inp.s) {
         const lv = p.chargeT / c.chargeTime;
         p.charging = false; p.shotCd = c.shotCd;
         if (c.shotStyle === 'revolver' && lv >= 0.35) { p.burst = { n: 0, t: 0, lv }; p.shotCd = c.shotCd * 1.6; } // tres disparos seguidos
-        else fireShot(p, c.shot * (1 + (c.chargeMaxMul - 1) * lv), lv);
+        else if (useAmmo(p)) fireShot(p, c.shot * (1 + (c.chargeMaxMul - 1) * lv), lv);
       }
     }
   }
@@ -1463,12 +1483,16 @@ function updatePlayer(p, dt) {
     p.burst.t -= dt;
     if (p.burst.t <= 0) {
       const b = p.burst, a = Math.atan2(p.ay, p.ax) + [0, 0.05, -0.07][b.n], ax0 = p.ax, ay0 = p.ay;
-      p.ax = Math.cos(a); p.ay = Math.sin(a);
-      fireShot(p, c.shot * (1 + 0.6 * b.lv), Math.min(0.9, b.lv * 0.6));
-      p.ax = ax0; p.ay = ay0; b.n++; b.t = 0.09;
-      if (b.n >= 3) p.burst = null;
+      if (!useAmmo(p)) p.burst = null; // sin balas, la ráfaga se corta
+      else {
+        p.ax = Math.cos(a); p.ay = Math.sin(a);
+        fireShot(p, c.shot * (1 + 0.6 * b.lv), Math.min(0.9, b.lv * 0.6));
+        p.ax = ax0; p.ay = ay0; b.n++; b.t = 0.09;
+        if (b.n >= 3) p.burst = null;
+      }
     }
   }
+  if (p.fan) updateFan(p, dt);
 
   // habilidades: al pulsar se ve la previsualización, al soltar se lanza
   // con la torreta desplegada, volver a pulsar su botón la guarda al instante
@@ -1482,6 +1506,51 @@ function updatePlayer(p, dt) {
   if (p.cast && !abilityReady(p, p.cast)) p.cast = null; // se cancela si deja de poder usarse
   if (p.cast === 'pri' && qR) { useAbility(p, 'pri'); p.cast = null; }
   else if (p.cast === 'sec' && eR) { useAbility(p, 'sec'); p.cast = null; }
+}
+
+// ---------- Tambor del revólver (Marea) ----------
+// Gasta una bala; devuelve false si no quedan. Al vaciarse empieza la recarga
+function useAmmo(p) {
+  if (!(p.ch.ammo > 0)) return true;
+  if (p.ammo <= 0 || p.reloadT > 0) return false;
+  p.ammo--;
+  if (p.ammo <= 0) { p.reloadT = p.ch.reloadTime; p.charging = false; SFX.reload(false); floatText(p.x, p.y - 46 * p.ch.size, 'Recargando', '#c9c2d6'); }
+  return true;
+}
+// Objetivos de la ráfaga tras el movimiento: todos los que tiene a tiro (sin muro en medio), el fijado primero
+function fanTargets(p) {
+  const L = liveTargets().filter(e => {
+    const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1;
+    return beamLength(p.x, p.y, dx / d, dy / d, d) >= d - e.r - 6;
+  });
+  L.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
+  const tg = p.lockOn && p.target && L.includes(p.target) ? p.target : null;
+  return tg ? [tg].concat(L.filter(e => e !== tg)) : L;
+}
+function startFan(p) {
+  p.fan = { list: fanTargets(p), n: 0, t: 0 };
+  floatText(p.x, p.y - 46 * p.ch.size, 'Vaciar el tambor', p.slotColor);
+}
+// Dispara bala a bala, repartiéndolas entre los objetivos, hasta quedarse sin munición
+function updateFan(p, dt) {
+  const F = p.fan, c = p.ch;
+  F.t -= dt;
+  if (F.t > 0) return;
+  if (p.ammo <= 0 || p.reloadT > 0) { p.fan = null; return; }
+  const live = liveTargets();
+  F.list = F.list.filter(e => live.includes(e));
+  const e = F.list.length ? F.list[F.n % F.list.length] : null;
+  const ax0 = p.ax, ay0 = p.ay, lk0 = p.lockOn, tg0 = p.target;
+  if (e) { // apunta a ese objetivo solo para esta bala (también si está en el aire)
+    const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1;
+    p.ax = dx / d; p.ay = dy / d; p.lockOn = true; p.target = e;
+    effects.push({ type: 'reticle', x: e.x, y: e.y, t: 0, dur: 0.15, color: p.slotColor });
+  }
+  useAmmo(p);
+  fireShot(p, c.shot, 0.2);
+  if (e) { p.ax = ax0; p.ay = ay0; p.lockOn = lk0; p.target = tg0 && !tg0.dead ? tg0 : null; }
+  F.n++; F.t = c.fanInterval;
+  if (p.ammo <= 0) p.fan = null;
 }
 
 // lv: nivel de carga de 0 a 1. Con carga completa el disparo atraviesa enemigos
@@ -1571,16 +1640,19 @@ function ricochetTarget(p) {
   if (p.lockOn && p.target && !p.target.dead) return [p.target, false];
   return [nearestTarget(p), false];
 }
-function nearestOther(e, from) {
+function nearestOther(e, from, skip) {
   let best = null, bd = 1e9;
-  for (const o of liveTargets()) if (o !== e) { const d = Math.hypot(o.x - from.x, o.y - from.y); if (d < bd) { bd = d; best = o; } }
+  for (const o of liveTargets()) if (o !== e && !(skip && skip.has(o))) { const d = Math.hypot(o.x - from.x, o.y - from.y); if (d < bd) { bd = d; best = o; } }
   return best;
 }
+function ricochetLevel(p) { return Math.min(1, (p.castT || 0) / AB.ricochet.chargeTime); }
 function startRicochet(p) {
   const [e, air] = ricochetTarget(p);
   if (!e) return;
   if (air) { p.lockOn = true; p.target = e; } // fija al instante al enemigo en el aire
-  chains.push({ t: 0, delay: 0, fx: p.x, fy: p.y, fz: 0, to: e, dmg: p.ch.ricDmg, owner: p, next: air ? 'all' : 'one', color: p.color });
+  const lv = ricochetLevel(p), dmg = Math.round(p.ch.ricDmg * (1 + (AB.ricochet.maxMul - 1) * lv) * 10) / 10; // mantener la habilidad carga más daño
+  chains.push({ t: 0, delay: 0, fx: p.x, fy: p.y, fz: 0, to: e, dmg, owner: p, next: air ? 'all' : 'one', hops: AB.ricochet.groundHops, hit: new Set(), color: lv >= 1 ? '#ffffff' : p.color });
+  if (lv >= 1) { shake = Math.max(shake, 4); floatText(p.x, p.y - 46 * p.ch.size, 'Rebote cargado', p.slotColor); }
 }
 // Cada tramo impacta y genera los siguientes: uno más si era en el suelo, uno hacia cada enemigo si era en el aire
 function updateChains(dt) {
@@ -1594,10 +1666,11 @@ function updateChains(dt) {
     effects.push({ type: 'zap', x1: ch.fx, y1: upY(ch.fy, 12 + ch.fz), x2: ex, y2: upY(ey, 12 + ez), t: 0, dur: 0.25, color: ch.color });
     burst(ex, upY(ey, 12 + ez), ch.color, 8);
     shotHit(ch.owner, e, ch.dmg, 140, ch.fx, ch.fy, true);
-    const nxt = { t: 0, fx: ex, fy: ey, fz: ez, dmg: ch.dmg, owner: ch.owner, next: null, color: ch.color };
-    if (ch.next === 'one') {
-      const o = nearestOther(e, { x: ex, y: ey });
-      if (o) chains.push(Object.assign({}, nxt, { to: o, delay: 0.12 }));
+    const hit = ch.hit || new Set(); hit.add(e);
+    const nxt = { t: 0, fx: ex, fy: ey, fz: ez, dmg: ch.dmg, owner: ch.owner, next: null, hit, color: ch.color };
+    if (ch.next === 'one' && (ch.hops || 0) > 0) { // en el suelo: salta al más cercano que aún no ha recibido, tantas veces como rebotes queden
+      const o = nearestOther(e, { x: ex, y: ey }, hit);
+      if (o) chains.push(Object.assign({}, nxt, { to: o, delay: 0.12, next: 'one', hops: ch.hops - 1 }));
     } else if (ch.next === 'all') {
       const others = liveTargets().filter(o => o !== e);
       others.forEach((o, i) => chains.push(Object.assign({}, nxt, { to: o, delay: 0.1 + i * 0.03 })));
@@ -2390,10 +2463,21 @@ function drawPreviews() {
         ctx.globalAlpha = 0.9; ctx.setLineDash([6, 5]); ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(p.x, upY(p.y, 12)); ctx.lineTo(e.x, ey); ctx.stroke();
         ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, ey, e.r + 6, 0, Math.PI * 2); ctx.stroke();
-        const next = air ? liveTargets().filter(o => o !== e) : [nearestOther(e, e)].filter(Boolean);
         ctx.globalAlpha = 0.55; ctx.lineWidth = 1.5;
-        for (const o of next) { ctx.beginPath(); ctx.moveTo(e.x, ey); ctx.lineTo(o.x, upY(o.y, 12 + o.z)); ctx.stroke(); }
+        if (air) for (const o of liveTargets()) { if (o !== e) { ctx.beginPath(); ctx.moveTo(e.x, ey); ctx.lineTo(o.x, upY(o.y, 12 + o.z)); ctx.stroke(); } }
+        else { // cadena de rebotes en el suelo
+          const seen = new Set([e]); let from = e, fy = ey;
+          for (let i = 0; i < AB.ricochet.groundHops; i++) {
+            const o = nearestOther(from, from, seen); if (!o) break;
+            const oy = upY(o.y, 12 + o.z);
+            ctx.beginPath(); ctx.moveTo(from.x, fy); ctx.lineTo(o.x, oy); ctx.stroke();
+            seen.add(o); from = o; fy = oy;
+          }
+        }
         ctx.setLineDash([]);
+        const lv = ricochetLevel(p); // carga: anillo alrededor de Marea
+        ctx.globalAlpha = 0.95; ctx.lineWidth = 3; ctx.strokeStyle = lv >= 1 && Math.floor(time * 16) % 2 ? '#ffffff' : p.color;
+        ctx.beginPath(); ctx.arc(p.x, upY(p.y, 14), p.r + 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lv); ctx.stroke();
       }
     } else if (type === 'drop') {
       const e = dropTarget(p);
@@ -3468,7 +3552,7 @@ const ABILITY_TEXT = {
   area: ['Onda', 'Lanza por los aires a los cercanos'],
   rush: ['Embestida', 'Embiste y levanta al primer enemigo'],
   drop: ['Caída Izuna', 'Estampa contra el suelo a un aéreo'],
-  ricochet: ['Disparo rebotante', 'Rebota en otro; desde el aire, en todos'],
+  ricochet: ['Disparo rebotante', 'Rebota en dos más; desde el aire, en todos. Cargable'],
   shield: ['Bastión', 'Cúpula que destruye las balas enemigas'],
   pillar: ['Erupción', 'Columnas a distancia que lanzan'],
   pull: ['Atracción', 'Arrastra hacia sí a los cercanos'],
@@ -3513,7 +3597,7 @@ const ABILITY_NEEDS = {
 const fmtS = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
 function shotText(c) {
   if (c.shotMode === 'frost') return 'Ondas continuas; cargando, bola de nieve';
-  if (c.shotStyle === 'revolver') return 'Revólver: lento y contundente, cargable';
+  if (c.shotStyle === 'revolver') return 'Revólver de 6 balas, alcance ilimitado; tras moverte, vacía el tambor';
   if (!c.canShoot) return 'Sin disparo';
   if (c.shotMode === 'auto') return 'Instantáneo y continuo, sin carga';
   if (c.shotMode === 'heat') return 'Ráfaga instantánea que se sobrecalienta';
@@ -4369,6 +4453,21 @@ function drawShotState(p) {
     ctx.strokeStyle = full ? '#ffffff' : p.color; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(p.x, p.y - lift, p.r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lv); ctx.stroke();
     ctx.globalAlpha = 1;
+  }
+  if (c.ammo > 0 && !p.down) { // tambor: una bolita por bala; recargando, una barra que se llena
+    const y = p.y + 11;
+    if (p.reloadT > 0) {
+      const w = 30, x = p.x - w / 2, k = 1 - p.reloadT / c.reloadTime;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(x - 1, y - 3, w + 2, 6);
+      ctx.fillStyle = '#c9c2d6'; ctx.fillRect(x, y - 2, w * k, 4);
+    } else {
+      const gap = 6, x0 = p.x - gap * (c.ammo - 1) / 2;
+      for (let i = 0; i < c.ammo; i++) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.arc(x0 + i * gap, y, 2.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = i < p.ammo ? (p.ammo <= 2 ? '#ffb347' : '#fff3c4') : '#3a3342';
+        ctx.beginPath(); ctx.arc(x0 + i * gap, y, 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+    }
   }
   if (c.shotMode === 'heat' && p.heat > 0) {
     const w = 30, x = p.x - w / 2, y = p.y + 9;
