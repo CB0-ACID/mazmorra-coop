@@ -296,9 +296,9 @@ const JUMP = {
   fallSpeed: 320                       // velocidad de caída al soltarte
 };
 // Doble salto de Escarcha: cada pulsación del botón de movimiento salta con una voltereta (dos saltos hasta aterrizar)
-const FLIP = { h1: 72, h2: 58, g: 900, speed: 230, drag: 1.0, spin: 0.42 }; // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
+const FLIP = { h1: 50, h2: 40, g: 900, speed: 230, drag: 1.0, spin: 0.42 }; // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
 // Estalactita de hielo: cae sobre donde estás y explota con daño de área (no te hace daño a ti ni a tus aliados)
-const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 22, kb: 160, frozenDmg: 30 }; // congelados por el Estallido: tier 1-2 mueren; tier 3-4 reciben daño extra
+const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 20 }; // congelados por el Estallido: tier 1-2 mueren; tier 3-4 reciben daño extra
 // Disparo básico de Escarcha: la habilidad secundaria cambia entre estos tres modos
 const FROST_MODE = [
   { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo; cada tic quita más estamina, hasta el doble' },
@@ -306,7 +306,7 @@ const FROST_MODE = [
   { key: 'snow', name: 'Bola de nieve', icon: 'snowball', desc: 'Mantén para cargar tamaño y alcance; rebota una vez en la pared' }
 ];
 const BEAM_RAMP = { time: 3, mul: 2, base: 0.85 }; // base: fracción del daño de estamina base del rayo   // la estamina de cada tic sube lineal hasta ×2 tras 3 s de rayo continuo
-const MISSILE = { max: 3, step: 0.4, speed: 460, steer: 11, life: 2.4, lifeFree: 1.0, dmg: 9, sta: 0.12, slow: 2.5, seek: 220 };
+const MISSILE = { max: 3, step: 0.4, speed: 460, steer: 11, life: 2.4, lifeFree: 1.0, dmg: 6, sta: 0.08, slow: 2.5, seek: 220 };
 const ABILITY_MUL = 1.6;   // habilidades 1 y 2
 const STUN_DMG_MUL = 1.5;  // daño extra que reciben los enemigos aturdidos (salvo el guardián) si no se les ejecuta
 const AIR_G = 380;        // gravedad reducida de los enemigos lanzados
@@ -412,7 +412,7 @@ const CHARS = [
     priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
     moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.25, moveCharges: 3, moveRecharge: 1.8 }, // teletransporte corto con 3 cargas; moveCd es solo la pausa entre usos
   { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil · Escarcha', priType: 'frostburst', priCd: 7, secType: 'frostMode', secCd: 0.3,
-    shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300, moveType: 'flip', moveCd: 0.1, moveInvuln: false, stalactite: true }, // ondas mágicas continuas; cargando, bola de nieve
+    shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300, moveType: 'flip', moveCd: 0.1, moveInvuln: false }, // ondas mágicas continuas; cargando, bola de nieve
   { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
   { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'uppercut', role: 'Brawler · Ejecutor',
     meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'flurry',
@@ -1217,7 +1217,7 @@ const MOVES = {
     } },
   jump: { name: 'Salto', desc: 'Hacia un enemigo en el aire te enganchas y sigues el combo', icon: 'jump',
     start(p, c, mx, my) { startJump(p, mx || 0, my || 0); } }, // el salto lleva su propio estado (p.jump, ver «Salto»)
-  flip: { name: 'Doble salto', desc: 'Cada pulsación salta con una voltereta (dos seguidos); en el aire, el ataque deja caer una estalactita', icon: 'jump',
+  flip: { name: 'Doble salto', desc: 'Cada pulsación salta con una voltereta (dos seguidos); el segundo salto deja caer una estalactita de hielo', icon: 'jump',
     start(p, c, mx, my) { startFlip(p, mx || 0, my || 0); },
     update(p, c, dt) { updateFlip(p, dt); } }, // el salto usa p.flip; mientras dura, p.moveT > 0 y controla el desplazamiento
   block: { name: 'Guardia', desc: 'Mantén para bloquear; justo a tiempo, bloqueo perfecto', icon: 'block', hold: true }
@@ -1329,10 +1329,11 @@ function startFlip(p, mx, my) {
   f.n++;
   f.vz = Math.sqrt(2 * FLIP.g * (f.n === 1 ? FLIP.h1 : FLIP.h2)); // el segundo salto es algo más bajo
   f.vx = moving ? mx / m * FLIP.speed : 0; f.vy = moving ? my / m * FLIP.speed : 0;
-  f.jt = 0; f.stal = 1; f.dir = f.n === 1 ? 1 : -1; // una estalactita por salto; la segunda voltereta gira al revés
+  f.jt = 0; f.dir = f.n === 1 ? 1 : -1; // una estalactita por salto; la segunda voltereta gira al revés
   p.mvx = p.mvy = 0; p.moveT = 1e9; // el vuelo dura hasta aterrizar (updateFlip lo corta)
   p.slash = null; p.flurry = null; p.mHold = null; p.mCharging = false; p.cast = null;
   burst(p.x, p.y, '#bfeaf5', 8); SFX.swing(false);
+  if (f.n === 2) dropStalactite(p); // el segundo salto deja caer una estalactita donde estás
 }
 function updateFlip(p, dt) {
   const f = p.flip;
@@ -1351,9 +1352,8 @@ function updateFlip(p, dt) {
   p.flipAng = Math.min(1, f.jt / FLIP.spin) * Math.PI * 2 * f.dir; // la voltereta ocupa el primer tramo del salto
   if (Math.random() < 0.6) particles.push({ x: p.x, y: upY(p.y, 6 + p.z), vx: 0, vy: 0, life: 0.2, max: 0.2, color: '#e8f7ff', s: 4 });
 }
-// Estalactita: se llama al atacar en pleno salto (una vez por salto)
+// Estalactita: la deja caer el segundo salto, justo donde estás
 function dropStalactite(p) {
-  p.flip.stal = 0;
   stalacs.push({ x: p.x, y: p.y, owner: p, t: 0, dur: STAL.fall, z: STAL.z0, done: false });
   SFX.swing(true);
 }
@@ -1582,7 +1582,6 @@ function updatePlayer(p, dt) {
   if (p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) return; // durante embestida, caída Izuna o salto no se ataca
 
   // golpe: el tipo depende de si acabas de moverte o de cómo te mueves respecto al objetivo
-  if (c.stalactite && p.bufA > 0 && p.flip && p.flip.stal > 0 && p.flip.z > 8) { p.bufA = 0; dropStalactite(p); } // en pleno salto: una estalactita por salto, en vez de golpear
   const wantAtk = p.bufA > 0 && p.atkCd <= 0; // la pulsación guardada en el búfer se ejecuta en cuanto se puede
   const ex = wantAtk ? execCandidate(p) : null;
   if (ex) { p.atkCd = c.meleeCd; p.mHold = null; p.bufA = 0; p.charging = false; p.shotHold = true; executeEnemy(ex, p, 'melee'); } // los de distancia también ejecutan con su ataque
@@ -5698,7 +5697,6 @@ function setPips(b, n, max, lv) {
 // Devuelve { icon, lv (0–1 de carga, o null), alt (golpe especial listo) }
 function attackContext(p) {
   const c = p.ch, base = c.canMelee ? 'melee' : 'shot', post = p.moveT > 0 || p.postMoveT > 0;
-  if (c.stalactite && p.flip && p.flip.stal > 0 && p.flip.z > 8) return { icon: 'stalactite', lv: null, alt: true }; // en pleno salto: estalactita lista
   if (c.canMelee) {
     if (p.mCharging) return { icon: c.chargedMelee, lv: meleeLv(p) };
     const am = post && !p.jump && specialSlots(c).find(sp => sp.kind === SPECIAL_KIND.afterMove);
