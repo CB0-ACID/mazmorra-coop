@@ -190,8 +190,12 @@ const AB = {
   pull:      { r: 190, sta: 0.2 },
   blink:     { dist: 180, width: 34, sta: 0.3, dmg: 1 },
   suspend:   { time: 2.5 },
-  volley:    { n: 7, spread: 0.9, len: 280, dmg: 1 },
-  overdrive: { r: 100, dmg: 2, kb: 420 }, // Purga: onda de calor que daña y empuja
+  // Abanico (Coral): gasta el calor. Rayos, apertura y daño van de n0/spread0/dmg0 (sin calor) a n1/spread1/dmg1 (calor al máximo)
+  volley:    { n0: 3, n1: 9, spread0: 0.55, spread1: 1.0, len: 280, dmg0: 0.8, dmg1: 1.5,
+               airMul: 1.5, airLift: 0.6,    // contra enemigos en el aire: más daño y los sube más
+               hot: 0.7, hotRays: 3,         // «Al rojo»: con este calor o más, quien reciba hotRays rayos en el suelo sale lanzado
+               overheatHeat: 0.5 },          // sobrecalentada: descarga de emergencia como si tuviera este calor y corta el bloqueo
+  overdrive: { r: 100, dmg: 2, kb: 420, time: 3 }, // Purga: onda de calor que daña y empuja; luego dispara más rápido sin calentarse
   turret:    { time: 10, rate: 0.3, range: 330, dmg: 1.2, hp: 8, regen: 0.5, destroyedCd: 20 }, // vida propia; se regenera guardada
   overcharge: { time: 5, mul: 0.5, healR: 130, healEvery: 1, healPct: 0.04 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta; la torreta cura un 4 % de la vida máxima por segundo a los aliados cercanos
   reaper:    { len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: ejecuta a los tier 1 y cura
@@ -1752,25 +1756,38 @@ function castSuspend(p) {
   for (const e of liveTargets()) if (e.airborne) { e.suspendT = AB.suspend.time; e.vz = 0; burst(e.x, e.y - 12 - e.z, '#bfeaf5', 10); }
   floatText(p.x, p.y - 46 * p.ch.size, 'Suspensión', p.slotColor);
 }
-// Abanico (Coral): siete disparos instantáneos en cono
+// Abanico (Coral): descarga el calor acumulado en un cono de disparos instantáneos.
+// Cuanto más calor, más rayos, más apertura y más daño. Al rojo, lanza a quien reciba varios rayos.
+function volleyShape(p) {
+  const V = AB.volley, h = p.overheat > 0 ? V.overheatHeat : Math.min(1, p.heat || 0);
+  return { h, n: Math.round(V.n0 + (V.n1 - V.n0) * h), spread: V.spread0 + (V.spread1 - V.spread0) * h,
+           dmg: V.dmg0 + (V.dmg1 - V.dmg0) * h, hot: h >= V.hot && !(p.overheat > 0) };
+}
 function castVolley(p) {
-  const n = AB.volley.n, base = Math.atan2(p.ay, p.ax);
-  for (let i = 0; i < n; i++) {
-    const a = base + (i / (n - 1) - 0.5) * AB.volley.spread, ax = Math.cos(a), ay = Math.sin(a);
-    let bt = beamLength(p.x, p.y, ax, ay, AB.volley.len), best = null;
+  const V = AB.volley, S = volleyShape(p), base = Math.atan2(p.ay, p.ax), hits = new Map();
+  for (let i = 0; i < S.n; i++) {
+    const a = base + (i / (S.n - 1) - 0.5) * S.spread, ax = Math.cos(a), ay = Math.sin(a);
+    let bt = beamLength(p.x, p.y, ax, ay, V.len), best = null;
     for (const e of liveTargets()) {
       const dx = e.x - p.x, dy = e.y - p.y, t = dx * ax + dy * ay;
       if (t < 0 || t > bt) continue;
       if (Math.hypot(e.x - (p.x + ax * t), e.y - (p.y + ay * t)) < e.r + 3) { best = e; bt = t; }
     }
-    effects.push({ type: 'tracer', x: p.x, y: p.y, ax, ay, len: bt, w: 3, z2: best ? best.z : 0, t: 0, dur: 0.15, color: p.color });
-    if (best) shotHit(p, best, AB.volley.dmg, 60, p.x, p.y, true);
+    effects.push({ type: 'tracer', x: p.x, y: p.y, ax, ay, len: bt, w: S.hot ? 4 : 3, z2: best ? best.z : 0, t: 0, dur: 0.15, color: S.hot ? '#ff7a3d' : p.color });
+    if (!best) continue;
+    const air = best.airborne;
+    shotHit(p, best, S.dmg * (air ? V.airMul : 1), 60, p.x, p.y, true);
+    if (air && !best.dead && !(best.suspendT > 0)) best.vz = Math.max(best.vz, LAUNCH_VZ * V.airLift); // lo sube para el remate
+    if (!air) hits.set(best, (hits.get(best) || 0) + 1);
   }
-  shake = Math.max(shake, 3);
+  if (S.hot) for (const [e, k] of hits) if (k >= V.hotRays && !e.dead) tryLaunch(e, true); // Al rojo: ráfaga concentrada que lanza
+  p.heat = 0; p.overheat = 0; p.heatDelay = 0; // gasta todo el calor (y corta el sobrecalentamiento)
+  if (S.hot) { burst(p.x, p.y - 12, '#ff8f6b', 14); floatText(p.x, p.y - 46 * p.ch.size, 'Al rojo', '#ff7a3d'); }
+  shake = Math.max(shake, 2 + 4 * S.h);
 }
 // Purga (Coral): vacía el calor y durante unos segundos dispara más rápido sin calentarse
 function castOverdrive(p) { // Purga: suelta todo el calor en una onda alrededor que daña y empuja
-  p.heat = 0; p.overheat = 0;
+  p.heat = 0; p.overheat = 0; p.overdriveT = AB.overdrive.time;
   const R = AB.overdrive.r, dmg = AB.overdrive.dmg * ABILITY_MUL;
   for (const e of liveTargets()) if (Math.hypot(e.x - p.x, e.y - p.y) < R + e.r) damageEnemy(e, p.x, p.y, dmg, dmg, AB.overdrive.kb);
   effects.push({ type: 'ring', x: p.x, y: p.y, r: R, t: 0, dur: 0.35, color: p.color });
@@ -2205,10 +2222,10 @@ function drawPreviews() {
       ctx.lineWidth = 3;
       for (const e of liveTargets()) if (e.airborne) { ctx.beginPath(); ctx.arc(e.x, e.y - 12 - e.z, e.r + 8, 0, Math.PI * 2); dashed(); }
     } else if (type === 'volley') {
-      const n = AB.volley.n, base = Math.atan2(p.ay, p.ax);
-      ctx.globalAlpha = 0.65; ctx.setLineDash([4, 5]);
+      const S = volleyShape(p), n = S.n, base = Math.atan2(p.ay, p.ax);
+      ctx.globalAlpha = 0.65; ctx.setLineDash([4, 5]); if (S.hot) ctx.strokeStyle = '#ff7a3d';
       for (let i = 0; i < n; i++) {
-        const a = base + (i / (n - 1) - 0.5) * AB.volley.spread, L = beamLength(p.x, p.y, Math.cos(a), Math.sin(a), AB.volley.len);
+        const a = base + (i / (n - 1) - 0.5) * S.spread, L = beamLength(p.x, p.y, Math.cos(a), Math.sin(a), AB.volley.len);
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + Math.cos(a) * L, p.y + Math.sin(a) * L); ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -3145,8 +3162,8 @@ const ABILITY_TEXT = {
   pull: ['Atracción', 'Arrastra hacia sí a los cercanos'],
   blink: ['Paso helado', 'Teletransporte que agota a quien cruza'],
   suspend: ['Suspensión', 'Congela en el aire a los lanzados'],
-  volley: ['Abanico', 'Siete disparos instantáneos en cono'],
-  overdrive: ['Purga', 'Vacía el calor en una onda que daña y empuja'],
+  volley: ['Abanico', 'Gasta el calor en un cono de disparos; al rojo, lanza'],
+  overdrive: ['Purga', 'Onda que vacía el calor; luego dispara rápido sin calentarse'],
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla'],
   overcharge: ['Sobrecarga', 'Más cadencia; la torreta cura a los aliados cerca'],
   raiseShield: ['Escudo en alto', 'Refleja balas y cubre al grupo; se gasta'],
@@ -3905,6 +3922,7 @@ function drawShotState(p) {
     ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(x - 1, y - 1, w + 2, 6);
     ctx.fillStyle = p.overheat > 0 ? (Math.floor(time * 12) % 2 ? '#ff3b3b' : '#ff8f6b') : (p.heat > 0.7 ? '#ff7a3d' : '#f5c542');
     ctx.fillRect(x, y, w * p.heat, 4);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x + w * AB.volley.hot - 0.5, y - 1, 1, 6); // marca de «Al rojo» para el Abanico
   }
 }
 // Barra de vida del HUD: el tramo perdido queda un instante en blanco y luego se vacía;
