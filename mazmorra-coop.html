@@ -5697,6 +5697,7 @@ function setPips(b, n, max, lv) {
 // Devuelve { icon, lv (0–1 de carga, o null), alt (golpe especial listo) }
 function attackContext(p) {
   const c = p.ch, base = c.canMelee ? 'melee' : 'shot', post = p.moveT > 0 || p.postMoveT > 0;
+  if (p.flip && p.flip.n >= 2 && p.flip.z > 8) return { icon: 'stalactite', lv: null, alt: true }; // durante el segundo salto: la estalactita que cae
   if (c.canMelee) {
     if (p.mCharging) return { icon: c.chargedMelee, lv: meleeLv(p) };
     const am = post && !p.jump && specialSlots(c).find(sp => sp.kind === SPECIAL_KIND.afterMove);
