@@ -667,8 +667,8 @@ function goSelect(dev) {
 }
 
 // ---------- Menú: selección de personajes ----------
-function cardRect(i) { const col = i % 4, row = Math.floor(i / 4); return [24 + col * 122, 92 + row * 160, 112, 150]; }
-function infoRect() { return [520, 92, 296, 392]; }
+function cardRect(i) { const col = i % 2, row = Math.floor(i / 2); return [486 + col * 169, 84 + row * 102, 161, 94]; } // 2 columnas × 4 filas: cada fila es una familia
+function infoRect() { return [24, 84, 450, 400]; }
 function startRect() { return [W - 24 - 196, H - 100, 196, 76]; }
 function backRect() { return [24, 22, 96, 30]; }
 let hoverCard = -1, hoverStart = false, lastCur = 0; // personaje que se describe en el panel
@@ -687,12 +687,25 @@ function claim(dev) {
   slots.push(s); lastCur = cur; return s;
 }
 function moveCursor(s, dx, dy) {
-  let col = s.cur % 4, row = Math.floor(s.cur / 4);
-  col = (col + dx + 4) % 4; row = (row + dy + 2) % 2;
-  s.cur = row * 4 + col;
+  let col = s.cur % 2, row = Math.floor(s.cur / 2);
+  col = (col + dx + 2) % 2; row = (row + dy + 4) % 4;
+  s.cur = row * 2 + col;
 }
 // Flujo: cada jugador elige personaje (queda «elegido») y después se pulsa Empezar.
 // Con teclado o mando: golpe elige; con todos listos, golpe otra vez o Start empiezan. Moverse cambia la elección.
+// Con el puntero: ¿qué cursor maneja? El tuyo o, si ya confirmaste en modo IA, el del aliado
+function pointerTarget(dev) {
+  const me = slots.find(q => q.dev === dev), ns = npcSlot();
+  return me && me.locked && ns && ns.ctrl === dev ? ns : me;
+}
+// Paso 2: Confirmar. Si con eso estáis todos, empieza la partida; con todos listos, empieza
+function pointerConfirm(dev) {
+  if (selectReady()) { startFromSelect(); return; }
+  const t = pointerTarget(dev);
+  if (!t || t.locked || takenBy(t.cur, t)) return;
+  t.locked = true; addNpcSlot();
+  if (selectReady()) startFromSelect();
+}
 function selectReady() { return slots.length === want && slots.every(s => s.locked); }
 function startFromSelect() { if (startT < 0 && selectReady()) startT = 0.6; }
 function updateSelect(dt) {
@@ -751,16 +764,17 @@ cvs.addEventListener('pointerdown', e => {
   } else if (state === 'pause') {
     for (let i = 0; i < 4; i++) if (inside(pauseRect(i))) { pauseSel = i; choosePause(i); return; }
   } else if (state === 'select' && startT < 0) {
-    if (inside(backRect())) { state = 'count'; return; }
-    if (inside(startRect())) { startFromSelect(); return; }
+    if (inside(backRect())) { // con el aliado IA a medio elegir, «Atrás» vuelve a tu personaje
+      const me = slots.find(q => q.dev === dev), ns = npcSlot();
+      if (me && me.locked && ns && ns.ctrl === dev && !ns.locked) { slots.splice(slots.indexOf(ns), 1); me.locked = false; lastCur = me.cur; return; }
+      state = 'count'; return;
+    }
+    if (inside(startRect())) { pointerConfirm(dev); return; }
     for (let i = 0; i < 8; i++) if (inside(cardRect(i))) {
-      let s = slots.find(q => q.dev === dev) || claim(dev);
+      const s = slots.find(q => q.dev === dev) || claim(dev);
       if (!s) return;
-      const ns = npcSlot();
-      if (s.locked && ns && ns.ctrl === dev && (s.cur !== i || ns.locked)) s = ns; // con el tuyo elegido, el clic elige al aliado IA
-      if (s.locked && s.cur === i) { s.locked = false; return; } // segundo clic: deshace la elección
-      s.cur = i; lastCur = i; s.locked = !takenBy(i, s);
-      addNpcSlot();
+      const t = pointerTarget(dev);
+      t.locked = false; t.cur = i; lastCur = i; // paso 1: señalar (cambiar de personaje anula la confirmación)
     }
   }
 });
@@ -3430,6 +3444,13 @@ function chargedSlot(c) {
   if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: 'Sin carga ni calentamiento' };
   return { icon: 'chargedShot', title: 'Disparo cargado: Tiro perforante', desc: 'Mantén y suelta: hasta ×' + c.chargeMaxMul + ' de daño y atraviesa' };
 }
+// Requisitos de uso que conviene saber al elegir
+const ABILITY_NEEDS = {
+  drop: 'Necesita un enemigo en el aire', suspend: 'Necesita enemigos en el aire', ricochet: 'Necesita un objetivo',
+  frostburst: 'Necesita un enemigo a tiro', dragon: 'Usa cargas: se ganan ejecutando', raiseShield: 'Se desgasta; si se rompe, espera',
+  turret: 'Una torreta a la vez', grenade: 'Va al enemigo fijado'
+};
+const fmtS = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
 function shotText(c) {
   if (c.shotMode === 'frost') return 'Ondas continuas; cargando, bola de nieve';
   if (c.shotStyle === 'revolver') return 'Revólver: lento y contundente, cargable';
@@ -3469,109 +3490,143 @@ function wrapText(txt, x, y, maxW, lh, maxLines) {
   if (line) { ctx.fillText(line, x, y + n * lh); n++; }
   return n;
 }
-// Casilla de icono del panel (mismo estilo que el marcador)
-function infoIcon(type, x, y, color) {
+// Casilla de icono (mismo estilo que el marcador), de tamaño z
+function infoIcon(type, x, y, color, z = 26) {
   const tn = iconTones(color);
-  rrect(x, y, 26, 26, 6); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = 1.5; ctx.stroke();
-  if (type) drawAbilityIcon(type, x + 13, y + 13, 19, color);
+  rrect(x, y, z, z, z * 0.23); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = z > 34 ? 2 : 1.5; ctx.stroke();
+  if (type) drawAbilityIcon(type, x + z / 2, y + z / 2, z * 0.72, color);
+}
+function sectionLabel(txt, x, y) {
+  ctx.textAlign = 'left'; ctx.fillStyle = '#7d7390'; ctx.font = '700 10px ' + FONT; ctx.fillText(txt.toUpperCase(), x, y);
+  const tw = ctx.measureText(txt.toUpperCase()).width;
+  ctx.fillStyle = '#2c2638'; ctx.fillRect(x + tw + 8, y - 4, 450 - 32 - tw - 8, 1);
+}
+// Habilidad 1 o 2: tarjeta grande con icono, nombre, recarga, descripción y requisito
+function drawAbilityCard(ch, slot, x, y, w, h) {
+  const type = slot === 'pri' ? ch.priType : ch.secType, txt = ABILITY_TEXT[type] || ['', ''], tn = iconTones(ch.color);
+  const cd = slot === 'pri' ? ch.priCd : ch.secCd;
+  rrect(x, y, w, h, 10); ctx.fillStyle = tn.bg; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = tn.D; ctx.stroke();
+  infoIcon(type, x + 12, y + 12, ch.color, 46);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = tn.L; ctx.font = '700 10px ' + FONT; ctx.fillText(slot === 'pri' ? 'HABILIDAD 1' : 'HABILIDAD 2', x + 68, y + 25);
+  ctx.fillStyle = '#f2eefa'; fitText(txt[0], x + 68, y + 44, w - 78, 700, 16);
+  if (cd > 0.35 && type !== 'turret') { // recarga (el escudo y la torreta van por pulsaciones, no por recarga)
+    ctx.font = '600 10.5px ' + FONT; const lab = '⟳ ' + fmtS(cd), lw = ctx.measureText(lab).width + 12;
+    rrect(x + 68, y + 50, lw, 15, 7.5); ctx.fillStyle = '#16121e'; ctx.fill();
+    ctx.fillStyle = '#b9afc9'; ctx.fillText(lab, x + 74, y + 61);
+  }
+  ctx.fillStyle = '#d2cadf'; ctx.font = '400 12px ' + FONT;
+  wrapText(txt[1], x + 12, y + 84, w - 24, 15, 3);
+  const need = ABILITY_NEEDS[type];
+  if (need) { ctx.fillStyle = '#ffcf7a'; ctx.font = '600 10.5px ' + FONT; fitText('● ' + need, x + 12, y + h - 10, w - 24, 600, 10.5); }
+}
+// Kit básico: ataque, cargado y movimiento, en baldosas pequeñas
+function drawKitTile(icon, kind, name, desc, color, x, y, w, h) {
+  rrect(x, y, w, h, 8); ctx.fillStyle = '#16121e'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#2f2840'; ctx.stroke();
+  infoIcon(icon, x + 9, y + 9, color, 30);
+  ctx.textAlign = 'left'; ctx.fillStyle = '#7d7390'; fitText(kind.toUpperCase(), x + 46, y + 28, w - 52, 700, 9.5);
+  ctx.fillStyle = '#ece6f4'; fitText(name, x + 10, y + 57, w - 20, 700, 12.5);
+  ctx.fillStyle = '#9d94ad'; ctx.font = '400 10.5px ' + FONT;
+  wrapText(desc, x + 10, y + 72, w - 20, 12.5, 3);
 }
 function drawInfoPanel(ch) {
   const [x, y, w, h] = infoRect();
   rrect(x, y, w, h, 12); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
-  rrect(x, y, w, 4, 2); ctx.fillStyle = ch.color; ctx.fill(); // franja del color del personaje
+  ctx.save(); rrect(x, y, w, h, 12); ctx.clip(); ctx.fillStyle = ch.color; ctx.fillRect(x, y, w, 4); ctx.restore(); // franja del color del personaje
+  // cabecera: quién es
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 22px ' + FONT; ctx.fillText(ch.name, x + 16, y + 32);
-  ctx.fillStyle = ch.color; ctx.font = '700 13px ' + FONT; ctx.fillText(ch.role, x + 16, y + 50);
-  ctx.fillStyle = '#8f86a0'; ctx.font = '400 11.5px ' + FONT; ctx.fillText(styleText(ch), x + 16, y + 66);
-  const bars = [
-    ['Vida', ch.hp / 160, ch.hp + ''],
-    ['Velocidad', ch.speed / 225, ''],
-    ['Golpe', ch.canMelee ? ch.melee / 4 : 0, ch.canMelee ? '' : 'no'],
-    ['Disparo', ch.canShoot ? ch.shot / 2 : 0, ch.canShoot ? '' : 'no']
-  ];
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 24px ' + FONT; ctx.fillText(ch.name, x + 16, y + 34);
+  ctx.fillStyle = ch.color; ctx.font = '700 13px ' + FONT; ctx.fillText(ch.role, x + 16, y + 53);
+  ctx.fillStyle = '#8f86a0'; fitText(styleText(ch), x + 16, y + 70, 220, 400, 11);
+  const bars = [['Vida', ch.hp / 160, ch.hp + ''], ['Velocidad', ch.speed / 225, ''], ['Golpe', ch.canMelee ? ch.melee / 4 : 0, ch.canMelee ? '' : 'no'], ['Disparo', ch.canShoot ? ch.shot / 2 : 0, ch.canShoot ? '' : 'no']];
   bars.forEach(([label, f, note], i) => {
-    const yy = y + 82 + i * 16;
-    ctx.fillStyle = '#b9afc9'; ctx.font = '600 11px ' + FONT; ctx.fillText(label, x + 16, yy + 8);
-    rrect(x + 88, yy, 150, 7, 3.5); ctx.fillStyle = '#2c2638'; ctx.fill();
-    if (f > 0) { rrect(x + 88, yy, Math.max(7, 150 * Math.min(1, f)), 7, 3.5); ctx.fillStyle = ch.color; ctx.fill(); }
-    if (note) { ctx.fillStyle = '#8f86a0'; ctx.font = '400 10.5px ' + FONT; ctx.fillText(note, x + 246, yy + 8); }
+    const yy = y + 18 + i * 14, bx = x + 302;
+    ctx.fillStyle = '#b9afc9'; ctx.font = '600 10px ' + FONT; ctx.textAlign = 'right'; ctx.fillText(label, bx - 8, yy + 7);
+    rrect(bx, yy, 104, 6, 3); ctx.fillStyle = '#2c2638'; ctx.fill();
+    if (f > 0) { rrect(bx, yy, Math.max(6, 104 * Math.min(1, f)), 6, 3); ctx.fillStyle = ch.color; ctx.fill(); }
+    ctx.textAlign = 'left'; if (note) { ctx.fillStyle = '#8f86a0'; ctx.font = '400 10px ' + FONT; ctx.fillText(note, bx + 110, yy + 7); }
   });
-  const pri = ABILITY_TEXT[ch.priType] || ['', ''], sec = ABILITY_TEXT[ch.secType] || ['', ''];
-  const cs = chargedSlot(ch), mv = moveOf(ch);
-  const rows = [
-    ch.canMelee ? ['melee', 'Cuerpo a cuerpo', meleeText(ch)] : ['shot', 'Disparo', shotText(ch)],
-    cs ? [cs.icon, cs.title, cs.desc] : null,
-    [mv.icon, 'Movimiento: ' + mv.name, mv.desc],
-    [ch.priType, 'Habilidad 1: ' + pri[0], pri[1]],
-    [ch.secType, 'Habilidad 2: ' + sec[0], sec[1]]
-  ].filter(Boolean);
-  let yy = y + 158;
-  for (const [icon, title, desc] of rows) {
-    infoIcon(icon, x + 14, yy - 4, ch.color);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#e6e0ef'; ctx.font = '700 12px ' + FONT; ctx.fillText(title, x + 50, yy + 8);
-    ctx.fillStyle = '#9d94ad'; ctx.font = '400 11px ' + FONT;
-    const n = wrapText(desc, x + 50, yy + 22, w - 64, 13, 2);
-    yy += Math.max(30, 14 + n * 13) + 10;
+  // lo principal: las dos habilidades, grandes y separadas
+  sectionLabel('Habilidades', x + 16, y + 96);
+  const aw = (w - 32 - 12) / 2;
+  drawAbilityCard(ch, 'pri', x + 16, y + 104, aw, 150);
+  drawAbilityCard(ch, 'sec', x + 16 + aw + 12, y + 104, aw, 150);
+  // lo secundario: ataque, cargado y movimiento
+  sectionLabel('Ataque y movimiento', x + 16, y + 274);
+  const cs = chargedSlot(ch), mv = moveOf(ch), tw = (w - 32 - 16) / 3, ty = y + 282;
+  const split = t => { const k = t.indexOf(': '); return k < 0 ? ['Cargado', t] : [t.slice(0, k), t.slice(k + 2)]; };
+  drawKitTile(ch.canMelee ? 'melee' : 'shot', 'Ataque', ch.canMelee ? 'Cuerpo a cuerpo' : 'Disparo', ch.canMelee ? meleeText(ch) : shotText(ch), ch.color, x + 16, ty, tw, 106);
+  if (cs) { const [k, n] = split(cs.title); drawKitTile(cs.icon, k, n, cs.desc, ch.color, x + 16 + tw + 8, ty, tw, 106); }
+  else drawKitTile(null, 'Cargado', 'No tiene', '', ch.color, x + 16 + tw + 8, ty, tw, 106);
+  drawKitTile(mv.icon, 'Movimiento', mv.name, mv.desc, ch.color, x + 16 + (tw + 8) * 2, ty, tw, 106);
+}
+// Botón de abajo: Confirmar (paso 2 del puntero) o Empezar cuando estáis todos
+function startButtonState() {
+  const pdev = isTouch ? 'touch' : 'kb1', me = slots.find(q => q.dev === pdev), t = pointerTarget(pdev), ns = npcSlot();
+  if (selectReady()) return { on: true, big: 'Empezar ▶', sub: isTouch ? 'Toca para entrar' : 'Clic, golpe o Start' };
+  if (t && !t.locked) {
+    if (takenBy(t.cur, t)) return { on: false, big: 'Confirmar', sub: CHARS[t.cur].name + ' ya está cogido' };
+    const last = slots.length === want && slots.every(q => q === t || q.locked) && !(npcMode && t === me && !ns);
+    return { on: true, big: 'Confirmar', sub: (t === ns ? 'Aliado: ' : '') + CHARS[t.cur].name + (last ? ' y empezar' : '') };
   }
+  if (!me) return { on: false, big: 'Confirmar', sub: isTouch ? 'Toca un personaje' : 'Haz clic en un personaje' };
+  const pend = slots.length < want ? want - slots.length : slots.filter(q => !q.locked).length;
+  return { on: false, big: 'Empezar ▶', sub: pend === 1 ? 'Falta 1 jugador' : 'Faltan ' + pend + ' jugadores' };
 }
 function drawStartButton() {
-  const [x, y, w, h] = startRect(), ready = selectReady(), pend = slots.length < want ? want - slots.length : slots.filter(s => !s.locked).length;
-  const glow = ready ? 0.5 + 0.5 * Math.sin(time * 5) : 0;
-  if (ready) { rrect(x - 3, y - 3, w + 6, h + 6, 14); ctx.fillStyle = `rgba(255,181,71,${0.18 + glow * 0.22})`; ctx.fill(); }
-  rrect(x, y, w, h, 12);
-  ctx.fillStyle = ready ? (hoverStart ? '#ffc970' : '#ffb547') : '#1c1726'; ctx.fill();
-  ctx.lineWidth = 2; ctx.strokeStyle = ready ? '#ffe2a8' : '#3b3349'; ctx.stroke();
+  const [x, y, w, h] = startRect(), st = startButtonState(), glow = st.on ? 0.5 + 0.5 * Math.sin(time * 5) : 0;
+  const go = st.big.startsWith('Empezar'), base = go ? '#ffb547' : '#7ee08a', hi = go ? '#ffc970' : '#9cf0a6', ring = go ? '255,181,71' : '126,224,138';
+  if (st.on) { rrect(x - 3, y - 3, w + 6, h + 6, 14); ctx.fillStyle = `rgba(${ring},${0.15 + glow * 0.22})`; ctx.fill(); }
+  rrect(x, y, w, h, 12); ctx.fillStyle = st.on ? (hoverStart ? hi : base) : '#1c1726'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = st.on ? 'rgba(255,255,255,.55)' : '#3b3349'; ctx.stroke();
   ctx.textAlign = 'center';
-  ctx.fillStyle = ready ? '#1a1206' : '#5f566b'; ctx.font = '700 22px ' + FONT; ctx.fillText('Empezar ▶', x + w / 2, y + 36);
-  ctx.font = '600 11px ' + FONT; ctx.fillStyle = ready ? '#5a3a08' : '#8f86a0';
-  const ns = npcSlot(), wait = ns && !ns.locked && slots[0].locked ? 'Elige al aliado IA' : pend === 1 ? 'Falta 1 jugador por elegir' : 'Faltan ' + pend + ' por elegir';
-  ctx.fillText(ready ? (isTouch ? 'Toca para entrar' : 'Clic, golpe o Start') : wait, x + w / 2, y + 58);
+  ctx.fillStyle = st.on ? '#14100a' : '#5f566b'; ctx.font = '700 22px ' + FONT; ctx.fillText(st.big, x + w / 2, y + 36);
+  ctx.fillStyle = st.on ? 'rgba(20,16,10,.75)' : '#8f86a0'; fitText(st.sub, x + w / 2, y + 58, w - 16, 600, 11.5);
+}
+function drawSelectCard(i, shown) {
+  const [x, y, w, h] = cardRect(i), ch = CHARS[i], owner = takenBy(i), hl = i === shown;
+  rrect(x, y, w, h, 10); ctx.fillStyle = hl ? '#262035' : '#1c1726'; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = hl ? '#6b5e86' : '#3b3349'; ctx.stroke();
+  const bob = slots.some(s => !s.locked && s.cur === i) || hl ? Math.sin(time * 6) * 3 : 0;
+  ctx.save(); ctx.beginPath(); ctx.rect(x + 2, y + 2, 70, h - 4); ctx.clip(); // la figura no invade el texto
+  drawCharPreview(x + 34, y + (ch.size > 1.1 ? 56 : 60), ch, ch.size > 1.1 ? 0.95 : 1.2, bob);
+  ctx.restore();
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 15px ' + FONT; ctx.fillText(ch.name, x + 76, y + 40);
+  ctx.fillStyle = ch.color; fitText(ch.role, x + 76, y + 57, w - 84, 600, 11);
+  const tag = ch.canShoot ? (ch.canMelee ? 'Mixto' : 'Distancia') : 'Cuerpo';
+  ctx.font = '700 9px ' + FONT; const tgw = ctx.measureText(tag).width + 10;
+  rrect(x + 76, y + 66, tgw, 15, 7); ctx.fillStyle = ch.canShoot ? '#23324a' : '#4a2a28'; ctx.fill();
+  ctx.fillStyle = ch.canShoot ? '#9fc4ff' : '#ffb39a'; ctx.fillText(tag, x + 81, y + 77);
+  if (owner) {
+    const si = slots.indexOf(owner);
+    rrect(x, y, w, h, 10); ctx.lineWidth = 3; ctx.strokeStyle = SLOTC[si]; ctx.stroke();
+    rrect(x + w - 44, y + 6, 38, 18, 5); ctx.fillStyle = SLOTC[si]; ctx.fill();
+    ctx.textAlign = 'center'; ctx.fillStyle = '#16121e'; ctx.font = '700 11px ' + FONT; ctx.fillText('J' + (si + 1) + ' ✓', x + w - 25, y + 19);
+  }
 }
 function drawSelect() {
   drawMenuBg();
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Elige personaje', W / 2, 44);
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Elige personaje', W / 2, 42);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT;
-  ctx.fillText(isTouch ? 'Toca un personaje para elegirlo y después pulsa Empezar'
-    : 'Elige con clic, o con golpe en teclado o mando; cuando estéis listos, Empezar', W / 2, 70);
-  // botón atrás
+  ctx.fillText(isTouch ? 'Toca un personaje y pulsa Confirmar abajo'
+    : 'Clic en un personaje y en Confirmar; con teclado o mando, golpe elige y otra vez empieza', W / 2, 66);
   const [bx, by, bw, bh] = backRect();
   rrect(bx, by, bw, bh, 7); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
   ctx.fillStyle = '#d8d0e6'; ctx.font = '600 13px ' + FONT; ctx.fillText('← Atrás', bx + bw / 2, by + 20);
   const shown = hoverCard >= 0 ? hoverCard : lastCur;
-  for (let i = 0; i < 8; i++) {
-    const [x, y, w, h] = cardRect(i), ch = CHARS[i], owner = takenBy(i), hl = i === shown;
-    rrect(x, y, w, h, 10); ctx.fillStyle = hl ? '#262035' : '#1c1726'; ctx.fill();
-    ctx.lineWidth = 1.5; ctx.strokeStyle = hl ? '#6b5e86' : '#3b3349'; ctx.stroke();
-    const tag = ch.canShoot ? (ch.canMelee ? 'Mixto' : 'Distancia') : 'Cuerpo';
-    ctx.font = '700 9px ' + FONT; ctx.textAlign = 'left';
-    const tw = ctx.measureText(tag).width + 10;
-    rrect(x + 6, y + 6, tw, 15, 7); ctx.fillStyle = ch.canShoot ? '#23324a' : '#4a2a28'; ctx.fill();
-    ctx.fillStyle = ch.canShoot ? '#9fc4ff' : '#ffb39a'; ctx.fillText(tag, x + 11, y + 17);
-    const bob = slots.some(s => !s.locked && s.cur === i) || hl ? Math.sin(time * 6) * 3 : 0;
-    drawCharPreview(x + w / 2 - 4, y + (ch.size > 1.1 ? 78 : 90), ch, ch.size > 1.1 ? 1.15 : 1.55, bob);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#f2eefa'; ctx.font = '700 14px ' + FONT; ctx.fillText(ch.name, x + w / 2, y + 120);
-    ctx.fillStyle = ch.color; ctx.font = '600 11px ' + FONT; ctx.fillText(ch.role, x + w / 2, y + 137);
-    if (owner) {
-      const si = slots.indexOf(owner);
-      rrect(x, y, w, h, 10); ctx.fillStyle = 'rgba(10,8,16,0.35)'; ctx.fill();
-      rrect(x, y, w, h, 10); ctx.lineWidth = 3; ctx.strokeStyle = SLOTC[si]; ctx.stroke();
-      rrect(x + w - 46, y + 6, 40, 18, 5); ctx.fillStyle = SLOTC[si]; ctx.fill();
-      ctx.fillStyle = '#16121e'; ctx.font = '700 11px ' + FONT; ctx.fillText('J' + (si + 1) + ' ✓', x + w - 26, y + 19);
-    }
-  }
-  slots.forEach((s, si) => { // cursores de quienes aún eligen
+  for (let i = 0; i < 8; i++) drawSelectCard(i, shown);
+  slots.forEach((s, si) => { // cursores de quienes aún no han confirmado
     if (s.locked) return;
-    const [x, y, w, h] = cardRect(s.cur), ins = 3 + si * 5;
-    rrect(x - ins + 6, y - ins + 6, w + ins * 2 - 12, h + ins * 2 - 12, 10);
+    const [x, y, w, h] = cardRect(s.cur), ins = 2 + si * 4;
+    rrect(x - ins + 4, y - ins + 4, w + ins * 2 - 8, h + ins * 2 - 8, 10);
     ctx.setLineDash([8, 5]); ctx.lineWidth = 3; ctx.strokeStyle = SLOTC[si]; ctx.stroke(); ctx.setLineDash([]);
     rrect(x + w - 30 - si * 26, y + h - 24, 24, 18, 4); ctx.fillStyle = SLOTC[si]; ctx.fill();
     ctx.fillStyle = '#16121e'; ctx.font = '700 11px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('J' + (si + 1), x + w - 18 - si * 26, y + h - 11);
   });
   drawInfoPanel(CHARS[shown]);
-  // paneles de jugador (a la izquierda del botón Empezar)
+  // paneles de jugador (a la izquierda del botón)
   const gap = 12, area = startRect()[0] - 12 - 24, pw = (area - (want - 1) * gap) / want, py = H - 100;
   for (let i = 0; i < want; i++) {
     const x = 24 + i * (pw + gap), s = slots[i], ch = s ? CHARS[s.cur] : null;
@@ -3581,19 +3636,18 @@ function drawSelect() {
     ctx.fillStyle = s ? SLOTC[i] : '#5f566b'; ctx.font = '700 15px ' + FONT; ctx.fillText('J' + (i + 1), x + 12, py + 24);
     if (!s) {
       ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
-      wrapText(npcMode && i === 1 ? 'Aliado IA: elige primero el tuyo' : (isTouch ? 'Toca un personaje' : 'Pulsa golpe o haz clic para entrar'), x + 12, py + 46, pw - 24, 14, 2);
+      wrapText(npcMode && i === 1 ? 'Aliado IA: confirma primero el tuyo' : (isTouch ? 'Toca un personaje' : 'Pulsa golpe o haz clic para entrar'), x + 12, py + 46, pw - 24, 14, 2);
       continue;
     }
     ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText(DEVLABEL[s.dev], x + 44, py + 24);
     ctx.fillStyle = s.locked ? '#f2eefa' : '#b9afc9'; ctx.font = (s.locked ? '700 ' : '400 ') + '15px ' + FONT;
     ctx.fillText(ch.name, x + 12, py + 47);
-    // las dos habilidades del elegido, en pequeño
     const tn = iconTones(ch.color);
     [ch.priType, ch.secType].forEach((t, k) => { const ix = x + pw - 56 + k * 24; rrect(ix, py + 31, 20, 20, 4); ctx.fillStyle = tn.bgHi; ctx.fill(); drawAbilityIcon(t, ix + 10, py + 41, 14, ch.color); });
     ctx.font = '600 11px ' + FONT;
     if (takenBy(s.cur, s) && !s.locked) { ctx.fillStyle = '#ff8f8f'; ctx.fillText('Ya está cogido', x + 12, py + 65); }
-    else if (s.locked) { ctx.fillStyle = '#7ee08a'; ctx.fillText('✓ Elegido', x + 12, py + 65); }
-    else { ctx.fillStyle = '#b9afc9'; ctx.fillText('Eligiendo…', x + 12, py + 65); }
+    else if (s.locked) { ctx.fillStyle = '#7ee08a'; ctx.fillText('✓ Confirmado', x + 12, py + 65); }
+    else { ctx.fillStyle = '#b9afc9'; ctx.fillText(s.dev === 'touch' || s.dev === 'kb1' && !isTouch ? 'Pulsa Confirmar' : s.dev === 'npc' ? 'Elige al aliado' : 'Golpe para confirmar', x + 12, py + 65); }
   }
   drawStartButton();
   if (startT >= 0) {
