@@ -1,0 +1,565 @@
+<title>Laboratorio de interacción coop</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+/* Layout: banco de pruebas. Índice de ideas a la izquierda, escenario jugable a la derecha y notas de diseño debajo. Look único oscuro: piedra de mazmorra + luz de antorcha. */
+:root{
+  color-scheme:dark;
+  --bg:#111514; --panel:#181e1d; --panel-2:#202826; --line:#2c3633;
+  --fg:#ebe6da; --muted:#97a29c; --accent:#f0a744; --p1:#5fb7ee; --p2:#ef6f82;
+  --display:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1240px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{display:grid;gap:8px;margin-bottom:28px;max-width:820px}
+.eyebrow{margin:0;font:500 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--accent)}
+h1{margin:0;font:800 clamp(32px,5vw,54px)/1.02 var(--display);letter-spacing:-.02em;text-wrap:balance}
+.lede{margin:4px 0 0;color:var(--muted);max-width:64ch}
+.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:24px;align-items:start}
+.ideas{display:flex;flex-direction:column;gap:4px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}
+.idea{all:unset;box-sizing:border-box;cursor:pointer;display:grid;gap:3px;padding:10px 12px 11px;border-radius:10px;border:1px solid transparent}
+.idea:hover{background:var(--panel)}
+.idea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.idea[aria-current="true"]{background:var(--panel-2);border-color:var(--line)}
+.idea[aria-current="true"] .t{color:var(--accent)}
+.idea .tag{font:500 10.5px/1 var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.idea .t{font:700 16px/1.2 var(--display)}
+.idea .s{font-size:13px;color:var(--muted);line-height:1.35}
+.stage-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.stage-head{display:flex;flex-wrap:wrap;gap:4px 24px;align-items:baseline;padding:16px 18px 14px}
+.stage-head h2{margin:0;font:800 26px/1.1 var(--display);letter-spacing:-.01em}
+.stage-head .tag{display:block;font:500 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--accent);margin-bottom:6px}
+.stage-head p{margin:0;color:var(--muted);max-width:62ch;flex:1 1 320px;min-width:0}
+canvas{display:block;width:100%;aspect-ratio:8/5;max-width:100%;background:#060807;touch-action:none;outline:none;cursor:crosshair}
+canvas:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 18px;border-top:1px solid var(--line);font-size:13.5px}
+.keys{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.role{color:var(--muted);margin-left:4px}
+kbd{font:500 11.5px/1 var(--mono);background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;padding:4px 6px;border-radius:5px;color:var(--fg)}
+.pl{font:700 11px/1 var(--mono);padding:4px 6px;border-radius:5px;color:#0d1110;margin-right:2px}
+.pl.p1{background:var(--p1)} .pl.p2{background:var(--p2)}
+.spacer{flex:1}
+.toggle{display:flex;align-items:center;gap:6px;cursor:pointer}
+.toggle input{accent-color:var(--accent);width:16px;height:16px}
+.btn{font:700 13px/1 var(--body);background:var(--panel-2);color:var(--fg);border:1px solid var(--line);padding:8px 12px;border-radius:8px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn[aria-pressed="true"]{background:var(--accent);color:#1d1406;border-color:var(--accent)}
+.seg{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.seg .lbl{color:var(--muted);margin-right:4px}
+.touch{display:none}
+@media (pointer:coarse){.touch{display:flex}}
+.touch .btn{padding:14px 18px;user-select:none;-webkit-user-select:none;touch-action:none}
+.muted{color:var(--muted)}
+.notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;padding:24px 4px 0}
+.notes h3{margin:0 0 8px;font:500 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.notes p{margin:0}
+.notes ul{margin:0;padding-left:18px}
+.notes li{margin-bottom:6px}
+.notes li::marker{color:var(--accent)}
+@media (max-width:960px){.notes{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:880px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .ideas{position:static;flex-direction:row;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity}
+  .idea{flex:0 0 190px;scroll-snap-align:start;background:var(--panel);border-color:var(--line)}
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">Mazmorra cooperativa · banco de pruebas</p>
+    <h1>Laboratorio de interacción coop</h1>
+    <p class="lede">Ocho mecánicas que hacen que los jugadores dependan unos de otros, cada una como un prototipo jugable con formas simples. Jugad dos personas en un mismo teclado o dejad que la IA lleve al jugador 2.</p>
+  </header>
+
+  <div class="layout">
+    <nav class="ideas" id="ideas" aria-label="Ideas de interacción"></nav>
+
+    <section aria-live="polite">
+      <div class="stage-card">
+        <div class="stage-head">
+          <div><span class="tag" id="dTag"></span><h2 id="dTitle"></h2></div>
+          <p id="dPitch"></p>
+        </div>
+        <canvas id="stage" tabindex="0" aria-label="Escenario jugable. Haz clic para usar el teclado."></canvas>
+        <div class="bar">
+          <div class="keys"><span class="pl p1">J1</span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> + <kbd>Espacio</kbd><span class="role" id="k1"></span></div>
+          <div class="keys"><span class="pl p2">J2</span><kbd>← ↑ ↓ →</kbd> + <kbd>Enter</kbd><span class="role" id="k2"></span></div>
+          <div class="spacer"></div>
+          <label class="toggle"><input type="checkbox" id="ai" checked> La IA controla a J2</label>
+          <button class="btn" id="reset">Reiniciar</button>
+        </div>
+        <div class="bar seg" id="opts" hidden></div>
+        <div class="bar touch">
+          <button class="btn" data-act="0">Acción J1</button>
+          <button class="btn" data-act="1">Acción J2</button>
+          <span class="muted">Mantén el dedo en el escenario para mover a J1.</span>
+        </div>
+      </div>
+      <div class="notes">
+        <div><h3>Por qué funciona en coop</h3><p id="nWhy"></p></div>
+        <div><h3>Variantes para probar</h3><ul id="nVar"></ul></div>
+        <div><h3>Cómo se programa</h3><p id="nHow"></p></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(()=>{
+const W=800,H=500,R={l:40,t:40,r:760,b:460};
+const C={floor:'#1b2120',tile:'#232b29',wall:'#36413e',wallTop:'#4b5854',p1:'#5fb7ee',p2:'#ef6f82',enemy:'#d0594b',enemyDark:'#6e2620',ice:'#8fe3f2',gold:'#f0a744',text:'#ebe6da',muted:'#97a29c',ok:'#7fd18b',abyss:'#060807',down:'#68716d'};
+const cv=document.getElementById('stage'),ctx=cv.getContext('2d');
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const coarse=matchMedia('(pointer:coarse)').matches;
+const aiBox=document.getElementById('ai');
+const OPT={mode:'zoom'};
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const norm=(x,y)=>{const l=Math.hypot(x,y)||1;return{x:x/l,y:y/l}};
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const TAU=Math.PI*2;
+function segDist(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy||1;const t=clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/l2,0,1);return Math.hypot(p.x-(a.x+t*dx),p.y-(a.y+t*dy))}
+function clampRoom(o,b=R){const r=o.r||10;o.x=clamp(o.x,b.l+r,b.r-r);o.y=clamp(o.y,b.t+r,b.b-r)}
+function nearest(P,e){return dist(P[0],e)<dist(P[1],e)?P[0]:P[1]}
+
+function mkP(x,y,i){return{x,y,r:14,i,color:i?C.p2:C.p1,fx:0,fy:-1,flash:0,speed:190}}
+function moveP(p,inp,dt,mul=1,b=R,blocked){
+  const nx=clamp(p.x+inp.x*p.speed*mul*dt,b.l+p.r,b.r-p.r);
+  if(!blocked||!blocked(nx,p.y))p.x=nx;
+  const ny=clamp(p.y+inp.y*p.speed*mul*dt,b.t+p.r,b.b-p.r);
+  if(!blocked||!blocked(p.x,ny))p.y=ny;
+  if(Math.abs(inp.x)+Math.abs(inp.y)>.05){const n=norm(inp.x,inp.y);p.fx=n.x;p.fy=n.y}
+}
+function toward(p,tx,ty,stop=6){const dx=tx-p.x,dy=ty-p.y,l=Math.hypot(dx,dy);if(l<stop)return{x:0,y:0,act:false};const s=Math.min(1,(l-stop)/40+.35);return{x:dx/l*s,y:dy/l*s,act:false}}
+
+/* ---------- efectos ---------- */
+let FX=[];
+function burst(x,y,color,n=12,sp=160){for(let k=0;k<n;k++){const a=Math.random()*TAU,s=rnd(sp*.3,sp);FX.push({k:'p',x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rnd(.35,.7),max:.7,color,r:rnd(2,4)})}}
+function say(x,y,text,color=C.text,size=16){FX.push({k:'t',x,y,text,color,life:1.2,max:1.2,size})}
+function ring(x,y,r,color,life=.45){FX.push({k:'r',x,y,r,color,life,max:life})}
+function updFx(dt){const d=Math.pow(.05,dt);for(const f of FX){f.life-=dt;if(f.k==='p'){f.x+=f.vx*dt;f.y+=f.vy*dt;f.vx*=d;f.vy*=d}else if(f.k==='t')f.y-=26*dt}FX=FX.filter(f=>f.life>0)}
+function drawFx(){for(const f of FX){const a=clamp(f.life/f.max,0,1);ctx.globalAlpha=a;
+  if(f.k==='p'){ctx.fillStyle=f.color;ctx.beginPath();ctx.arc(f.x,f.y,f.r,0,TAU);ctx.fill()}
+  else if(f.k==='r'){ctx.strokeStyle=f.color;ctx.lineWidth=5*a+1;ctx.beginPath();ctx.arc(f.x,f.y,f.r*(.15+.85*(1-a)),0,TAU);ctx.stroke()}
+  else{ctx.font=`800 ${f.size}px "Bricolage Grotesque", system-ui, sans-serif`;ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(6,8,7,.85)';ctx.strokeText(f.text,f.x,f.y);ctx.fillStyle=f.color;ctx.fillText(f.text,f.x,f.y)}}
+  ctx.globalAlpha=1}
+
+/* ---------- dibujo común ---------- */
+function drawRoom(){
+  ctx.fillStyle=C.floor;ctx.fillRect(R.l,R.t,R.r-R.l,R.b-R.t);
+  ctx.strokeStyle=C.tile;ctx.lineWidth=1;ctx.beginPath();
+  for(let x=R.l;x<=R.r;x+=40){ctx.moveTo(x+.5,R.t);ctx.lineTo(x+.5,R.b)}
+  for(let y=R.t;y<=R.b;y+=40){ctx.moveTo(R.l,y+.5);ctx.lineTo(R.r,y+.5)}
+  ctx.stroke();
+  ctx.fillStyle=C.wall;ctx.fillRect(R.l-16,R.t-28,R.r-R.l+32,28);
+  ctx.fillStyle=C.wallTop;ctx.fillRect(R.l-16,R.t-34,R.r-R.l+32,8);
+  ctx.fillStyle=C.wall;ctx.fillRect(R.l-16,R.t,16,R.b-R.t);ctx.fillRect(R.r,R.t,16,R.b-R.t);
+  ctx.fillStyle=C.wallTop;ctx.fillRect(R.l-16,R.b,R.r-R.l+32,10);
+  ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(R.l,R.t,R.r-R.l,10);
+}
+function drawPlayer(p,o={}){
+  const z=o.z||0,sh=1-z/220;
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(p.x,p.y+p.r*.7,p.r*sh,p.r*.45*sh,0,0,TAU);ctx.fill();
+  const y=p.y-z;ctx.globalAlpha=o.ghost?.45:1;
+  ctx.fillStyle=p.flash>0?'#fff':(o.down?C.down:p.color);
+  ctx.beginPath();if(o.down)ctx.ellipse(p.x,y+5,p.r+4,p.r*.6,0,0,TAU);else ctx.arc(p.x,y,p.r,0,TAU);ctx.fill();
+  ctx.lineWidth=2.5;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.stroke();
+  if(!o.down){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(p.x+p.fx*(p.r-4.5),y+p.fy*(p.r-4.5),3.3,0,TAU);ctx.fill()}
+  ctx.font='700 10px "JetBrains Mono", monospace';ctx.textAlign='center';ctx.fillStyle=p.color;ctx.fillText('J'+(p.i+1),p.x,y-p.r-(o.down?0:9));
+  ctx.globalAlpha=1;
+}
+function drawEnemy(e,t){
+  const sq=1+Math.sin(t*6+e.seed)*.08,fz=e.frozen>0;
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(e.x,e.y+e.r*.7,e.r,e.r*.4,0,0,TAU);ctx.fill();
+  ctx.fillStyle=e.flash>0?'#fff':fz?C.ice:C.enemy;ctx.beginPath();ctx.ellipse(e.x,e.y-2,e.r*(fz?1:sq),e.r/(fz?1:sq)*.9,0,0,TAU);ctx.fill();
+  ctx.lineWidth=2;ctx.strokeStyle=fz?'#e8fbff':C.enemyDark;ctx.stroke();
+  ctx.fillStyle=fz?'#2a5560':'#2a0f0c';
+  ctx.beginPath();ctx.arc(e.x-e.r*.35,e.y-4,2.2,0,TAU);ctx.fill();
+  ctx.beginPath();ctx.arc(e.x+e.r*.35,e.y-4,2.2,0,TAU);ctx.fill();
+  if(fz){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(e.x-12,e.y-e.r-11,24,3);ctx.fillStyle=C.ice;ctx.fillRect(e.x-12,e.y-e.r-11,24*Math.min(1,e.frozen/3),3)}
+}
+function pill(x,y,text,color=C.text,align='center'){
+  ctx.font='700 12.5px "Atkinson Hyperlegible", system-ui, sans-serif';
+  const w=ctx.measureText(text).width+18,x0=align==='left'?x:x-w/2;
+  ctx.fillStyle='rgba(8,11,10,.8)';ctx.beginPath();ctx.roundRect(x0,y-11,w,22,11);ctx.fill();
+  ctx.fillStyle=color;ctx.textAlign='left';ctx.fillText(text,x0+9,y+1);
+}
+function hud(lines){let y=60;for(const l of lines){if(Array.isArray(l))pill(52,y,l[0],l[1],'left');else pill(52,y,l,C.text,'left');y+=26}}
+function arcRing(x,y,r,f,color,w){ctx.strokeStyle=color;ctx.lineWidth=w;ctx.beginPath();ctx.arc(x,y,r,-Math.PI/2,-Math.PI/2+TAU*clamp(f,0,1));ctx.stroke()}
+function edgeEnemy(sp=55,hp=1){const s=Math.floor(Math.random()*4);let x,y;
+  if(s===0){x=rnd(R.l+20,R.r-20);y=R.t+14}else if(s===1){x=rnd(R.l+20,R.r-20);y=R.b-14}else if(s===2){x=R.l+14;y=rnd(R.t+20,R.b-20)}else{x=R.r-14;y=rnd(R.t+20,R.b-20)}
+  return{x,y,r:11,sp:sp*rnd(.8,1.2),hp,seed:Math.random()*6,frozen:0,flash:0,vx:0,vy:0}}
+
+/* ---------- demos ---------- */
+const DEMOS=[
+/* 1 */{id:'rescate',tag:'Rescate',title:'Levantar al caído',short:'Mantener pulsado para levantar al compañero',
+ pitch:'Quien cae no muere: queda en el suelo y su compañero tiene unos segundos para levantarlo manteniendo pulsada la acción a su lado.',
+ k1:'mantener = levantar',k2:'mantener = levantar',
+ why:'Convierte un error individual en un momento de equipo. El que sigue en pie decide si arriesga para rescatar, y el caído sigue dentro de la partida en lugar de mirar desde fuera.',
+ vars:['El caído se arrastra despacio hacia su compañero (activo aquí).','Si se agota el tiempo pasa a fantasma: puede moverse, pero rescatarlo cuesta el doble.','Rescate en grupo: con dos rescatadores la barra sube el doble de rápido.','Cada rescate cuesta algo: un corazón del que levanta o unas monedas.'],
+ how:'Cada jugador tiene un estado: de pie, caído o fantasma. Si un aliado de pie está dentro del radio y mantiene la acción, la barra de rescate sube y la cuenta atrás se pausa. Si se aleja, la barra baja poco a poco en vez de reiniciarse, para no castigar una interrupción breve.',
+ init(S){S.P=[mkP(300,270,0),mkP(500,270,1)];S.st=[{down:false,ghost:false,bleed:0,rev:0},{down:true,ghost:false,bleed:12,rev:0}];S.fall=0;S.next=0;S.saves=0},
+ update(S,inp,dt){
+  for(let i=0;i<2;i++){const p=S.P[i],s=S.st[i],o=S.P[1-i],os=S.st[1-i];
+   if(s.down){
+    const helping=!os.down&&dist(p,o)<52&&inp[1-i].act;s.helping=helping;
+    if(helping)s.rev+=dt/(s.ghost?3.2:1.6);
+    else{s.rev=Math.max(0,s.rev-dt*.5);if(!s.ghost){s.bleed-=dt;if(s.bleed<=0){s.ghost=true;s.bleed=0;say(p.x,p.y-34,'Fantasma',C.muted)}}}
+    moveP(p,inp[i],dt,s.ghost?.5:.18);
+    if(s.rev>=1){s.down=s.ghost=false;s.rev=0;S.saves++;burst(p.x,p.y,C.ok,20);say(p.x,p.y-36,'¡En pie!',C.ok,18);S.fall=3.5;S.next=1-i}
+   }else{
+    const reviving=os.down&&dist(p,o)<52&&inp[i].act;
+    if(!reviving)moveP(p,inp[i],dt);
+   }}
+  if(S.fall>0){S.fall-=dt;if(S.fall<=0){const s=S.st[S.next],p=S.P[S.next];if(!s.down){Object.assign(s,{down:true,ghost:false,bleed:12,rev:0});p.flash=.3;burst(p.x,p.y,C.enemy,16);say(p.x,p.y-36,'¡Derribado!',C.enemy,18);S.shake=.25}}}
+ },
+ draw(S){drawRoom();
+  S.P.forEach((p,i)=>{const s=S.st[i];if(!s.down)return;ctx.setLineDash([5,6]);ctx.strokeStyle='rgba(235,230,218,.28)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p.x,p.y,52,0,TAU);ctx.stroke();ctx.setLineDash([])});
+  [...S.P].sort((a,b)=>a.y-b.y).forEach(p=>{const s=S.st[p.i];drawPlayer(p,{down:s.down,ghost:s.ghost})});
+  S.P.forEach((p,i)=>{const s=S.st[i];if(!s.down)return;
+   ctx.globalAlpha=.25;arcRing(p.x,p.y,26,1,'#000',4);ctx.globalAlpha=1;
+   if(!s.ghost)arcRing(p.x,p.y,26,s.bleed/12,C.enemy,4);
+   if(s.rev>0)arcRing(p.x,p.y,33,s.rev,C.ok,6);
+   pill(p.x,p.y+34,s.ghost?'fantasma':Math.ceil(s.bleed)+' s',s.ghost?C.muted:C.enemy);
+   const o=S.P[1-i];if(!S.st[1-i].down&&dist(p,o)<52&&!s.helping)pill(o.x,o.y-44,o.i?'Mantén ENTER':'Mantén ESPACIO',C.ok)});
+  drawFx();hud(['Rescates: '+S.saves,['Rojo: tiempo antes de ser fantasma · verde: rescate',C.muted]]);
+ },
+ ai(S){const[a,b]=S.P,[sa,sb]=S.st;
+  if(sa.down&&!sb.down){const o=toward(b,a.x,a.y,30);o.act=dist(a,b)<50;return o}
+  return toward(b,a.x,a.y,sb.down?20:90)}
+},
+/* 2 */{id:'cuerda',tag:'Posición',title:'Cuerda de energía',short:'Un rayo entre los dos corta a los enemigos',
+ pitch:'Los dos jugadores están unidos por un rayo. Los enemigos que lo cruzan mueren, así que la estrategia es moverse en equipo para barrer la sala.',
+ k1:'pulso del rayo',k2:'pulso del rayo',
+ why:'El arma no la lleva nadie: existe entre los dos. Obliga a coordinar posiciones sin tener que hablar, y separarse demasiado tiene un coste visible porque la cuerda tira y se pone roja.',
+ vars:['Longitud máxima corta en salas estrechas y larga contra jefes.','Con 3 o 4 jugadores, un rayo entre cada pareja: triángulos y cuadrados que barren.','El pulso (acción) ensancha el rayo un momento y luego recarga.','La cuerda también bloquea proyectiles enemigos.'],
+ how:'En cada fotograma se mide la distancia de cada enemigo al segmento entre J1 y J2; si es menor que su radio, muere. La longitud máxima es una restricción: si la distancia supera el límite, se acerca a los dos jugadores la mitad del exceso.',
+ init(S){S.P=[mkP(320,270,0),mkP(480,270,1)];S.E=[];S.spawn=0;S.kills=0;S.hits=0;S.pulse=0;S.cd=0;S.tension=0},
+ update(S,inp,dt){const[a,b]=S.P;moveP(a,inp[0],dt);moveP(b,inp[1],dt);
+  const MAX=280,d=dist(a,b);if(d>MAX){const n=norm(b.x-a.x,b.y-a.y),ex=(d-MAX)/2;a.x+=n.x*ex;a.y+=n.y*ex;b.x-=n.x*ex;b.y-=n.y*ex;clampRoom(a);clampRoom(b)}
+  S.tension=Math.min(1,dist(a,b)/MAX);S.cd=Math.max(0,S.cd-dt);S.pulse=Math.max(0,S.pulse-dt);
+  if((inp[0].pressed||inp[1].pressed)&&S.cd<=0){S.pulse=.45;S.cd=1.8;S.shake=.12}
+  S.spawn-=dt;if(S.spawn<=0&&S.E.length<14){S.spawn=.65;S.E.push(edgeEnemy())}
+  const w=S.pulse>0?16:5;
+  for(const e of S.E){const t=nearest(S.P,e),n=norm(t.x-e.x,t.y-e.y);e.x+=n.x*e.sp*dt;e.y+=n.y*e.sp*dt;
+   if(segDist(e,a,b)<e.r+w){e.dead=1;S.kills++;burst(e.x,e.y,C.gold,10);continue}
+   for(const p of S.P)if(dist(p,e)<p.r+e.r){e.dead=1;S.hits++;p.flash=.25;burst(e.x,e.y,C.enemy,8);const k=norm(p.x-e.x,p.y-e.y);p.x+=k.x*20;p.y+=k.y*20;clampRoom(p);break}}
+  S.E=S.E.filter(e=>!e.dead)},
+ draw(S){drawRoom();const[a,b]=S.P;
+  S.E.forEach(e=>drawEnemy(e,S.t));
+  const col=S.tension<.6?C.ice:S.tension<.88?C.gold:C.enemy;
+  ctx.lineCap='round';
+  const line=()=>{ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()};
+  ctx.strokeStyle=col;ctx.globalAlpha=.22;ctx.lineWidth=S.pulse>0?34:14;line();ctx.globalAlpha=1;ctx.lineWidth=S.pulse>0?9:3;line();
+  ctx.setLineDash([5,15]);ctx.lineDashOffset=-S.t*140;ctx.strokeStyle='#fff';ctx.lineWidth=1.5;line();ctx.setLineDash([]);ctx.lineCap='butt';
+  [...S.P].sort((p,q)=>p.y-q.y).forEach(p=>drawPlayer(p));
+  drawFx();hud(['Cortados: '+S.kills,'Golpes recibidos: '+S.hits,S.cd>0?['Pulso: recargando',C.muted]:['Pulso: listo',C.gold]]);
+  if(S.tension>.88)pill((a.x+b.x)/2,(a.y+b.y)/2-24,'Cuerda al límite',C.enemy);
+ },
+ ai(S){const[a,b]=S.P;const ang=Math.atan2(b.y-a.y,b.x-a.x)+1.1;
+  const o=toward(b,clamp(a.x+Math.cos(ang)*210,R.l+30,R.r-30),clamp(a.y+Math.sin(ang)*210,R.t+30,R.b-30),4);
+  o.act=S.cd<=0&&S.E.filter(e=>segDist(e,a,b)<45).length>=3;return o}
+},
+/* 3 */{id:'combo',tag:'Combo',title:'Congelar y romper',short:'Uno congela, el otro rompe',
+ pitch:'J1 congela con disparos de hielo y J2 remata con un martillazo. Por separado hacen poco daño; juntos destrozan a los enemigos de un golpe.',
+ k1:'disparo de hielo',k2:'martillazo',
+ why:'Los roles se complementan en lugar de repetirse: uno prepara y el otro remata. El combo se ve con claridad, así que el que congela sabe que su ataque ha servido aunque no haya matado a nadie.',
+ vars:['Otras parejas: aceite y fuego, imán y lanza, marca y ejecución.','El estado dura poco (3 s): el rematador tiene que estar atento.','Si el mismo jugador congela y rompe, no hay bonificación.','Con 4 jugadores, cadenas de tres estados para un daño enorme.'],
+ how:'Los enemigos guardan estados con temporizador (congelado: 3 s). El ataque de área del martillo consulta ese estado: si el enemigo está congelado, lo destruye de un golpe; si no, le resta 1 punto de vida y lo empuja.',
+ init(S){S.P=[mkP(260,360,0),mkP(420,380,1)];S.E=[];for(let k=0;k<5;k++)S.E.push(this.slime());S.B=[];S.cd=[0,0];S.shatter=0;S.normal=0;S.resp=0},
+ slime(){return{x:rnd(R.l+60,R.r-60),y:rnd(R.t+30,R.t+180),r:15,hp:3,sp:30,seed:Math.random()*6,frozen:0,flash:0,vx:0,vy:0}},
+ update(S,inp,dt){const[a,b]=S.P;moveP(a,inp[0],dt);moveP(b,inp[1],dt);S.cd[0]-=dt;S.cd[1]-=dt;
+  if(inp[0].act&&S.cd[0]<=0){S.cd[0]=.32;S.B.push({x:a.x+a.fx*18,y:a.y+a.fy*18,vx:a.fx*440,vy:a.fy*440,life:1})}
+  if(inp[1].pressed&&S.cd[1]<=0){S.cd[1]=.6;ring(b.x,b.y,75,C.p2,.35);S.shake=.15;let n=0;
+   for(const e of S.E){if(dist(e,b)<75+e.r){if(e.frozen>0){e.dead=1;n++;burst(e.x,e.y,C.ice,22,240)}else{e.hp--;e.flash=.15;S.normal++;const k=norm(e.x-b.x,e.y-b.y);e.vx=k.x*260;e.vy=k.y*260;if(e.hp<=0){e.dead=1;burst(e.x,e.y,C.enemy,12)}}}}
+   if(n){S.shatter+=n;say(b.x,b.y-42,n>1?`¡ROTURA ×${n}!`:'¡ROTURA!',C.ice,n>1?24:19);S.shake=.3}}
+  for(const B of S.B){B.x+=B.vx*dt;B.y+=B.vy*dt;B.life-=dt;if(B.x<R.l||B.x>R.r||B.y<R.t||B.y>R.b)B.life=0;
+   for(const e of S.E)if(!e.dead&&B.life>0&&dist(B,e)<e.r+5){B.life=0;e.frozen=3;burst(B.x,B.y,C.ice,6,90)}}
+  S.B=S.B.filter(B=>B.life>0);
+  const damp=Math.pow(.02,dt);
+  for(const e of S.E){e.flash-=dt;if(e.frozen>0)e.frozen-=dt;else{const t=nearest(S.P,e),n=norm(t.x-e.x,t.y-e.y);e.x+=n.x*e.sp*dt;e.y+=n.y*e.sp*dt}
+   e.x+=e.vx*dt;e.y+=e.vy*dt;e.vx*=damp;e.vy*=damp;clampRoom(e);
+   if(e.frozen<=0)for(const p of S.P)if(dist(p,e)<p.r+e.r){p.flash=.2;const k=norm(e.x-p.x,e.y-p.y);e.vx=k.x*220;e.vy=k.y*220}}
+  S.E=S.E.filter(e=>!e.dead);
+  if(S.E.length<5){S.resp-=dt;if(S.resp<=0){S.resp=.8;const s=this.slime();S.E.push(s);ring(s.x,s.y,24,C.enemy,.4)}}},
+ draw(S){drawRoom();
+  const ents=[...S.E.map(e=>({y:e.y,f:()=>drawEnemy(e,S.t)})),...S.P.map(p=>({y:p.y,f:()=>drawPlayer(p)}))];ents.sort((a,b)=>a.y-b.y).forEach(o=>o.f());
+  ctx.fillStyle=C.ice;for(const B of S.B){ctx.globalAlpha=.3;ctx.beginPath();ctx.arc(B.x,B.y,9,0,TAU);ctx.fill();ctx.globalAlpha=1;ctx.beginPath();ctx.arc(B.x,B.y,4.5,0,TAU);ctx.fill()}
+  const b=S.P[1];ctx.setLineDash([4,6]);ctx.strokeStyle='rgba(239,111,130,.35)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(b.x,b.y,75,0,TAU);ctx.stroke();ctx.setLineDash([]);
+  drawFx();hud(['Roturas (combo): '+S.shatter,'Golpes sin combo: '+S.normal,[`J1 hielo · J2 martillo`,C.muted]]);
+ },
+ ai(S){const b=S.P[1];let t=null,bd=1e9;for(const e of S.E)if(e.frozen>.2){const d=dist(e,b);if(d<bd){bd=d;t=e}}
+  if(t){const o=toward(b,t.x,t.y,30);o.act=bd<64&&S.cd[1]<=0;return o}
+  return toward(b,S.P[0].x+40,S.P[0].y+30,40)}
+},
+/* 4 */{id:'placas',tag:'Puzle',title:'Placas simultáneas',short:'Dos placas pisadas a la vez abren la puerta',
+ pitch:'La puerta de la sala solo se abre si las dos placas están pisadas a la vez durante un segundo y medio. Nadie puede resolverlo solo.',
+ k1:'solo moverse',k2:'solo moverse',
+ why:'Es el puzle cooperativo más simple: cada jugador tiene que estar en un sitio distinto. Sirve de respiro entre combates y enseña que el compañero es imprescindible sin necesidad de explicarlo.',
+ vars:['Placas temporizadas: una abre una reja unos segundos y el otro tiene que cruzar corriendo.','Con 3 o 4 jugadores aparecen más placas, siempre una por persona.','Al pisar salen enemigos: uno defiende al que mantiene la placa.','Placas de colores que solo cuentan si las pisa el jugador de ese color.'],
+ how:'Cada placa comprueba si algún jugador tiene el centro dentro de su radio. Si todas están pisadas, la barra de progreso sube; si no, baja. Al llegar al máximo, la puerta se abre. El cable de cada placa se ilumina por separado para que se entienda qué falta.',
+ init(S){S.P=[mkP(380,400,0),mkP(420,400,1)];S.pl=[{x:170,y:300,on:false},{x:630,y:300,on:false}];S.prog=0;S.open=0;S.opened=0},
+ update(S,inp,dt){S.P.forEach((p,i)=>moveP(p,inp[i],dt));for(const q of S.pl)q.on=S.P.some(p=>Math.hypot(p.x-q.x,p.y-q.y)<34);
+  if(S.open>0){S.open-=dt;if(S.open<=0)S.prog=0}
+  else{const all=S.pl.every(q=>q.on);S.prog=clamp(S.prog+(all?dt/1.5:-dt*.8),0,1);if(S.prog>=1){S.open=4;S.opened++;burst(400,44,C.gold,30,220);say(400,96,'¡Sala desbloqueada!',C.gold,22);S.shake=.2}}},
+ draw(S){drawRoom();
+  S.pl.forEach((q,k)=>{const lit=q.on||S.open>0,dx=k?432:368;ctx.strokeStyle=lit?C.gold:'#2f3936';ctx.lineWidth=lit?3:2;ctx.beginPath();ctx.moveTo(q.x,q.y-34);ctx.lineTo(q.x,120);ctx.lineTo(dx,120);ctx.lineTo(dx,R.t);ctx.stroke();
+   if(lit){ctx.globalAlpha=.25;ctx.lineWidth=9;ctx.stroke();ctx.globalAlpha=1}});
+  ctx.fillStyle=S.open>0?'#0a0d0c':'#2a3230';ctx.fillRect(356,R.t-28,88,28);
+  if(S.open>0){const g=ctx.createLinearGradient(0,R.t-28,0,R.t+40);g.addColorStop(0,'rgba(240,167,68,.55)');g.addColorStop(1,'rgba(240,167,68,0)');ctx.fillStyle=g;ctx.fillRect(356,R.t-28,88,68)}
+  else{ctx.fillStyle='#5a6763';for(let x=364;x<444;x+=14)ctx.fillRect(x,R.t-28,5,28)}
+  ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(320,R.t+22,160,8);ctx.fillStyle=S.open>0?C.ok:C.gold;ctx.fillRect(320,R.t+22,160*(S.open>0?1:S.prog),8);
+  S.pl.forEach(q=>{ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(q.x,q.y+4,36,20,0,0,TAU);ctx.fill();
+   ctx.fillStyle=q.on?C.gold:'#4b5854';ctx.beginPath();ctx.ellipse(q.x,q.y+(q.on?2:0),32,18,0,0,TAU);ctx.fill();
+   ctx.strokeStyle=q.on?'#ffd28a':'#66736f';ctx.lineWidth=2;ctx.stroke()});
+  [...S.P].sort((a,b)=>a.y-b.y).forEach(p=>drawPlayer(p));
+  const n=S.pl.filter(q=>q.on).length;
+  if(S.open<=0&&n===1){const q=S.pl.find(q=>!q.on);if(Math.sin(S.t*6)>-.3)pill(q.x,q.y+40,'Falta alguien aquí',C.gold)}
+  drawFx();hud(['Puertas abiertas: '+S.opened,[S.open>0?'Puerta abierta':n+' de 2 placas pisadas',C.muted]]);
+ },
+ ai(S){const[a,b]=S.P;if(S.open>0)return toward(b,400,150,10);
+  const d0=Math.hypot(a.x-S.pl[0].x,a.y-S.pl[0].y),d1=Math.hypot(a.x-S.pl[1].x,a.y-S.pl[1].y);
+  if(Math.min(d0,d1)>200)return toward(b,a.x+40,a.y,40);
+  const t=d0<d1?S.pl[1]:S.pl[0];return toward(b,t.x,t.y,4)}
+},
+/* 5 */{id:'escudo',tag:'Roles',title:'Escudo y tirador',short:'Uno protege, el otro dispara',
+ pitch:'J1 levanta un escudo que refleja las balas; J2 dispara a la torreta desde detrás. La torreta apunta a cualquiera de los dos.',
+ k1:'mantener = escudo',k2:'disparar',
+ why:'Crea una formación natural: uno delante y otro a cubierto. El que protege no hace daño directo, pero las balas que refleja sí lo hacen, así que su papel se siente activo y no de apoyo pasivo.',
+ vars:['El escudo se desgasta con cada impacto y hay que bajarlo para que se recupere.','Reflejar con buena orientación devuelve la bala a la torreta (activo aquí).','Intercambiar los roles al recoger un objeto de la sala.','Torretas en dos lados: la formación tiene que girar.'],
+ how:'Cada bala comprueba si toca el arco del escudo: está a menos del radio del portador más un margen y el ángulo respecto a su orientación es menor de 60°. Si lo toca, su dirección se cambia hacia la torreta y pasa a ser una bala del jugador.',
+ init(S){S.P=[mkP(370,360,0),mkP(420,410,1)];S.T={x:400,y:100,hp:20,max:20,cd:1.2,dead:0,ang:Math.PI/2};S.B=[];S.hits=0;S.refl=0;S.kills=0;S.cd2=0;S.tgt=0;S.shield=false},
+ update(S,inp,dt){const[a,b]=S.P,T=S.T;S.shield=inp[0].act;moveP(a,inp[0],dt,S.shield?.45:1);moveP(b,inp[1],dt);S.cd2-=dt;
+  if(inp[1].pressed&&S.cd2<=0&&!(T.dead>0)){S.cd2=.25;const n=norm(T.x-b.x,T.y-b.y);S.B.push({x:b.x+n.x*18,y:b.y+n.y*18,vx:n.x*480,vy:n.y*480,own:1,dmg:1})}
+  if(T.dead>0){T.dead-=dt;if(T.dead<=0){T.hp=T.max;T.cd=1.2;ring(T.x,T.y,40,C.enemy);say(T.x,T.y+46,'Nueva torreta',C.muted)}}
+  else{const tg=S.P[S.tgt];T.ang=Math.atan2(tg.y-T.y,tg.x-T.x);T.cd-=dt;
+   if(T.cd<=0){T.cd=.9;const n=norm(tg.x-T.x,tg.y-T.y);S.B.push({x:T.x+n.x*28,y:T.y+n.y*28,vx:n.x*240,vy:n.y*240,own:0});S.tgt=Math.random()<.55?1:0}}
+  for(const B of S.B){B.x+=B.vx*dt;B.y+=B.vy*dt;if(B.x<R.l-20||B.x>R.r+20||B.y<0||B.y>R.b+10){B.dead=1;continue}
+   if(B.own){if(!(T.dead>0)&&Math.hypot(B.x-T.x,B.y-T.y)<26){B.dead=1;T.hp-=B.dmg;burst(B.x,B.y,C.gold,6);
+     if(T.hp<=0){T.dead=2.2;S.kills++;burst(T.x,T.y,C.gold,34,260);say(T.x,T.y+46,'¡Torreta destruida!',C.gold,21);S.shake=.35}}continue}
+   if(S.shield){const dx=B.x-a.x,dy=B.y-a.y,d=Math.hypot(dx,dy);if(d<a.r+18&&(dx*a.fx+dy*a.fy)/(d||1)>.5){const n=norm(T.x-B.x,T.y-B.y);B.vx=n.x*340;B.vy=n.y*340;B.own=1;B.dmg=2;S.refl++;ring(B.x,B.y,22,C.ice,.25);continue}}
+   for(const p of S.P)if(Math.hypot(B.x-p.x,B.y-p.y)<p.r+4){B.dead=1;p.flash=.25;S.hits++;burst(B.x,B.y,C.enemy,8);break}}
+  S.B=S.B.filter(B=>!B.dead)},
+ draw(S){drawRoom();const[a]=S.P,T=S.T;
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(T.x,T.y+18,30,12,0,0,TAU);ctx.fill();
+  if(T.dead>0){ctx.fillStyle='#3b4441';for(let k=0;k<6;k++){ctx.beginPath();ctx.arc(T.x-18+k*7,T.y+8+(k%2)*5,6,0,TAU);ctx.fill()}}
+  else{ctx.fillStyle='#3e4845';ctx.beginPath();ctx.arc(T.x,T.y,24,0,TAU);ctx.fill();ctx.strokeStyle=C.enemyDark;ctx.lineWidth=3;ctx.stroke();
+   ctx.strokeStyle=C.enemy;ctx.lineWidth=9;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(T.x,T.y);ctx.lineTo(T.x+Math.cos(T.ang)*30,T.y+Math.sin(T.ang)*30);ctx.stroke();ctx.lineCap='butt';
+   ctx.fillStyle=C.enemy;ctx.beginPath();ctx.arc(T.x,T.y,9,0,TAU);ctx.fill();
+   ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(T.x-30,T.y-40,60,6);ctx.fillStyle=C.enemy;ctx.fillRect(T.x-30,T.y-40,60*T.hp/T.max,6)}
+  [...S.P].sort((p,q)=>p.y-q.y).forEach(p=>drawPlayer(p));
+  if(S.shield){const ang=Math.atan2(a.fy,a.fx);ctx.lineCap='round';ctx.strokeStyle=C.ice;ctx.globalAlpha=.3;ctx.lineWidth=14;ctx.beginPath();ctx.arc(a.x,a.y,a.r+11,ang-1.05,ang+1.05);ctx.stroke();ctx.globalAlpha=1;ctx.lineWidth=5;ctx.stroke();ctx.lineCap='butt'}
+  for(const B of S.B){ctx.fillStyle=B.own?C.gold:C.enemy;ctx.beginPath();ctx.arc(B.x,B.y,B.own?4:5.5,0,TAU);ctx.fill()}
+  if(!S.shield)pill(a.x,a.y+34,'Mantén ESPACIO: escudo',C.ice);
+  drawFx();hud(['Torretas destruidas: '+S.kills,'Balas reflejadas: '+S.refl,'Impactos recibidos: '+S.hits]);
+ },
+ ai(S){const[a,b]=S.P,T=S.T,n=norm(a.x-T.x,a.y-T.y);const o=toward(b,a.x+n.x*46,a.y+n.y*46,4);o.act=!(T.dead>0)&&(S.t%.5)<.06;return o}
+},
+/* 6 */{id:'lanzar',tag:'Física',title:'Lanzar al compañero',short:'Coger y lanzar al compañero sobre un abismo',
+ pitch:'Un abismo parte la sala. Coge a tu compañero, lánzalo al otro lado y que active la palanca que despliega el puente.',
+ k1:'coger · lanzar · palanca',k2:'coger · lanzar · palanca',
+ why:'Usar el cuerpo del compañero como herramienta siempre provoca risas y algún accidente. Además separa al equipo unos segundos: el que cruza tiene una tarea y el que se queda depende de él.',
+ vars:['Lanzar al compañero contra enemigos: el aterrizaje hace una onda expansiva.','El lanzado puede atacar en el aire con un golpe en picado.','Peso: los personajes pesados llegan menos lejos pero aplastan más.','Lanzar objetos de la sala (barriles, bombas) con el mismo gesto.'],
+ how:'El jugador cogido pierde el control y sigue la posición del que lo lleva. Al lanzarlo se guardan un origen, un destino y una duración; la altura sigue una parábola y la sombra se queda en el suelo. Mientras está en el aire, el abismo no cuenta como obstáculo.',
+ init(S){S.P=[mkP(330,390,0),mkP(410,390,1)];S.carry=null;S.air=[null,null];S.z=[0,0];S.resp=[0,0];S.bridge=0;S.pit={t:205,b:285};S.lever={x:620,y:120};S.throws=0;S.falls=0},
+ inPit(S,x,y){return y>S.pit.t-2&&y<S.pit.b+2&&!(S.bridge>0&&x>366&&x<434)},
+ fall(S,i){const p=S.P[i];S.falls++;burst(p.x,p.y,C.muted,14,120);say(p.x,p.y-30,'¡Al vacío!',C.enemy,18);S.resp[i]=.9;S.z[i]=0},
+ update(S,inp,dt){S.bridge=Math.max(0,S.bridge-dt);const inPit=(x,y)=>this.inPit(S,x,y);
+  for(let i=0;i<2;i++){const p=S.P[i],o=S.P[1-i];
+   if(S.resp[i]>0){S.resp[i]-=dt;if(S.resp[i]<=0){p.x=clamp(o.x+30,R.l+20,R.r-20);p.y=o.y<S.pit.t?Math.min(o.y,S.pit.t-30):Math.max(o.y,S.pit.b+30);ring(p.x,p.y,30,p.color)}continue}
+   if(S.air[i]){const A=S.air[i];A.t+=dt;const u=Math.min(1,A.t/A.d);p.x=A.sx+(A.ex-A.sx)*u;p.y=A.sy+(A.ey-A.sy)*u;S.z[i]=26*(1-u)+80*Math.sin(Math.PI*u);
+    if(u>=1){S.air[i]=null;S.z[i]=0;if(inPit(p.x,p.y))this.fall(S,i);else{ring(p.x,p.y,60,C.gold,.4);burst(p.x,p.y,C.muted,10,120);S.shake=.12;say(p.x,p.y-34,'¡Aterrizaje!',C.text,15)}}continue}
+   if(S.carry&&S.carry.o===i){p.x=o.x;p.y=o.y-1;S.z[i]=26;if(inp[i].pressed){S.carry=null;S.z[i]=0;p.x=clamp(o.x+28,R.l+16,R.r-16);p.y=o.y}continue}
+   const carrying=S.carry&&S.carry.c===i;
+   moveP(p,inp[i],dt,carrying?.7:1,R,inPit);
+   if(inp[i].pressed){
+    if(carrying){S.carry=null;S.air[1-i]={t:0,d:.62,sx:p.x,sy:p.y,ex:clamp(p.x+p.fx*200,R.l+16,R.r-16),ey:clamp(p.y+p.fy*200,R.t+16,R.b-16)};S.throws++}
+    else if(Math.hypot(p.x-S.lever.x,p.y-S.lever.y)<40){S.bridge=6;say(400,S.pit.t-22,'Puente desplegado',C.gold,17);burst(S.lever.x,S.lever.y,C.gold,10)}
+    else if(dist(p,o)<44&&!S.air[1-i]&&!(S.resp[1-i]>0)&&!S.carry)S.carry={c:i,o:1-i};
+   }
+   if(inPit(p.x,p.y))this.fall(S,i);
+  }},
+ draw(S){drawRoom();const pit=S.pit;
+  ctx.fillStyle=C.abyss;ctx.fillRect(R.l,pit.t,R.r-R.l,pit.b-pit.t);
+  const g=ctx.createLinearGradient(0,pit.t,0,pit.t+40);g.addColorStop(0,'#2a3230');g.addColorStop(1,'rgba(6,8,7,0)');ctx.fillStyle=g;ctx.fillRect(R.l,pit.t,R.r-R.l,40);
+  ctx.fillStyle='#4b5854';ctx.fillRect(R.l,pit.b-3,R.r-R.l,3);
+  if(S.bridge>0&&(S.bridge>1.5||Math.sin(S.t*20)>0)){ctx.fillStyle='#7a5a34';for(let y=pit.t;y<pit.b;y+=12)ctx.fillRect(368,y+1,64,9);ctx.fillStyle='#4a3720';ctx.fillRect(366,pit.t,4,pit.b-pit.t);ctx.fillRect(430,pit.t,4,pit.b-pit.t)}
+  const L=S.lever;ctx.fillStyle='#3e4845';ctx.fillRect(L.x-16,L.y+2,32,12);ctx.strokeStyle=S.bridge>0?C.gold:'#97a29c';ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(L.x,L.y+6);const la=S.bridge>0?-.6:-2.5;ctx.lineTo(L.x+Math.cos(la)*24,L.y+6+Math.sin(la)*24);ctx.stroke();ctx.lineCap='butt';
+  ctx.font='700 11px "JetBrains Mono", monospace';ctx.fillStyle=C.muted;ctx.textAlign='center';ctx.fillText('PALANCA',L.x,L.y+28);
+  const c=S.carry;
+  if(c){const p=S.P[c.c],ex=clamp(p.x+p.fx*200,R.l+16,R.r-16),ey=clamp(p.y+p.fy*200,R.t+16,R.b-16),bad=this.inPit(S,ex,ey);
+   ctx.setLineDash([3,7]);ctx.strokeStyle=bad?C.enemy:C.gold;ctx.lineWidth=2;ctx.beginPath();for(let k=0;k<=20;k++){const u=k/20,x=p.x+(ex-p.x)*u,y=p.y+(ey-p.y)*u-(26*(1-u)+80*Math.sin(Math.PI*u));k?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke();ctx.setLineDash([]);
+   ctx.beginPath();ctx.ellipse(ex,ey,16,8,0,0,TAU);ctx.stroke()}
+  const order=[0,1].filter(i=>!(S.resp[i]>0)).sort((a,b)=>(S.P[a].y-S.z[a]*.01)-(S.P[b].y)+(c&&c.o===a?1:0)-(c&&c.o===b?1:0));
+  order.forEach(i=>drawPlayer(S.P[i],{z:S.z[i]}));
+  for(let i=0;i<2;i++){const p=S.P[i],o=S.P[1-i];if(S.resp[i]>0||S.air[i]||S.carry)continue;
+   if(dist(p,o)<44&&!S.air[1-i]&&i===0)pill(p.x,p.y+32,'ESPACIO: coger',C.gold);}
+  if(c&&c.c===0)pill(S.P[0].x,S.P[0].y+32,'Apunta y pulsa ESPACIO',C.gold);
+  drawFx();hud(['Lanzamientos: '+S.throws,'Caídas al vacío: '+S.falls,S.bridge>0?['Puente: '+Math.ceil(S.bridge)+' s',C.gold]:['Puente: recogido',C.muted]]);
+ },
+ ai(S){const[a,b]=S.P,none={x:0,y:0,act:false};
+  if(S.carry||S.air[1]||S.resp[1]>0)return none;
+  if(b.y<S.pit.t){if(S.bridge>0)return Math.abs(b.x-400)>14&&b.y<S.pit.t-6?toward(b,400,S.pit.t-20,4):toward(b,400,S.pit.b+44,4);
+   const o=toward(b,S.lever.x,S.lever.y,24);o.act=Math.hypot(b.x-S.lever.x,b.y-S.lever.y)<38;return o}
+  return toward(b,a.x+30,a.y,6)}
+},
+/* 7 */{id:'camara',tag:'Cámara',title:'Cámara compartida',short:'Zoom, límite o pantalla dividida',
+ pitch:'Con varios jugadores en una sola pantalla, la cámara decide cuánta libertad tiene cada uno. Prueba las tres soluciones en un mapa grande.',
+ k1:'solo moverse',k2:'solo moverse',
+ options:{label:'Modo de cámara',choices:[['zoom','Zoom dinámico'],['correa','Zoom con límite'],['split','Pantalla dividida']]},
+ why:'En coop local la cámara también es una mecánica: si un jugador sale de plano, el otro pierde de vista su parte. Elegir bien evita discusiones en el sofá y define cuánto pueden separarse.',
+ vars:['Zoom dinámico: encuadra a todos y se aleja hasta un mínimo; quien se sale ve una flecha en el borde.','Con límite: al llegar al zoom mínimo nadie puede alejarse más.','División dinámica: la pantalla se parte por la línea que separa a los jugadores y se une cuando se juntan.','En un roguelike de salas, la cámara puede fijarse a la sala y olvidarse del problema.'],
+ how:'La cámara se centra en el punto medio de los jugadores y calcula el zoom necesario para que quepan con margen. En pantalla dividida, cada mitad tiene su propia cámara, desplazada hacia el compañero, y se recorta con un semiplano perpendicular a la línea que los une.',
+ WB:{l:40,t:40,r:1760,b:1060},
+ init(S){let seed=7;const sr=()=>(seed=(seed*16807)%2147483647)/2147483647;S.P=[mkP(860,560,0),mkP(940,560,1)];S.P.forEach(p=>p.speed=240);
+  S.pil=[];for(let k=0;k<60;k++){const x=120+sr()*1560,y=120+sr()*860,r=16+sr()*14,t=sr()<.35;if(Math.hypot(x-900,y-560)<180)continue;S.pil.push({x,y,r,torch:t})}
+  S.cam={x:900,y:560,z:1};S.split=false;S.wt=null;S.wtUntil=0},
+ toWorld(S,x,y){const c=S.split?S.cam1:S.cam;return{x:(x-W/2)/c.z+c.x,y:(y-H/2)/c.z+c.y}},
+ update(S,inp,dt){const[a,b]=S.P,WB=this.WB;moveP(a,inp[0],dt,1,WB);moveP(b,inp[1],dt,1,WB);
+  for(const p of S.P)for(const q of S.pil){const d=Math.hypot(p.x-q.x,p.y-q.y),m=p.r+q.r;if(d<m&&d>0){p.x=q.x+(p.x-q.x)/d*m;p.y=q.y+(p.y-q.y)/d*m}}
+  const MINZ=.5,mode=OPT.mode;
+  if(mode==='correa'){const mx=W/MINZ-240,my=H/MINZ-200;let dx=b.x-a.x,dy=b.y-a.y;if(Math.abs(dx)>mx){const e=(Math.abs(dx)-mx)/2*Math.sign(dx);a.x+=e;b.x-=e}if(Math.abs(dy)>my){const e=(Math.abs(dy)-my)/2*Math.sign(dy);a.y+=e;b.y-=e}}
+  const dx=Math.abs(a.x-b.x),dy=Math.abs(a.y-b.y);let z=Math.min(1.1,W/(dx+240),H/(dy+200));
+  S.split=mode==='split'&&z<.75;z=Math.max(mode==='split'?.75:MINZ,z);
+  const k=1-Math.pow(.003,dt);S.cam.x+=((a.x+b.x)/2-S.cam.x)*k;S.cam.y+=((a.y+b.y)/2-S.cam.y)*k;S.cam.z+=(z-S.cam.z)*k;
+  if(S.split){const n=norm(b.x-a.x,b.y-a.y),off=170/.85;S.n=n;S.cam1={x:a.x+n.x*off,y:a.y+n.y*off,z:.85};S.cam2={x:b.x-n.x*off,y:b.y-n.y*off,z:.85}}},
+ world(S,cam,clip){const WB=this.WB;ctx.save();
+  if(clip){ctx.beginPath();clip.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.clip()}
+  ctx.fillStyle=C.abyss;ctx.fillRect(-20,-20,W+40,H+40);
+  ctx.translate(W/2,H/2);ctx.scale(cam.z,cam.z);ctx.translate(-cam.x,-cam.y);
+  ctx.fillStyle=C.wall;ctx.fillRect(WB.l-18,WB.t-30,WB.r-WB.l+36,WB.b-WB.t+48);
+  ctx.fillStyle=C.floor;ctx.fillRect(WB.l,WB.t,WB.r-WB.l,WB.b-WB.t);
+  ctx.strokeStyle=C.tile;ctx.lineWidth=1/cam.z;ctx.beginPath();for(let x=WB.l;x<=WB.r;x+=80){ctx.moveTo(x,WB.t);ctx.lineTo(x,WB.b)}for(let y=WB.t;y<=WB.b;y+=80){ctx.moveTo(WB.l,y);ctx.lineTo(WB.r,y)}ctx.stroke();
+  for(const q of S.pil)if(q.torch){const g=ctx.createRadialGradient(q.x,q.y,0,q.x,q.y,150);g.addColorStop(0,'rgba(240,167,68,.16)');g.addColorStop(1,'rgba(240,167,68,0)');ctx.fillStyle=g;ctx.fillRect(q.x-150,q.y-150,300,300)}
+  const ents=[...S.pil.map(q=>({y:q.y,f:()=>{ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(q.x,q.y+3,q.r+3,q.r*.5,0,0,TAU);ctx.fill();ctx.fillStyle=C.wall;ctx.fillRect(q.x-q.r,q.y-q.r*2.4,q.r*2,q.r*2.4);ctx.beginPath();ctx.ellipse(q.x,q.y,q.r,q.r*.45,0,0,TAU);ctx.fill();ctx.fillStyle=C.wallTop;ctx.beginPath();ctx.ellipse(q.x,q.y-q.r*2.4,q.r,q.r*.45,0,0,TAU);ctx.fill();if(q.torch){ctx.fillStyle=C.gold;ctx.beginPath();ctx.arc(q.x,q.y-q.r*2.4-6+Math.sin(S.t*9+q.x)*1.2,4.5,0,TAU);ctx.fill()}}})),...S.P.map(p=>({y:p.y,f:()=>drawPlayer(p)}))];
+  ents.sort((a,b)=>a.y-b.y).forEach(o=>o.f());drawFx();ctx.restore()},
+ draw(S){const[a,b]=S.P;
+  if(S.split){const n=S.n,t={x:-n.y,y:n.x},c={x:W/2,y:H/2},B=2000;
+   const half=s=>[{x:c.x+t.x*B,y:c.y+t.y*B},{x:c.x+t.x*B+s*n.x*B,y:c.y+t.y*B+s*n.y*B},{x:c.x-t.x*B+s*n.x*B,y:c.y-t.y*B+s*n.y*B},{x:c.x-t.x*B,y:c.y-t.y*B}];
+   this.world(S,S.cam1,half(-1));this.world(S,S.cam2,half(1));
+   ctx.strokeStyle='#060807';ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(c.x-t.x*B,c.y-t.y*B);ctx.lineTo(c.x+t.x*B,c.y+t.y*B);ctx.stroke();ctx.strokeStyle=C.gold;ctx.lineWidth=1.5;ctx.stroke();
+  }else{this.world(S,S.cam);
+   for(const p of S.P){const sx=(p.x-S.cam.x)*S.cam.z+W/2,sy=(p.y-S.cam.y)*S.cam.z+H/2;if(sx<10||sx>W-10||sy<10||sy>H-10){const cx=clamp(sx,26,W-26),cy=clamp(sy,26,H-26),an=Math.atan2(sy-cy,sx-cx);
+     ctx.save();ctx.translate(cx,cy);ctx.rotate(an);ctx.fillStyle=p.color;ctx.beginPath();ctx.moveTo(14,0);ctx.lineTo(-8,-10);ctx.lineTo(-8,10);ctx.closePath();ctx.fill();ctx.restore();
+     ctx.font='700 10px "JetBrains Mono", monospace';ctx.fillStyle=p.color;ctx.textAlign='center';ctx.fillText('J'+(p.i+1),cx-Math.cos(an)*22,cy-Math.sin(an)*22)}}}
+  const mw=144,mh=88,mx=W-mw-14,my=H-mh-14,s=mw/1800;ctx.fillStyle='rgba(8,11,10,.8)';ctx.fillRect(mx-4,my-4,mw+8,mh+8);ctx.fillStyle='#1f2725';ctx.fillRect(mx,my,mw,mh);
+  ctx.fillStyle='#36413e';for(const q of S.pil)ctx.fillRect(mx+q.x*s-1,my+q.y*s-1,2,2);
+  const cams=S.split?[S.cam1,S.cam2]:[S.cam];ctx.strokeStyle='rgba(240,167,68,.7)';ctx.lineWidth=1;for(const c of cams){const w=W/c.z*s,h=H/c.z*s;ctx.strokeRect(mx+c.x*s-w/2,my+c.y*s-h/2,w,h)}
+  for(const p of S.P){ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(mx+p.x*s,my+p.y*s,3,0,TAU);ctx.fill()}
+  const label={zoom:'Zoom dinámico',correa:'Zoom con límite',split:'Pantalla dividida'}[OPT.mode];
+  hud([label,['Zoom: '+Math.round((S.split?.85:S.cam.z)*100)+' %'+(S.split?' · dividida':''),C.muted]]);
+ },
+ ai(S){const b=S.P[1];if(!S.wt||Math.hypot(S.wt.x-b.x,S.wt.y-b.y)<30||S.t>S.wtUntil){S.wt={x:rnd(140,1660),y:rnd(140,960)};S.wtUntil=S.t+6}return toward(b,S.wt.x,S.wt.y,10)}
+},
+/* 8 */{id:'sincronia',tag:'Timing',title:'Golpe sincronizado',short:'Pulsar a la vez desata una onda',
+ pitch:'Cada jugador tiene un golpe normal. Si los dos pulsan la acción casi a la vez y están cerca, desatan una onda que limpia la sala.',
+ k1:'golpe',k2:'golpe',
+ why:'Premia la comunicación en el sofá: contar "tres, dos, uno" en voz alta pasa a ser parte del juego. La línea de tiempo de abajo muestra cada pulsación, así que un fallo se entiende y se corrige.',
+ vars:['Ventana más estrecha cuanto más fuerte sea el efecto.','Con 3 o 4 jugadores, la onda crece con cada uno que entra en la ventana.','Carga: la onda solo está disponible cada pocos segundos (activo aquí).','Sincronía de movimiento: esquivar a la vez da invulnerabilidad compartida.'],
+ how:'Se guarda el instante de la última pulsación de cada jugador. Al pulsar, si la del compañero cayó dentro de la ventana (0,3 s), los dos están a menos de 170 px y la carga está completa, se lanza la onda desde el punto medio.',
+ init(S){S.P=[mkP(360,300,0),mkP(440,300,1)];S.E=[];S.spawn=0;S.press=[-9,-9];S.hist=[];S.charge=1;S.syncs=0;S.kills=0;S.aiFor=-1;S.sw=[0,0]},
+ update(S,inp,dt){const[a,b]=S.P;S.P.forEach((p,i)=>moveP(p,inp[i],dt));S.charge=Math.min(1,S.charge+dt/3);S.sw=S.sw.map(v=>Math.max(0,v-dt));
+  for(let i=0;i<2;i++){if(!inp[i].pressed)continue;const p=S.P[i];S.press[i]=S.t;S.hist.push({i,t:S.t});S.sw[i]=.18;
+   for(const e of S.E){const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy);if(d<p.r+e.r+30&&(dx*p.fx+dy*p.fy)/(d||1)>.2){e.hp--;e.flash=.12;const k=norm(dx,dy);e.vx=k.x*240;e.vy=k.y*240;if(e.hp<=0){e.dead=1;S.kills++;burst(e.x,e.y,C.enemy,10)}}}
+   const dtp=Math.abs(S.press[0]-S.press[1]);
+   if(dtp<.3){const near=dist(a,b)<170;
+    if(near&&S.charge>=1){const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;ring(mx,my,260,C.gold,.6);ring(mx,my,170,'#fff',.4);burst(mx,my,C.gold,30,300);say(mx,my-50,'¡SINCRONÍA!',C.gold,28);S.shake=.45;S.charge=0;S.syncs++;
+     for(const e of S.E)if(Math.hypot(e.x-mx,e.y-my)<260){e.dead=1;S.kills++;burst(e.x,e.y,C.gold,8)}S.press=[-9,-9]}
+    else if(!near)say((a.x+b.x)/2,(a.y+b.y)/2-40,'Demasiado lejos',C.muted,15);
+    else say((a.x+b.x)/2,(a.y+b.y)/2-40,'Cargando…',C.muted,15)}}
+  S.hist=S.hist.filter(h=>S.t-h.t<2);
+  S.spawn-=dt;if(S.spawn<=0&&S.E.length<12){S.spawn=.7;S.E.push(edgeEnemy(45,2))}
+  const damp=Math.pow(.02,dt);
+  for(const e of S.E){e.flash-=dt;const t=nearest(S.P,e),n=norm(t.x-e.x,t.y-e.y);e.x+=n.x*e.sp*dt+e.vx*dt;e.y+=n.y*e.sp*dt+e.vy*dt;e.vx*=damp;e.vy*=damp;clampRoom(e);
+   for(const p of S.P)if(dist(p,e)<p.r+e.r){p.flash=.2;const k=norm(e.x-p.x,e.y-p.y);e.vx=k.x*200;e.vy=k.y*200}}
+  S.E=S.E.filter(e=>!e.dead)},
+ draw(S){drawRoom();const[a,b]=S.P;
+  if(dist(a,b)<170){ctx.setLineDash([3,8]);ctx.strokeStyle=S.charge>=1?'rgba(240,167,68,.6)':'rgba(151,162,156,.35)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([])}
+  const ents=[...S.E.map(e=>({y:e.y,f:()=>drawEnemy(e,S.t)})),...S.P.map(p=>({y:p.y,f:()=>drawPlayer(p)}))];ents.sort((p,q)=>p.y-q.y).forEach(o=>o.f());
+  S.P.forEach((p,i)=>{if(S.sw[i]<=0)return;const an=Math.atan2(p.fy,p.fx);ctx.globalAlpha=S.sw[i]/.18;ctx.strokeStyle=p.color;ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.arc(p.x,p.y,p.r+24,an-.9,an+.9);ctx.stroke();ctx.lineCap='butt';ctx.globalAlpha=1});
+  for(let i=0;i<2;i++){if(S.t-S.press[i]<.3&&S.t-S.press[1-i]>.3&&S.charge>=1){const o=S.P[1-i];pill(o.x,o.y-44,'¡Ahora!',C.gold)}}
+  const x0=230,x1=570,y=438;ctx.fillStyle='rgba(8,11,10,.8)';ctx.beginPath();ctx.roundRect(x0-12,y-22,x1-x0+24,36,8);ctx.fill();
+  ctx.strokeStyle='#36413e';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x0,y-6);ctx.lineTo(x1,y-6);ctx.moveTo(x0,y+6);ctx.lineTo(x1,y+6);ctx.stroke();
+  const last=S.hist[S.hist.length-1];if(last&&S.t-last.t<.3){const lx=x1-(S.t-last.t)/2*(x1-x0);ctx.fillStyle='rgba(127,209,139,.25)';ctx.fillRect(lx,y-14,x1-lx,24)}
+  for(const h of S.hist){const hx=x1-(S.t-h.t)/2*(x1-x0);ctx.fillStyle=S.P[h.i].color;ctx.fillRect(hx-2,h.i?y+1:y-11,4,10)}
+  ctx.font='500 10px "JetBrains Mono", monospace';ctx.fillStyle=C.muted;ctx.textAlign='left';ctx.fillText('-2 s',x0-2,y-28+8);ctx.textAlign='right';ctx.fillText('ahora',x1+2,y-20);
+  ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(52,136,120,6);ctx.fillStyle=S.charge>=1?C.gold:C.muted;ctx.fillRect(52,136,120*S.charge,6);
+  drawFx();hud(['Sincronías: '+S.syncs,'Enemigos derrotados: '+S.kills,[S.charge>=1?'Onda lista':'Onda cargando',S.charge>=1?C.gold:C.muted]]);
+ },
+ ai(S){const[a,b]=S.P;const o=toward(b,a.x+70*Math.cos(S.t*.7),a.y+70*Math.sin(S.t*.7),6);const dtp=S.t-S.press[0];
+  if(S.press[0]!==S.aiFor&&dtp>.1&&dtp<.2&&S.charge>=1){o.act=true;S.aiFor=S.press[0];return o}
+  if(S.charge<1&&(S.t%.8)<.04&&S.E.some(e=>dist(e,b)<50))o.act=true;return o}
+},
+];
+
+/* ---------- entrada ---------- */
+const keys=new Set(),GAME=new Set(['w','a','s','d',' ','arrowup','arrowdown','arrowleft','arrowright','enter']);
+cv.addEventListener('keydown',e=>{const k=e.key.toLowerCase();if(GAME.has(k)){e.preventDefault();keys.add(k)}});
+cv.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+cv.addEventListener('blur',()=>keys.clear());
+const ptr={down:false,x:0,y:0};
+const toLog=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H}};
+cv.addEventListener('pointerdown',e=>{cv.focus({preventScroll:true});ptr.down=true;Object.assign(ptr,toLog(e));try{cv.setPointerCapture(e.pointerId)}catch(_){}});
+cv.addEventListener('pointermove',e=>{if(ptr.down)Object.assign(ptr,toLog(e))});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>ptr.down=false));
+const tbtn=[false,false];
+document.querySelectorAll('[data-act]').forEach(btn=>{const i=+btn.dataset.act;
+  btn.addEventListener('pointerdown',e=>{e.preventDefault();tbtn[i]=true});
+  ['pointerup','pointerleave','pointercancel'].forEach(t=>btn.addEventListener(t,()=>tbtn[i]=false))});
+const prevAct=[false,false];
+function readInput(){
+  const a={x:0,y:0,act:false};let b={x:0,y:0,act:false};
+  if(keys.has('a'))a.x--;if(keys.has('d'))a.x++;if(keys.has('w'))a.y--;if(keys.has('s'))a.y++;a.act=keys.has(' ')||tbtn[0];
+  if(ptr.down){const p=S.P[0],t=D.toWorld?D.toWorld(S,ptr.x,ptr.y):ptr,dx=t.x-p.x,dy=t.y-p.y,l=Math.hypot(dx,dy);if(l>8){a.x=dx/l;a.y=dy/l}}
+  if(keys.has('arrowleft'))b.x--;if(keys.has('arrowright'))b.x++;if(keys.has('arrowup'))b.y--;if(keys.has('arrowdown'))b.y++;b.act=keys.has('enter')||tbtn[1];
+  if(aiBox.checked)b=(D.ai?D.ai(S):toward(S.P[1],S.P[0].x,S.P[0].y,90))||{x:0,y:0,act:false};
+  [a,b].forEach((v,i)=>{const l=Math.hypot(v.x,v.y);if(l>1){v.x/=l;v.y/=l}v.act=!!v.act;v.pressed=v.act&&!prevAct[i];prevAct[i]=v.act});
+  return[a,b];
+}
+
+/* ---------- interfaz ---------- */
+const $=id=>document.getElementById(id);
+const ideasEl=$('ideas');
+DEMOS.forEach(d=>{const b=document.createElement('button');b.className='idea';b.type='button';b.dataset.id=d.id;
+  b.innerHTML=`<span class="tag">${d.tag}</span><span class="t">${d.title}</span><span class="s">${d.short}</span>`;
+  b.addEventListener('click',()=>{if(location.hash==='#'+d.id)start(d.id);else location.hash=d.id;cv.focus({preventScroll:true})});ideasEl.append(b)});
+let D,S;
+function renderMeta(){
+  $('dTag').textContent=D.tag;$('dTitle').textContent=D.title;$('dPitch').textContent=D.pitch;
+  $('k1').textContent=D.k1;$('k2').textContent=D.k2;$('nWhy').textContent=D.why;$('nHow').textContent=D.how;
+  const ul=$('nVar');ul.innerHTML='';D.vars.forEach(v=>{const li=document.createElement('li');li.textContent=v;ul.append(li)});
+  ideasEl.querySelectorAll('.idea').forEach(b=>b.setAttribute('aria-current',b.dataset.id===D.id?'true':'false'));
+  const o=$('opts');o.innerHTML='';o.hidden=!D.options;
+  if(D.options){const l=document.createElement('span');l.className='lbl';l.textContent=D.options.label;o.append(l);
+    D.options.choices.forEach(([v,t])=>{const b=document.createElement('button');b.className='btn';b.type='button';b.textContent=t;b.setAttribute('aria-pressed',OPT.mode===v);b.addEventListener('click',()=>{OPT.mode=v;renderMeta();cv.focus({preventScroll:true})});o.append(b)})}
+}
+function start(id){D=DEMOS.find(d=>d.id===id)||DEMOS[0];FX=[];S={t:0,shake:0};D.init(S);prevAct[0]=prevAct[1]=false;renderMeta()}
+function route(){start(location.hash.slice(1))}
+addEventListener('hashchange',route);
+$('reset').addEventListener('click',()=>{start(D.id);cv.focus({preventScroll:true})});
+
+function resize(){const r=cv.getBoundingClientRect(),d=Math.min(2,devicePixelRatio||1);cv.width=Math.max(1,Math.round(r.width*d));cv.height=Math.max(1,Math.round(r.width*H/W*d))}
+new ResizeObserver(resize).observe(cv);resize();
+
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.033,(now-last)/1000);last=now;
+  const inp=readInput();S.t+=dt;for(const p of S.P)p.flash=Math.max(0,p.flash-dt);
+  D.update(S,inp,dt);updFx(dt);S.shake=Math.max(0,S.shake-dt);
+  ctx.setTransform(cv.width/W,0,0,cv.height/H,0,0);ctx.textBaseline='middle';
+  ctx.fillStyle=C.abyss;ctx.fillRect(0,0,W,H);
+  ctx.save();if(S.shake>0&&!reduced)ctx.translate(rnd(-1,1)*S.shake*14,rnd(-1,1)*S.shake*14);
+  D.draw(S);ctx.restore();
+  if(!coarse&&document.activeElement!==cv)pill(W-120,22,'Haz clic para usar el teclado',C.gold);
+  requestAnimationFrame(frame);
+}
+route();requestAnimationFrame(frame);
+})();
+</script>
