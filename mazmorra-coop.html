@@ -220,6 +220,21 @@ const AIM = {
   stepRange: 130,  // con un hueco mayor no hay paso de entrada largo, solo el pasito de siempre
   airHold: 70      // un enemigo lanzado se mantiene fijado mientras estés a menos de este hueco; más lejos se suelta al ir hacia otro
 };
+// Mira automática de los personajes a distancia (sin objetivo fijado a mano): elige al enemigo que tienes delante y,
+// mientras disparas, no lo suelta aunque te alejes, para poder huir disparando hacia atrás
+const AIM_R = {
+  range: 420,       // hueco máximo (px, de borde a borde) para que la mira elija a un enemigo
+  cone: 1.2,        // semiángulo del cono hacia donde caminas (táctil, Teclado B, mando sin stick derecho), ≈69°
+  stickCone: 0.35,  // con el stick derecho: imán suave alrededor de donde apuntas (≈20°)
+  mouseCone: 0.12,  // con ratón: imán mínimo (≈7°)
+  angW: 1.2,        // cuánto pesa el ángulo frente a la distancia al puntuar candidatos
+  airBonus: 0.5,    // los enemigos en el aire puntúan el doble de bien (para los juggles)
+  switchMul: 0.8,   // sin disparar, cambia de objetivo si el nuevo puntúa un 20 % mejor
+  snapAng: 0.4,     // disparando, cambia al instante si vas de lleno (≈23°) hacia otro enemigo más cercano que el actual
+  stickyT: 0.6,     // tras dejar de disparar, la mira sigue pegada este tiempo
+  stickyRange: 560, // disparando, la mira aguanta pegada hasta este hueco aunque te alejes
+  turn: 30          // giro de la mira hacia el objetivo (rad/s); el disparo sale siempre exacto al objetivo
+};
 const SHIELD_BASH = { name: 'Empujón de escudo', shape: 'thrust', len: 52, width: 52, dur: 0.16, dmg: 0.4, kb: 560 }; // golpe con el escudo alzado: empuja mucho, daña poco
 // Parámetros de las habilidades (el daño se multiplica por ABILITY_MUL)
 const AB = {
@@ -1039,7 +1054,7 @@ function roomCleared() {
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
   floor = genFloor(seed, 1);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; for (const kk in p.prev) p.prev[kk] = true; }
+  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
@@ -1081,6 +1096,57 @@ function facingAng(p, e) { const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(
 function facingTarget(p) {
   let best = null, bs = Infinity;
   for (const e of liveTargets()) { const s = facingScore(p, e, p.fx, p.fy); if (s < bs) { bs = s; best = e; } }
+  return best;
+}
+// Objetivo al que apuntan disparos y habilidades: el fijado a mano o, si no, el de la mira automática
+function aimTgt(p) {
+  const t = p.lockOn && p.target ? p.target : p.soft;
+  return t && !t.dead && enemies.includes(t) ? t : null;
+}
+function inSight(p, e) { // sin muros ni rocas en medio
+  const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1;
+  return beamLength(p.x, p.y, dx / d, dy / d, d) >= d - e.r - 6;
+}
+function softScore(p, e, ux, uy, cone) {
+  const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1, gap = Math.max(0, d - e.r - p.r);
+  if (gap > AIM_R.range) return Infinity;
+  const ang = Math.acos(Math.max(-1, Math.min(1, (dx * ux + dy * uy) / d)));
+  if (ang > cone || !inSight(p, e)) return Infinity;
+  return (gap + 20) * (1 + AIM_R.angW * ang) * (e.airborne ? AIM_R.airBonus : 1);
+}
+function updateSoftAim(p, inp, mm, rm, dt) {
+  // hacia dónde quiere apuntar el jugador y con cuánto imán
+  let ux = p.fx, uy = p.fy, cone = AIM_R.cone, free = true; // free: la mira la decide el juego (se pega al disparar)
+  if (rm > 0.3) { ux = inp.rx / rm; uy = inp.ry / rm; cone = AIM_R.stickCone; free = false; }
+  else if (p.dev === 'kb1' && mouse.active) {
+    const [mwx, mwy] = mouseWorld(), dx = mwx - p.x, dy = mwy + 12 / K - p.y, d = Math.hypot(dx, dy) || 1;
+    ux = dx / d; uy = dy / d; cone = AIM_R.mouseCone; free = false;
+  }
+  const firing = inp.s || p.charging || p.beaming || p.fan || p.burst;
+  p.fireT = firing ? AIM_R.stickyT : (p.fireT || 0) - dt;
+  let cur = p.soft && !p.soft.dead && enemies.includes(p.soft) ? p.soft : null;
+  if (cur && (Math.hypot(cur.x - p.x, cur.y - p.y) - cur.r - p.r > AIM_R.stickyRange || !inSight(p, cur))) cur = null;
+  let best = null, bs = Infinity;
+  for (const e of liveTargets()) { const sc = softScore(p, e, ux, uy, cone); if (sc < bs) { bs = sc; best = e; } }
+  let next = cur;
+  if (!free) next = best; // stick o ratón: solo imán alrededor de donde apuntas
+  else if (!cur) next = best || (firing ? nearestVisible(p) : null); // quieto disparando sin nadie delante: al más cercano
+  else if (best && best !== cur) {
+    const gap = e => Math.hypot(e.x - p.x, e.y - p.y) - e.r - p.r;
+    if (p.fireT > 0) { // disparando: se pega al objetivo; solo salta si vas de lleno hacia otro más cercano
+      const dx = best.x - p.x, dy = best.y - p.y, d = Math.hypot(dx, dy) || 1;
+      if (mm > 0.2 && Math.acos(Math.max(-1, Math.min(1, (dx * ux + dy * uy) / d))) < AIM_R.snapAng && gap(best) < gap(cur)) next = best;
+    } else if (mm > 0.2) {
+      const sc = softScore(p, cur, ux, uy, cone);
+      if (sc === Infinity || bs < sc * AIM_R.switchMul) next = best;
+    }
+  } else if (!best && p.fireT <= 0 && mm > 0.2) next = null; // sin disparar y caminando hacia la nada: la mira vuelve a tu marcha
+  if (next && next !== p.soft) effects.push({ type: 'reticle', x: next.x, y: next.y, t: 0, dur: 0.16, color: p.slotColor }); // destello al cambiar
+  p.soft = next;
+}
+function nearestVisible(p) {
+  let best = null, bd = 1e9;
+  for (const e of liveTargets()) { const d = Math.hypot(e.x - p.x, e.y - p.y) - e.r - p.r; if (d < bd && d <= AIM_R.range && inSight(p, e)) { bd = d; best = e; } }
   return best;
 }
 // Con el objetivo fijado, el stick derecho elige al enemigo que está en esa dirección
@@ -1416,6 +1482,7 @@ function updatePlayer(p, dt) {
     if (rFlick) p.target = targetInDirection(p, Math.atan2(inp.ry, inp.rx));
   }
   const tgt = p.lockOn && p.target ? p.target : null;
+  if (c.canShoot && !c.autoLock && !tgt) updateSoftAim(p, inp, mm, rm, dt); else p.soft = null; // mira automática a distancia
   // cuánto de la entrada va hacia el objetivo: 1 acercarse, -1 alejarse
   let radial = 0;
   if (tgt && mm > 0.2) { const dx = tgt.x - p.x, dy = tgt.y - p.y, d = Math.hypot(dx, dy) || 1; radial = (inp.x * dx + inp.y * dy) / (d * mm); }
@@ -1468,6 +1535,12 @@ function updatePlayer(p, dt) {
   if (tgt) {
     const dx = tgt.x - p.x, dy = tgt.y - p.y, d = Math.hypot(dx, dy) || 1;
     p.ax = dx / d; p.ay = dy / d;
+  } else if (p.soft) { // mira automática: gira rápido hacia el objetivo
+    const dx = p.soft.x - p.x, dy = p.soft.y - p.y;
+    let da = Math.atan2(dy, dx) - Math.atan2(p.ay, p.ax); da = Math.atan2(Math.sin(da), Math.cos(da));
+    const a = Math.atan2(p.ay, p.ax) + Math.sign(da) * Math.min(Math.abs(da), AIM_R.turn * dt);
+    p.ax = Math.cos(a); p.ay = Math.sin(a);
+    if (rm > 0.3) p.stickT = 0.5;
   } else if (rm > 0.3) {
     p.ax = inp.rx / rm; p.ay = inp.ry / rm; p.stickT = 0.5;
   } else if (p.dev === 'kb1' && mouse.active) {
@@ -1647,7 +1720,7 @@ function fanTargets(p) {
     return beamLength(p.x, p.y, dx / d, dy / d, d) >= d - e.r - 6;
   });
   L.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
-  const tg = p.lockOn && p.target && L.includes(p.target) ? p.target : null;
+  const tg = aimTgt(p) && L.includes(aimTgt(p)) ? aimTgt(p) : null;
   return tg ? [tg].concat(L.filter(e => e !== tg)) : L;
 }
 function startFan(p, lv) {
@@ -1693,9 +1766,10 @@ function fireShot(p, dmg, lv) {
   p.braveShot = false;
   if (brave) dmg *= c.braveMul;
   dmg = Math.round(dmg * 10) / 10;
+  if (p.soft && !p.lockOn && !p.soft.dead) { const dx = p.soft.x - p.x, dy = p.soft.y - p.y, d = Math.hypot(dx, dy) || 1; p.ax = dx / d; p.ay = dy / d; } // la bala va justo al objetivo
   if (c.shotType === 'hitscan') {
     const w = 3 + lv * 6, wallLen = beamLength(p.x, p.y, p.ax, p.ay, c.hitscanRange);
-    const air = p.lockOn && p.target && p.target.airborne ? p.target : null; // apuntando a un enemigo en el aire
+    const at = aimTgt(p), air = at && at.airborne ? at : null; // apuntando a un enemigo en el aire
     let hits = [];
     for (const e of liveTargets()) {
       if (air && !e.airborne) continue; // el disparo sube hacia él y pasa por encima de los que están en el suelo
@@ -1732,7 +1806,7 @@ function fireShot(p, dmg, lv) {
     burst(p.x + p.ax * len, p.y + p.ay * len - 12 - z2, p.color, 3 + Math.round(lv * 6));
   } else {
     const spd = c.shotSpeed * (1 + 0.3 * lv);
-    const air = p.lockOn && p.target && p.target.airborne ? p.target : null; // el proyectil sube hacia él
+    const at = aimTgt(p), air = at && at.airborne ? at : null; // el proyectil sube hacia él
     pBullets.push({ x: p.x + p.ax * 14, y: p.y + p.ay * 14, vx: p.ax * spd, vy: p.ay * spd, r: c.shotRadius * (1 + lv),
       life: c.shotRange, dmg, color: p.color, pierce: full, hit: new Set(), owner: p,
       aim: air, d0: air ? Math.max(12, Math.hypot(air.x - p.x, air.y - p.y) - air.r - c.shotRadius * (1 + lv) - 14) : 0, trav: 0, h: 12, tz: air ? air.z : 0, vh: 0 });
@@ -1772,9 +1846,9 @@ function secReady(p) { return abilityReady(p, 'sec'); }
 // ---------- Disparo rebotante ----------
 // Objetivo: el enemigo en el aire (fijado o el más cercano) > el fijado > el más cercano
 function ricochetTarget(p) {
-  const air = p.lockOn && p.target && p.target.airborne && !p.target.dead ? p.target : nearestAirborne(p);
+  const at = aimTgt(p), air = at && at.airborne ? at : nearestAirborne(p);
   if (air) return [air, true];
-  if (p.lockOn && p.target && !p.target.dead) return [p.target, false];
+  if (at) return [at, false];
   return [nearestTarget(p), false];
 }
 function nearestOther(e, from, skip) {
@@ -2546,7 +2620,7 @@ function arcanePoint(p, lv) {
 }
 // Granada (Marea): vuela en arco hacia el objetivo fijado (lo sigue en el aire), explota y lanza por los aires
 function grenadePoint(p) {
-  const tg = p.target && !p.target.dead && enemies.includes(p.target) ? p.target : null;
+  const tg = aimTgt(p);
   if (tg && Math.hypot(tg.x - p.x, tg.y - p.y) <= AB.grenade.range) return [[tg.x, tg.y], tg];
   const d = beamLength(p.x, p.y, p.ax, p.ay, AB.grenade.range * 0.7);
   return [[p.x + p.ax * d, p.y + p.ay * d], null];
@@ -2556,7 +2630,7 @@ function frostBeamTick(p, staMul) {
   const c = p.ch, R = c.beamRange, aim = Math.atan2(p.ay, p.ax);
   const angTo = e => { let d = Math.atan2(e.y - p.y, e.x - p.x) - aim; return Math.abs(Math.atan2(Math.sin(d), Math.cos(d))); };
   let best = null;
-  const tg = p.lockOn && p.target && !p.target.dead && enemies.includes(p.target) ? p.target : null;
+  const tg = aimTgt(p);
   if (tg && Math.hypot(tg.x - p.x, tg.y - p.y) <= R && angTo(tg) < 0.6) best = tg;
   else { let ba = 0.35; for (const e of liveTargets()) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d > R) continue; const a = angTo(e); if (a < ba) { ba = a; best = e; } } }
   if (best) {
@@ -2575,7 +2649,7 @@ function throwSnowball(p, lv) {
 }
 // Estallido helado (Escarcha): sobre el objetivo fijado (o el más cercano a tiro); congela; si estaba en el aire, se rompe al caer o al recibir otro golpe
 function frostTarget(p) {
-  const tg = p.target && !p.target.dead && enemies.includes(p.target) ? p.target : null;
+  const tg = aimTgt(p);
   if (tg && Math.hypot(tg.x - p.x, tg.y - p.y) <= AB.frostburst.range) return tg;
   const n = nearestTarget(p);
   return n && Math.hypot(n.x - p.x, n.y - p.y) <= AB.frostburst.range ? n : null;
@@ -2764,7 +2838,7 @@ function updateGrenades(dt) {
 // ---------- Misiles teledirigidos (Ciruela) ----------
 // Objetivo: el fijado del jugador o, si no, el más cercano (los que están en el aire, primero)
 function missileTarget(p, x, y) {
-  if (p && p.lockOn && p.target && !p.target.dead) return p.target;
+  if (p && aimTgt(p)) return aimTgt(p);
   let best = null, bd = 1e9, air = false;
   for (const e of liveTargets()) {
     const d = Math.hypot(e.x - x, e.y - y);
@@ -3174,6 +3248,14 @@ function drawComboHints() {
 // Marca del objetivo fijado, en el color de cada jugador
 function drawTargets() {
   players.forEach((p, i) => {
+    if (!p.down && !p.lockOn && p.soft && !p.soft.dead) { // mira automática: cuatro esquinas, más cerradas al disparar
+      const e = p.soft, k = (p.fireT || 0) > 0 ? 0.8 : 1, r = (e.r + 10 + i * 3) * k, ry = r * 0.6, L = 7, y = e.y - (e.z || 0) * 0.5;
+      ctx.strokeStyle = p.slotColor; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.9;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        ctx.beginPath(); ctx.moveTo(e.x + sx * r, y + sy * ry - sy * L); ctx.lineTo(e.x + sx * r, y + sy * ry); ctx.lineTo(e.x + sx * r - sx * L, y + sy * ry); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
     if (p.down || !p.lockOn || !p.target) return;
     const e = p.target, r = e.r + 8 + i * 4, a0 = time * 2 + i;
     ctx.strokeStyle = p.slotColor; ctx.lineWidth = 3;
