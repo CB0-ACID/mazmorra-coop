@@ -237,6 +237,7 @@ const AB = {
                overheatHeat: 0.5 },          // sobrecalentada: descarga de emergencia como si tuviera este calor y corta el bloqueo
   overdrive: { r: 100, dmg: 2, kb: 420, time: 3 }, // Purga: onda de calor que daña y empuja; luego dispara más rápido sin calentarse
   turret:    { time: 10, rate: 0.3, range: 330, dmg: 1.2, hp: 8, regen: 0.5, destroyedCd: 20 }, // vida propia; se regenera guardada
+  missile:   { speed: 300, maxSpeed: 560, accel: 700, turn: 6, life: 2.4, dmg: 2, r: 42, kb: 220 }, // Misil teledirigido (Ciruela y su torreta, tras moverse)
   overcharge: { time: 5, mul: 0.5, healR: 130, healEvery: 1, healPct: 0.04 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta; la torreta cura un 4 % de la vida máxima por segundo a los aliados cercanos
   reaper:    { len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: ejecuta a los tier 1 y cura
   dragon: {  // Puño del dragón: cargas por ejecuciones propias o de aliados cercanos
@@ -391,7 +392,7 @@ const CHARS = [
     secType: 'ricochet', secCd: 4, ricDmg: 3 },  // disparo rebotante (cargable)
   { name: 'Ciruela',  color: '#c07af0', mark: 'cross',   family: 'tirador', role: 'Tirador, torreta',
     priType: 'turret', secType: 'overcharge', priCd: 1, secCd: 10,
-    shotMode: 'auto', shotCd: 0.3, shot: 1.5, shotStagger: 0.18, shotStyle: 'gatling' } // gatling: disparo continuo, sin carga
+    shotMode: 'auto', shotCd: 0.3, shot: 1.5, shotStagger: 0.18, shotStyle: 'gatling', postMoveMissile: true } // gatling: disparo continuo, sin carga
 ].map(c => Object.assign({}, BASE_STATS, ROLES[c.family], c));
 
 // ---------- Lienzo ----------
@@ -553,7 +554,7 @@ bindBtn(document.getElementById('bTest'), 't');
 // count: elegir nº de jugadores · select: elegir personajes · play · over
 let state = 'count';
 let floor, room, pal = PALETTES[0];
-let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [];
+let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [], missiles = [];
 let overT = 0, time = 0, fade = 0, shake = 0, banner = null, seed = 0, hitstop = 0, flashT = 0;
 let camKX = 0, camKY = 0; // empujón de cámara en la dirección del golpe
 const BUFFER = 0.25;      // búfer de entrada: una pulsación se recuerda 0,25 s (cubre toda la recuperación del golpe)
@@ -938,7 +939,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
   useRoom(r);
-  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = [];
+  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = [];
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
   const entry = dir ? OPP[dir] : null;
@@ -1451,6 +1452,14 @@ function updatePlayer(p, dt) {
       p.charging = false; p.beaming = false;
     }
   } else if (c.shotMode === 'auto') { // disparo continuo sin calentamiento (Ciruela)
+    // disparar justo después de moverse lanza un misil teledirigido desde Ciruela y otro desde su torreta
+    if (c.postMoveMissile && aP && (p.moveT > 0 || p.postMoveT > 0) && !p.shotHold) {
+      p.postMoveT = 0; p.shotHold = true; p.shotCd = c.shotCd;
+      fireMissile(p, p.x + p.ax * 14, p.y + p.ay * 14, 14, Math.atan2(p.ay, p.ax), missileTarget(p, p.x, p.y));
+      const t = myTurret(p);
+      if (t) fireMissile(p, t.x, t.y, 20, t.ang, missileTarget(null, t.x, t.y));
+      floatText(p.x, p.y - 46 * c.size, 'Misil', p.slotColor);
+    }
     if (inp.s && p.shotCd <= 0 && p.moveT <= 0 && !p.shotHold) { p.shotCd = c.shotCd * (p.overchargeT > 0 ? AB.overcharge.mul : 1); fireShot(p, c.shot, 0); }
   } else {
     const mag = c.ammo > 0; // con tambor (Marea): cada bala gasta munición y al vaciarse recarga
@@ -2317,6 +2326,71 @@ function updateGrenades(dt) {
     burst(g.x, g.y - 10, '#ffb347', 22); burst(g.x, g.y - 10, '#5f5a68', 14); shake = Math.max(shake, 7); SFX.hit(true);
   }
   grenades = grenades.filter(g => !g.done);
+}
+// ---------- Misiles teledirigidos (Ciruela) ----------
+// Objetivo: el fijado del jugador o, si no, el más cercano (los que están en el aire, primero)
+function missileTarget(p, x, y) {
+  if (p && p.lockOn && p.target && !p.target.dead) return p.target;
+  let best = null, bd = 1e9, air = false;
+  for (const e of liveTargets()) {
+    const d = Math.hypot(e.x - x, e.y - y);
+    if (e.airborne) { if (!air || d < bd) { best = e; bd = d; air = true; } }
+    else if (!air && d < bd) { best = e; bd = d; }
+  }
+  return best;
+}
+function fireMissile(owner, x, y, z, ang, tg) {
+  const M = AB.missile;
+  ang += (Math.random() - 0.5) * 0.6; // sale un poco torcido y se corrige en vuelo
+  missiles.push({ owner, x, y, z, ang, spd: M.speed, tg, t: 0, smoke: 0 });
+  SFX.launch();
+}
+function explodeMissile(m) {
+  const M = AB.missile, p = m.owner;
+  m.done = true;
+  for (const e of liveTargets()) {
+    if (Math.hypot(e.x - m.x, e.y - m.y) > M.r + e.r) continue;
+    if (Math.abs((e.z || 0) - m.z) > 50 + M.r) continue; // si explota en el aire, no alcanza a los del suelo (ni al revés)
+    shotHit(p, e, M.dmg, M.kb, m.x, m.y, true);
+  }
+  effects.push({ type: 'ring', x: m.x, y: m.y - m.z / K, r: M.r, t: 0, dur: 0.25, color: '#ffb347' });
+  burst(m.x, m.y - 10 - m.z, '#ffb347', 14); burst(m.x, m.y - 10 - m.z, p.color, 8);
+  shake = Math.max(shake, 4); SFX.hit(true);
+}
+function updateMissiles(dt) {
+  const M = AB.missile;
+  for (const m of missiles) {
+    m.t += dt;
+    if (m.t > M.life) { explodeMissile(m); continue; }
+    if (!m.tg || m.tg.dead) m.tg = missileTarget(null, m.x, m.y); // si su objetivo cae, busca otro
+    const tg = m.tg;
+    if (tg) { // gira hacia el objetivo con un giro limitado: describe una curva
+      let da = Math.atan2(tg.y - m.y, tg.x - m.x) - m.ang; da = Math.atan2(Math.sin(da), Math.cos(da));
+      const k = m.t < 0.12 ? 0.3 : 1; // al salir apenas gira
+      m.ang += Math.max(-M.turn * dt * k, Math.min(M.turn * dt * k, da));
+      m.z += ((tg.z || 0) + 6 - m.z) * Math.min(1, dt * 6); // sube o baja hasta la altura del objetivo
+    } else m.z += (14 - m.z) * Math.min(1, dt * 4);
+    m.spd = Math.min(M.maxSpeed, m.spd + M.accel * dt);
+    const nx = m.x + Math.cos(m.ang) * m.spd * dt, ny = m.y + Math.sin(m.ang) * m.spd * dt;
+    if (isSolid(Math.floor(nx / T), Math.floor(ny / T), false)) { explodeMissile(m); continue; }
+    m.x = nx; m.y = ny;
+    if (tg && Math.hypot(tg.x - m.x, tg.y - m.y) < tg.r + 6 && Math.abs((tg.z || 0) - m.z) < 40) { explodeMissile(m); continue; }
+    m.smoke -= dt;
+    if (m.smoke <= 0) { m.smoke = 0.025; particles.push({ x: m.x - Math.cos(m.ang) * 8, y: m.y - 12 - m.z - Math.sin(m.ang) * 6, vx: (Math.random() - 0.5) * 20, vy: -15, life: 0.35, max: 0.35, color: Math.random() < 0.4 ? '#ffb347' : '#8a8494', s: 3 }); }
+  }
+  missiles = missiles.filter(m => !m.done);
+}
+function drawMissiles() {
+  for (const m of missiles) {
+    const sh = Math.max(0.4, 1 - m.z / 140);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(m.x, m.y, 6 * sh, 2.5 * sh);
+    ctx.save(); ctx.translate(m.x, m.y - 12 - m.z); ctx.rotate(Math.atan2(Math.sin(m.ang) * K, Math.cos(m.ang)));
+    ctx.fillStyle = Math.random() < 0.5 ? '#ffd54a' : '#ff8a3d'; ellipse(-9, 0, 4, 2.5); // llama
+    ctx.fillStyle = m.owner.color; ctx.strokeStyle = '#16121e'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(3, -3); ctx.lineTo(-6, -3); ctx.lineTo(-6, 3); ctx.lineTo(3, 3); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#e8e2f0'; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(3, -3); ctx.lineTo(3, 3); ctx.closePath(); ctx.fill(); // punta
+    ctx.restore();
+  }
 }
 function drawGrenades() {
   for (const g of grenades) {
@@ -3403,7 +3477,7 @@ function update(dt) {
   leash();
   updateHazards(dt);
   updateChains(dt);
-  updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt);
+  updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateMissiles(dt);
 
   for (const b of bullets) {
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
@@ -3599,7 +3673,7 @@ function shotText(c) {
   if (c.shotMode === 'frost') return 'Ondas continuas; cargando, bola de nieve';
   if (c.shotStyle === 'revolver') return 'Revólver de 6 balas, alcance ilimitado; tras moverte, vacía el tambor';
   if (!c.canShoot) return 'Sin disparo';
-  if (c.shotMode === 'auto') return 'Instantáneo y continuo, sin carga';
+  if (c.shotMode === 'auto') return c.postMoveMissile ? 'Continuo; tras moverte, misil teledirigido (y otro de la torreta)' : 'Instantáneo y continuo, sin carga';
   if (c.shotMode === 'heat') return 'Ráfaga instantánea que se sobrecalienta';
   if (c.shotType === 'hitscan') return 'Instantáneo, cargable';
   return c.shotSpeed < 300 ? 'Proyectil lento, cargable' : 'Proyectil, cargable';
@@ -4590,7 +4664,7 @@ const PROJ_KEYS = ['y', 'y1', 'y2', 'ay'];
 let projSaved = null;
 function projectOn() {
   projSaved = []; const seen = new Set();
-  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades]) for (const o of L) {
+  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles]) for (const o of L) {
     if (seen.has(o)) continue; seen.add(o);
     for (const k of PROJ_KEYS) { const v = o[k]; if (typeof v === 'number') { projSaved.push(o, k, v); o[k] = v * K; } }
   }
@@ -4649,7 +4723,7 @@ function drawGame() {
     for (const it of list) it.f();
     for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
-    drawArcOrbs('air'); drawGrenades(); drawEffects(); drawTexts();
+    drawArcOrbs('air'); drawGrenades(); drawMissiles(); drawEffects(); drawTexts();
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
