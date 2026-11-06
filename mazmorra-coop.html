@@ -248,7 +248,7 @@ const AB = {
   overcharge: { time: 5, mul: 0.5, healR: 130, healEvery: 1, healPct: 0.04 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta; la torreta cura un 4 % de la vida máxima por segundo a los aliados cercanos
   reaper:    { range: 300, speed: 1300, maxT: 0.4, len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: salta al ejecutable más cercano (o al más cercano) y golpea en cono
   dragon: {  // Poder del dragón: el nivel 1 se recarga solo; las cargas 2 y 3 se ganan con ejecuciones propias o de aliados cercanos
-    max: 3, step: 0.45, allyR: 240, regen: 6,
+    max: 3, step: 0.45, allyR: 240, regen: 6, sta: 2, // sta: sus golpes quitan el doble de estamina que de vida
     l1: { speed: 560, range: 460, r: 12, dmg: 3, splash: 46 },                         // bola de fuego que prende
     l2: { R: 74, dur: 5, spin: 3.4, body: 1.9, dmg: 1.4, hitR: 20, hitCd: 0.45 },       // dragón chino que gira alrededor
     l3: { hits: 4, dmg: 4, gap: 0.2 }                                                   // forma de dragón: teletransporte a 4 enemigos
@@ -1816,10 +1816,9 @@ function updateSpecial(p, dt) {
     p.x = e.x - ux * (e.r + p.r + 6); p.y = e.y - uy * (e.r + p.r + 6); collide(p, true); p.ax = ux; p.ay = uy;
     if (d > 20) effects.push({ type: 'dragon', x: ox, y: oy, ax: ux, ay: uy, len: d, w: 40, t: 0, dur: 0.35, color: c.color }); // estela del teletransporte
     const dmg = AB.dragon.l3.dmg * ABILITY_MUL;
-    fireHit(e, p, dmg, 220, p.x, p.y);
+    fireHit(e, p, dmg, 220, p.x, p.y, { sta: AB.dragon.sta, fx: 'heavy' });
     effects.push({ type: 'kanji', x: e.x, y: upY(e.y, 34 + (e.z || 0)), t: 0, dur: 0.9 });
-    effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 22, t: 0, dur: 0.3, color: '#ff8a3d' });
-    burst(e.x, upY(e.y, 12 + (e.z || 0)), '#ff8a3d', 14); shake = Math.max(shake, 6); hitstop = Math.max(hitstop, 0.05);
+    shake = Math.max(shake, 6);
     R.hit.add(e); R.last = e; R.left--; R.wait = AB.dragon.l3.gap;
     return true;
   }
@@ -2279,7 +2278,24 @@ function applyBurn(e, p) {
   if (!(e.burnT > 0)) e.burnTick = BURN.tick;
   e.burnT = BURN.time; e.burnBy = p; // reinicia el tiempo si ya ardía
 }
-function fireHit(e, p, dmg, kb, sx, sy) { damageEnemy(e, sx, sy, dmg, dmg, kb); applyBurn(e, p); }
+// Golpe de fuego. o.sta: multiplicador de daño a estamina; o.fx: 'heavy' o 'light' usa el mismo impacto que el cuerpo a cuerpo
+function fireHit(e, p, dmg, kb, sx, sy, o) {
+  o = o || {};
+  if (e.dead) return;
+  damageEnemy(e, sx, sy, dmg, dmg * (o.sta || 1), kb); applyBurn(e, p);
+  if (o.fx) fireImpact(e, sx, sy, o.fx === 'heavy');
+}
+// Impacto de fuego: hitstop, sacudida hacia el golpe, chispas y hitstun como un golpe cuerpo a cuerpo, más un estallido de llamas
+function fireImpact(e, sx, sy, heavy) {
+  impactFx({ x: sx, y: sy }, e, heavy, !heavy);
+  const y = upY(e.y, 12 + (e.z || 0)), n = heavy ? 16 : 8;
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 60 + Math.random() * (heavy ? 200 : 120);
+    particles.push({ x: e.x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7 - 40, life: 0.25 + Math.random() * 0.2, max: 0.45, color: Math.random() < 0.5 ? '#ff6a2a' : '#ffd54a', s: 3 + Math.random() * 3 });
+  }
+  effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + (heavy ? 20 : 12), t: 0, dur: heavy ? 0.3 : 0.2, color: '#ff8a3d' });
+  e.flash = Math.max(e.flash || 0, heavy ? 0.14 : 0.1);
+}
 function updateBurns(dt) {
   for (const e of enemies) {
     if (!(e.burnT > 0) || e.dead) continue;
@@ -2319,7 +2335,7 @@ function dragonBallBoom(f, main) {
   const L1 = AB.dragon.l1, dmg = L1.dmg * ABILITY_MUL;
   for (const e of liveTargets()) {
     if (e !== main && Math.hypot(e.x - f.x, e.y - f.y) > L1.splash + e.r) continue;
-    fireHit(e, f.owner, e === main ? dmg : dmg * 0.5, e === main ? 260 : 140, f.x, f.y);
+    fireHit(e, f.owner, e === main ? dmg : dmg * 0.5, e === main ? 260 : 140, f.x, f.y, { sta: AB.dragon.sta, fx: e === main ? 'heavy' : 'light' });
   }
   effects.push({ type: 'ring', x: f.x, y: f.y, r: L1.splash, t: 0, dur: 0.35, color: '#ff8a3d' });
   burst(f.x, upY(f.y, f.z), '#ff8a3d', 18); burst(f.x, upY(f.y, f.z), '#ffd54a', 8); shake = Math.max(shake, 4);
@@ -2352,9 +2368,8 @@ function updateDragonFx(dt) {
       const pts = orbitPoints(f);
       for (const e of liveTargets()) {
         if ((f.cd.get(e) || 0) > f.t) continue;
-        if (pts.some((q, i) => i % 3 === 0 && Math.hypot(e.x - q.x, e.y - q.y) < e.r + L2.hitR)) {
-          fireHit(e, f.owner, L2.dmg * ABILITY_MUL, 200, f.owner.x, f.owner.y); f.cd.set(e, f.t + L2.hitCd);
-        }
+        const q = pts.find((q, i) => i % 3 === 0 && Math.hypot(e.x - q.x, e.y - q.y) < e.r + L2.hitR);
+        if (q) { fireHit(e, f.owner, L2.dmg * ABILITY_MUL, 200, q.x - Math.cos(f.ang) * 20, q.y - Math.sin(f.ang) * 20, { sta: AB.dragon.sta, fx: 'light' }); f.cd.set(e, f.t + L2.hitCd); }
       }
       if (Math.random() < 0.7) { const q = pts[pts.length - 1]; particles.push({ x: q.x, y: upY(q.y, q.h), vx: (Math.random() - 0.5) * 30, vy: -30, life: 0.3, max: 0.3, color: Math.random() < 0.5 ? '#ffd54a' : '#ff6a2a', s: 5 }); }
     }
