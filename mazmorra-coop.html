@@ -193,7 +193,7 @@ const AB = {
   volley:    { n: 7, spread: 0.9, len: 280, dmg: 1 },
   overdrive: { r: 100, dmg: 2, kb: 420 }, // Purga: onda de calor que daña y empuja
   turret:    { time: 10, rate: 0.3, range: 330, dmg: 1.2, hp: 8, regen: 0.5, destroyedCd: 20 }, // vida propia; se regenera guardada
-  overcharge: { time: 5, mul: 0.5 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta
+  overcharge: { time: 5, mul: 0.5, healR: 130, healEvery: 1, healPct: 0.04 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta; la torreta cura un 4 % de la vida máxima por segundo a los aliados cercanos
   reaper:    { len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: ejecuta a los tier 1 y cura
   dragon: {  // Puño del dragón: cargas por ejecuciones propias o de aliados cercanos
     max: 3, step: 0.45, allyR: 240,
@@ -1810,11 +1810,25 @@ function endTurret(t, destroyed) {
     burst(t.x, t.y - 20, t.color, 10);
   }
 }
+// Con Sobrecarga, la torreta emite pulsos que curan a los aliados cercanos (incluida Ciruela)
+function turretHeal(t, dt) {
+  const oc = AB.overcharge;
+  if (!(t.owner.overchargeT > 0)) { t.healT = 0; return; }
+  t.healT = (t.healT || 0) - dt;
+  if (t.healT > 0) return;
+  t.healT = oc.healEvery;
+  effects.push({ type: 'ring', x: t.x, y: t.y, r: oc.healR, t: 0, dur: 0.4, color: '#7ee08a' });
+  for (const p of players) {
+    if (p.down || Math.hypot(p.x - t.x, p.y - t.y) > oc.healR) continue;
+    if (healPlayer(p, p.maxHp * oc.healPct) > 0) burst(p.x, p.y - 14, '#7ee08a', 6);
+  }
+}
 function updateTurrets(dt) {
   for (const t of turrets) {
     if (t.gone) continue;
     t.life -= dt; t.cd -= dt; t.inv -= dt;
     if (t.hp <= 0 || t.life <= 0) { endTurret(t, t.hp <= 0); continue; }
+    turretHeal(t, dt);
     if (t.cd > 0) continue;
     let best = null, bd = AB.turret.range, air = false;
     for (const e of liveTargets()) {
@@ -2291,7 +2305,11 @@ function drawFriendlyZones() {
 function drawTurret(t) {
   const over = t.owner.overchargeT > 0, blink = t.inv > 0 && Math.floor(time * 20) % 2;
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ellipse(t.x, t.y, 10, 4);
-  if (over) { ctx.save(); ctx.globalAlpha = 0.35 + 0.25 * Math.sin(time * 18); ctx.fillStyle = '#ffe066'; ellipse(t.x, t.y - 20, 16, 16); ctx.restore(); }
+  if (over) {
+    ctx.save(); ctx.globalAlpha = 0.18 + 0.08 * Math.sin(time * 6); ctx.strokeStyle = '#7ee08a'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); // zona de curación
+    ctx.beginPath(); ctx.arc(t.x, t.y, AB.overcharge.healR, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.globalAlpha = 0.35 + 0.25 * Math.sin(time * 18); ctx.fillStyle = '#ffe066'; ellipse(t.x, t.y - 20, 16, 16); ctx.restore();
+  }
   ctx.strokeStyle = '#4a4258'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(t.x, t.y - 14); ctx.lineTo(t.x - 8, t.y); ctx.moveTo(t.x, t.y - 14); ctx.lineTo(t.x + 8, t.y); ctx.stroke();
   ctx.strokeStyle = t.color; ctx.lineWidth = 4;
@@ -3080,7 +3098,7 @@ const ABILITY_TEXT = {
   volley: ['Abanico', 'Siete disparos instantáneos en cono'],
   overdrive: ['Purga', 'Vacía el calor en una onda que daña y empuja'],
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla'],
-  overcharge: ['Sobrecarga', 'Más cadencia para ella y su torreta'],
+  overcharge: ['Sobrecarga', 'Más cadencia; la torreta cura a los aliados cerca'],
   raiseShield: ['Escudo en alto', 'Refleja balas y cubre al grupo; se gasta'],
   vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
   taunt: ['Provocación', 'Atrae a los enemigos; su guardia cubre todo'],
