@@ -4558,7 +4558,7 @@ function drawDetail(ch) {
   ry += dItem(ch, ch.secType, 'Habilidad 2', s2[0], abilityBody(ch.secType, ch.secCd), rx, ry, cw, 3) + 4;
   dLabel('Movimiento', rx, ry + 6, cw); ry += 20;
   const mv = moveOf(ch);
-  ry += dItem(ch, mv.icon, 'Movimiento', mv.name, mv.desc + '.', rx, ry, cw) + 4;
+  ry += dItem(ch, mv.icon, 'Movimiento', mv.name, mv.desc + '.', rx, ry, cw, 3) + 4;
   dLabel('Interacciones', rx, ry + 6, cw); ry += 20;
   let chx = rx, chy = ry;
   for (const t of interactionChips(ch)) {
