@@ -2425,56 +2425,106 @@ function drawEffects() {
     ctx.restore();
   }
 }
-// Indicador de recarga de habilidad en el marcador
-// Iconos simples de cada habilidad
-function drawAbilityIcon(type, cx, cy, s, col) {
-  const h = s / 2;
-  ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = col; ctx.fillStyle = col;
-  ctx.lineWidth = Math.max(1.4, s * 0.15); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const line = (...pts) => { ctx.beginPath(); pts.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * h, y * h)); ctx.stroke(); };
-  const poly = (...pts) => { ctx.beginPath(); pts.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * h, y * h)); ctx.closePath(); ctx.fill(); };
-  switch (type) {
-    case 'beam': line([-1, 0], [0.3, 0]); poly([1, 0], [0.25, -0.55], [0.25, 0.55]); break;
-    case 'area': ctx.beginPath(); ctx.arc(0, 0, h * 0.85, 0, Math.PI * 2); ctx.stroke(); line([0, 0.45], [0, -0.4]); line([-0.35, -0.05], [0, -0.45], [0.35, -0.05]); break;
-    case 'rush': line([-0.75, -0.6], [-0.15, 0], [-0.75, 0.6]); line([0.05, -0.6], [0.65, 0], [0.05, 0.6]); break;
-    case 'drop': line([0, -1], [0, 0.35]); line([-0.45, -0.05], [0, 0.4], [0.45, -0.05]); line([-1, 0.85], [1, 0.85]); break;
-    case 'ricochet': line([-1, 0.6], [-0.25, -0.6], [0.4, 0.45], [1, -0.5]); break;
-    case 'shield': ctx.beginPath(); ctx.arc(0, h * 0.45, h * 0.9, Math.PI, 0); ctx.closePath(); ctx.stroke(); break;
-    case 'pillar': ctx.fillRect(-h, -h * 0.1, h * 0.5, h * 1.1); ctx.fillRect(-h * 0.25, -h, h * 0.5, h * 2); ctx.fillRect(h * 0.5, -h * 0.5, h * 0.5, h * 1.5); break;
-    case 'pull': ctx.beginPath(); ctx.arc(0, 0, h * 0.25, 0, Math.PI * 2); ctx.fill();
-      for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4, c1 = Math.cos(a), s1 = Math.sin(a); line([c1, s1], [c1 * 0.5, s1 * 0.5]); } break;
-    case 'blink': ctx.setLineDash([h * 0.3, h * 0.35]); line([-1, 0], [0.25, 0]); ctx.setLineDash([]); ctx.beginPath(); ctx.arc(h * 0.62, 0, h * 0.35, 0, Math.PI * 2); ctx.fill(); break;
-    case 'suspend': for (let i = 0; i < 3; i++) { const a = i * Math.PI / 3 + Math.PI / 2; line([Math.cos(a), Math.sin(a)], [-Math.cos(a), -Math.sin(a)]); } break;
-    case 'volley': for (const a of [-0.5, 0, 0.5]) line([-0.9, 0], [-0.9 + Math.cos(a) * 1.9, Math.sin(a) * 1.6]); break;
-    case 'overdrive': poly([0.25, -1], [-0.45, 0.12], [0.05, 0.12], [-0.2, 1], [0.5, -0.18], [0, -0.18]); break;
-    case 'reaper': ctx.beginPath(); ctx.arc(-h * 0.1, 0, h * 0.8, -Math.PI * 0.45, Math.PI * 0.45); ctx.stroke(); line([-0.9, -0.9], [0.5, 0.9]); break;
-    case 'dragon': line([-1, 0.5], [-0.5, -0.1], [0, 0.4], [0.45, -0.2]); ctx.beginPath(); ctx.arc(h * 0.7, -h * 0.35, h * 0.32, 0, Math.PI * 2); ctx.fill(); break;
-    case 'frostburst': for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, l = i % 2 ? 0.55 : 1; line([Math.cos(a) * 0.2, Math.sin(a) * 0.2], [Math.cos(a) * l, Math.sin(a) * l]); } break;
-    case 'phase': ctx.setLineDash([h * 0.35, h * 0.3]); ctx.beginPath(); ctx.arc(0, 0, h * 0.8, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(0, 0, h * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; break;
-    case 'vine': ctx.beginPath(); ctx.arc(0, 0, h * 0.85, 0, Math.PI * 2); ctx.stroke(); line([0, 0], [0.55, -0.55]); line([0.2, -0.75], [0.55, -0.55], [0.6, -0.15]); break;
-    case 'raiseShield': ctx.beginPath(); ctx.moveTo(-h * 0.7, -h * 0.8); ctx.lineTo(h * 0.7, -h * 0.8); ctx.lineTo(h * 0.7, h * 0.1); ctx.lineTo(0, h); ctx.lineTo(-h * 0.7, h * 0.1); ctx.closePath(); ctx.stroke(); line([0, 0.5], [0, -0.45]); line([-0.3, -0.15], [0, -0.45], [0.3, -0.15]); break;
-    case 'grenade': ctx.beginPath(); ctx.arc(-h * 0.1, h * 0.2, h * 0.6, 0, Math.PI * 2); ctx.fill(); line([0.3, -0.35], [0.6, -0.8]); line([0.6, -0.8], [0.95, -0.7]); break;
-    case 'taunt': ctx.beginPath(); ctx.arc(-h * 0.35, 0, h * 0.35, 0, Math.PI * 2); ctx.fill(); line([0.15, -0.55], [0.95, -0.85]); line([0.2, 0], [1, 0]); line([0.15, 0.55], [0.95, 0.85]); break;
-    case 'roots': line([0, -1], [0, 0.2]); line([0, 0.2], [-0.7, 0.9]); line([0, 0.2], [0.7, 0.9]); line([0, 0.2], [0, 1]); line([0, -0.4], [-0.5, -0.75]); break;
-    case 'overcharge': line([-0.7, 0.1], [0, -0.55], [0.7, 0.1]); line([-0.7, 0.75], [0, 0.1], [0.7, 0.75]); break;
-    case 'turret': ctx.fillRect(-h * 0.55, -h * 0.25, h * 1.1, h * 0.7); line([0, 0.45], [-0.6, 1]); line([0, 0.45], [0.6, 1]); line([0.2, -0.1], [1, -0.6]); break;
-    default: ctx.beginPath(); ctx.arc(0, 0, h * 0.5, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.restore();
+// ---------- Iconos de habilidad ----------
+// Los tonos salen del color del personaje: B (base), L (claro), D (oscuro), W (brillo).
+// Cada icono se dibuja en dos pasadas: primero un contorno oscuro y luego el color, para que se lea sobre cualquier fondo.
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function mixHex(a, b, t) { const A = hexRgb(a), B = hexRgb(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')'; }
+const ICON_INK = '#16121e', ICON_TONES = {};
+const ICON_GREY = { B: '#5e566d', L: '#7a6f8c', D: '#3b3349', W: '#8f86a0', bg: '#1a1622', bgHi: '#1a1622' };
+function iconTones(col) {
+  return ICON_TONES[col] || (ICON_TONES[col] = {
+    B: col, L: mixHex(col, '#ffffff', 0.55), D: mixHex(col, ICON_INK, 0.4), W: '#fffaf0',
+    bg: mixHex(col, ICON_INK, 0.84), bgHi: mixHex(col, ICON_INK, 0.68)
+  });
 }
-// Casilla de habilidad del marcador: se rellena mientras recarga
+// col: color del personaje (texto '#rrggbb') o un juego de tonos ya hecho (p. ej. ICON_GREY)
+function drawAbilityIcon(type, cx, cy, s, col) {
+  const h = s / 2, tn = typeof col === 'string' ? iconTones(col) : col, ops = [];
+  const TH = 0.3, th = 0.22; // grosor de trazo grueso y fino, en unidades del icono
+  const L = (c, w, pts, o) => ops.push(Object.assign({ k: 'l', c, w, pts }, o));          // línea
+  const P = (c, pts) => ops.push({ k: 'p', c, pts });                                      // polígono relleno
+  const C = (c, x, y, r, o) => ops.push(Object.assign({ k: 'c', c, x, y, r, fill: true }, o)); // círculo (relleno o trazo con w)
+  const R = (c, x, y, w, hh) => P(c, [[x, y], [x + w, y], [x + w, y + hh], [x, y + hh]]);
+  switch (type) {
+    case 'beam': L('L', TH, [[-0.95, 0], [0.25, 0]]); P('B', [[1, 0], [0.15, -0.6], [0.15, 0.6]]); break;
+    case 'area': C('B', 0, 0, 0.85, { fill: false, w: th }); L('L', TH, [[0, 0.45], [0, -0.35]]); P('L', [[0, -0.7], [-0.38, -0.2], [0.38, -0.2]]); break;
+    case 'rush': L('B', TH, [[-0.85, -0.65], [-0.25, 0], [-0.85, 0.65]]); L('L', TH, [[-0.05, -0.65], [0.6, 0], [-0.05, 0.65]]); break;
+    case 'drop': L('L', TH, [[0, -1], [0, 0.2]]); P('L', [[0, 0.55], [-0.42, 0.05], [0.42, 0.05]]); L('B', TH, [[-0.95, 0.88], [0.95, 0.88]]); break;
+    case 'ricochet': L('L', th, [[-1, 0.65], [-0.3, -0.6], [0.35, 0.45]]); L('B', th, [[0.35, 0.45], [0.75, -0.25]]); C('W', 0.78, -0.35, 0.25); break;
+    case 'shield': P('B', [[-0.9, 0.5], [-0.75, -0.15], [-0.35, -0.5], [0.35, -0.5], [0.75, -0.15], [0.9, 0.5]]); L('L', th, [[-0.45, -0.15], [0.45, -0.15]]); break;
+    case 'pillar': R('B', -1, -0.1, 0.5, 1.1); R('L', -0.25, -1, 0.5, 2); R('B', 0.5, -0.5, 0.5, 1.5); break;
+    case 'pull': for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4, c1 = Math.cos(a), s1 = Math.sin(a); L('B', th, [[c1, s1], [c1 * 0.5, s1 * 0.5]]); } C('L', 0, 0, 0.3); break;
+    case 'blink': L('B', th, [[-1, 0], [0.2, 0]], { dash: [0.3, 0.3] }); C('L', 0.6, 0, 0.38); C('W', 0.5, -0.1, 0.12); break;
+    case 'suspend': for (let i = 0; i < 3; i++) { const a = i * Math.PI / 3 + Math.PI / 2; L(i ? 'B' : 'L', th, [[Math.cos(a), Math.sin(a)], [-Math.cos(a), -Math.sin(a)]]); } break;
+    case 'volley': // tres balas en abanico
+      for (const a of [-0.5, 0, 0.5]) { const ex = -0.85 + Math.cos(a) * 1.65, ey = Math.sin(a) * 1.45; L('B', th, [[-0.85, 0], [ex - Math.cos(a) * 0.3, ey - Math.sin(a) * 0.3]]); C('L', ex, ey, 0.2); }
+      C('W', -0.85, 0, 0.18); break;
+    case 'overdrive': P('L', [[0.25, -1], [-0.5, 0.12], [0.02, 0.12], [-0.22, 1], [0.55, -0.18], [0.03, -0.18]]); P('W', [[0.25, -1], [-0.2, -0.2], [0.02, -0.2]]); break;
+    case 'reaper': // guadaña: mango claro y hoja en media luna del color del personaje
+      L('L', th, [[-0.7, 1], [0.55, -0.85]]);
+      P('B', [[0.55, -0.85], [0, -1.02], [-0.55, -0.92], [-0.92, -0.58], [-1.02, -0.1], [-0.72, -0.42], [-0.32, -0.66], [0.2, -0.72]]);
+      P('W', [[0.4, -0.86], [-0.05, -0.94], [-0.5, -0.84], [-0.1, -0.82]]); break;
+    case 'dragon': L('B', TH, [[-1, 0.55], [-0.5, -0.05], [0, 0.45], [0.4, -0.1]]); C('L', 0.62, -0.35, 0.36); C('W', 0.72, -0.42, 0.11); P('B', [[0.45, -0.62], [0.35, -1], [0.65, -0.7]]); break;
+    case 'frostburst':
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, l = i % 2 ? 0.6 : 1; L(i % 2 ? 'B' : 'L', i % 2 ? th : TH * 0.85, [[Math.cos(a) * 0.25, Math.sin(a) * 0.25], [Math.cos(a) * l, Math.sin(a) * l]]); }
+      C('W', 0, 0, 0.22); break;
+    case 'phase': C('B', 0, 0, 0.45, { alpha: 0.6 }); C('L', 0, 0, 0.82, { fill: false, w: th, dash: [0.32, 0.28] }); C('W', -0.12, -0.12, 0.13); break;
+    case 'vine': // liana que avanza ondulando y acaba en un rizo
+      L('B', TH, [[-1, 0.8], [-0.55, 0.3], [-0.15, 0.5], [0.2, 0.02], [0.55, 0.12], [0.62, -0.35]]);
+      C('L', 0.4, -0.55, 0.3, { fill: false, w: th });
+      P('L', [[-0.55, 0.3], [-0.85, -0.2], [-0.3, -0.05]]); P('L', [[-0.15, 0.5], [0.2, 0.95], [0.3, 0.45]]); break;
+    case 'raiseShield':
+      P('B', [[-0.75, -0.85], [0.75, -0.85], [0.75, 0.1], [0, 1], [-0.75, 0.1]]);
+      P('D', [[0, -0.85], [0.75, -0.85], [0.75, 0.1], [0, 1]]);
+      L('L', th, [[0, 0.45], [0, -0.25]]); P('L', [[0, -0.6], [-0.35, -0.15], [0.35, -0.15]]); break;
+    case 'grenade': L('L', th, [[0.25, -0.35], [0.55, -0.8], [0.9, -0.7]]); C('B', -0.1, 0.2, 0.65); C('L', -0.3, 0, 0.2); C('W', 0.95, -0.72, 0.18); break;
+    case 'taunt': C('B', -0.4, 0, 0.38); L('L', th, [[0.15, -0.55], [0.95, -0.85]]); L('L', th, [[0.2, 0], [1, 0]]); L('L', th, [[0.15, 0.55], [0.95, 0.85]]); C('W', -0.5, -0.1, 0.11); break;
+    case 'roots': L('B', TH, [[0, -1], [0, 0.2]]); L('B', th, [[0, -0.35], [-0.5, -0.75]]);
+      L('L', th, [[0, 0.2], [-0.75, 0.9]]); L('L', th, [[0, 0.2], [0.75, 0.9]]); L('L', th, [[0, 0.2], [0, 1]]);
+      P('L', [[-0.5, -0.75], [-0.95, -0.6], [-0.75, -1]]); break;
+    case 'overcharge': L('B', TH, [[-0.72, 0.8], [0, 0.12], [0.72, 0.8]]); L('L', TH, [[-0.72, 0.1], [0, -0.6], [0.72, 0.1]]); C('W', 0, -0.92, 0.15); break;
+    case 'turret': L('L', th, [[0, 0.45], [-0.62, 1]]); L('L', th, [[0, 0.45], [0.62, 1]]);
+      L('L', TH, [[0.25, -0.15], [1, -0.62]]); R('B', -0.6, -0.35, 1.15, 0.75); C('W', -0.3, -0.05, 0.12); break;
+    default: C('B', 0, 0, 0.5);
+  }
+  const ox = Math.max(0.9, s * 0.09); // grosor extra del contorno, en píxeles
+  const ga = ctx.globalAlpha;
+  ctx.save(); ctx.translate(cx, cy); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let pass = 0; pass < 2; pass++) {
+    for (const o of ops) {
+      const color = pass ? tn[o.c] : ICON_INK;
+      ctx.fillStyle = ctx.strokeStyle = color; ctx.globalAlpha = ga * (pass && o.alpha ? o.alpha : 1);
+      ctx.setLineDash(o.dash ? o.dash.map(v => v * h) : []);
+      ctx.beginPath();
+      if (o.k === 'l') { o.pts.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * h, y * h)); ctx.lineWidth = o.w * h + (pass ? 0 : ox * 2); ctx.stroke(); continue; }
+      if (o.k === 'p') { o.pts.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x * h, y * h)); ctx.closePath(); }
+      else ctx.arc(o.x * h, o.y * h, o.r * h, 0, Math.PI * 2);
+      if (o.k === 'c' && !o.fill) { ctx.lineWidth = o.w * h + (pass ? 0 : ox * 2); ctx.stroke(); continue; }
+      if (pass) ctx.fill(); else { ctx.lineWidth = ox * 2; ctx.fill(); ctx.stroke(); }
+    }
+  }
+  ctx.setLineDash([]); ctx.restore();
+}
+// Casilla de habilidad del marcador. Lista: fondo y borde con los tonos del personaje. Recargando: se rellena de abajo arriba.
 function drawPip(x, y, frac, type, color, active, disabled) {
-  const s = 16, f = Math.max(0, Math.min(1, frac));
+  const s = 18, f = Math.max(0, Math.min(1, frac)), tn = iconTones(color);
   if (disabled) { // no se puede usar ahora mismo
-    rrect(x, y, s, s, 3); ctx.fillStyle = '#1a1622'; ctx.fill(); ctx.strokeStyle = '#3b3349'; ctx.lineWidth = 1; ctx.stroke();
-    drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.7, '#4b4459');
+    rrect(x, y, s, s, 4); ctx.fillStyle = '#1a1622'; ctx.fill(); ctx.strokeStyle = '#3b3349'; ctx.lineWidth = 1; ctx.stroke();
+    drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.72, ICON_GREY);
     ctx.strokeStyle = '#7a6f8c'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x + 2, y + s - 2); ctx.lineTo(x + s - 2, y + 2); ctx.stroke();
     return;
   }
-  rrect(x, y, s, s, 3); ctx.fillStyle = f <= 0 ? color : '#231d2e'; ctx.fill();
-  if (f > 0) { ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(x, y + s * f, s, s * (1 - f)); }
-  if (active) { rrect(x - 2, y - 2, s + 4, s + 4, 4); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke(); }
-  drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.7, f <= 0 ? '#16121e' : '#8f86a0');
+  if (f > 0) {
+    rrect(x, y, s, s, 4); ctx.fillStyle = '#1d1826'; ctx.fill();
+    ctx.save(); rrect(x, y, s, s, 4); ctx.clip(); ctx.fillStyle = tn.bgHi; ctx.fillRect(x, y + s * f, s, s * (1 - f)); ctx.restore();
+    rrect(x, y, s, s, 4); ctx.strokeStyle = tn.D; ctx.lineWidth = 1; ctx.stroke();
+    ctx.save(); ctx.globalAlpha = 0.4; drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.72, color); ctx.restore();
+  } else {
+    rrect(x, y, s, s, 4); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = 1.5; ctx.stroke();
+    drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.72, color);
+  }
+  if (active) { rrect(x - 2, y - 2, s + 4, s + 4, 5); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke(); }
 }
 
 // ¿Llega el golpe por el frente de un tanque que bloquea?
@@ -3165,7 +3215,7 @@ function drawInfoPanel(ch) {
        [ch.priType, 'Habilidad 1: ' + pri[0], pri[1]], [ch.secType, 'Habilidad 2: ' + sec[0], sec[1]]];
   rows.forEach(([icon, title, desc], i) => {
     const yy = y + 178 + i * 34, tx = icon ? x + 42 : x + 16;
-    if (icon) { rrect(x + 14, yy - 12, 22, 22, 5); ctx.fillStyle = ch.color; ctx.fill(); drawAbilityIcon(icon, x + 25, yy - 1, 15, '#16121e'); }
+    if (icon) { const tn = iconTones(ch.color); rrect(x + 14, yy - 12, 22, 22, 5); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = 1.5; ctx.stroke(); drawAbilityIcon(icon, x + 25, yy - 1, 16, ch.color); }
     ctx.textAlign = 'left';
     ctx.fillStyle = '#e6e0ef'; ctx.font = '700 12px ' + FONT; ctx.fillText(title, tx, yy);
     ctx.fillStyle = '#9d94ad'; ctx.font = '400 11px ' + FONT; ctx.fillText(desc, tx, yy + 15);
@@ -3894,11 +3944,11 @@ function drawHUD() {
     ctx.font = '400 11px ' + FONT; ctx.fillStyle = p.down ? '#ff8f8f' : '#b9afc9';
     ctx.fillText(p.ch.name, x + 13, 40);
     const tur = myTurret(p);
-    drawPip(x + 70, 28, p.priCd / (p.priCdMax || p.ch.priCd), p.ch.priType, p.slotColor, p.cast === 'pri' || (p.ch.priType === 'turret' && !!tur) || !!p.shieldUp, !abilityReady(p, 'pri'));
-    if (p.ch.priType === 'raiseShield') bar(x + 70, 47, 16, 2, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
-    drawPip(x + 91, 28, p.secCd / (p.secCdMax || p.ch.secCd), p.ch.secType, p.slotColor, p.cast === 'sec' || (p.ch.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'));
-    if (p.ch.secType === 'dragon') for (let i = 0; i < AB.dragon.max; i++) { ctx.fillStyle = i < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; ctx.fillRect(x + 91 + i * 6, 47, 4, 3); } // cargas
-    if (p.ch.priType === 'turret') bar(x + 70, 47, 16, 2, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
+    drawPip(x + 68, 27, p.priCd / (p.priCdMax || p.ch.priCd), p.ch.priType, p.color, p.cast === 'pri' || (p.ch.priType === 'turret' && !!tur) || !!p.shieldUp, !abilityReady(p, 'pri'));
+    if (p.ch.priType === 'raiseShield') bar(x + 68, 47, 18, 2, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
+    drawPip(x + 90, 27, p.secCd / (p.secCdMax || p.ch.secCd), p.ch.secType, p.color, p.cast === 'sec' || (p.ch.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'));
+    if (p.ch.secType === 'dragon') for (let i = 0; i < AB.dragon.max; i++) { ctx.fillStyle = i < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; ctx.fillRect(x + 90 + i * 6, 47, 4, 3); } // cargas
+    if (p.ch.priType === 'turret') bar(x + 68, 47, 18, 2, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
   }
   ctx.font = '700 13px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + floor.depth, 462, 21);
   ctx.font = '400 11px ' + FONT; ctx.fillStyle = '#8f86a0'; ctx.fillText('Semilla ' + seed, 462, 40);
