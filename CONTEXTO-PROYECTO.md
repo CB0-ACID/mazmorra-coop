@@ -26,3 +26,8 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
 - Alternativa considerada: Godot (editor visual, exporta a web).
 - Para 4 jugadores locales hacen falta mandos (el teclado compartido da para 2). En el móvil se pueden emparejar mandos Bluetooth.
 - Pendiente de decidir: portar el laboratorio a Phaser o arrancar directamente con una primera sala jugable.
+
+## Flujo de trabajo actual (desde noviembre de 2026)
+- Repositorio: https://github.com/CB0-ACID/mazmorra-coop (rama main).
+- Publicado con GitHub Pages en https://cb0-acid.github.io/mazmorra-coop/ (index.html enlaza al juego y al laboratorio).
+- Los cambios se piden en el chat de Claude; Claude edita los archivos, hace commit y push a main, y la web se actualiza en uno o dos minutos.
