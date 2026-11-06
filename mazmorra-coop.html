@@ -230,6 +230,19 @@ const CHARGED = {
   flurry:   { n0: 3, n1: 7, interval: 0.07 },
   starfall: { d0: 90, d1: 220, r0: 38, r1: 55 } // área pequeña, no lanza; si alcanza a alguien recarga la Embestida
 };
+// Salto (movimiento de Brasa y Ámbar): arco en la dirección en la que te mueves.
+// Si saltas hacia un enemigo en el aire, te pegas a él y solo puedes usar golpes básicos y ejecutarlo
+const JUMP = {
+  dist: 130, dur: 0.4, h: 55,          // salto normal: distancia, duración y altura
+  homeRange: 240, homeCos: 0.55,       // busca a un enemigo en el aire delante de ti (cono de ~57°)
+  vertRange: 90,                       // quieto: solo engancha a uno que tengas casi encima
+  latchR: 18,                          // a mitad del salto engancha a un aéreo que roces
+  reachSpeed: 760, reachMin: 0.14, reachMax: 0.32, // subida hasta el enemigo
+  gap: 4,                              // separación con el enemigo mientras peleas en el aire
+  airMax: 2.4, idle: 0.85,             // tiempo máximo en el aire y tiempo sin golpear antes de caer
+  hangFall: 14,                        // el enemigo apenas cae mientras le pegas
+  fallSpeed: 320                       // velocidad de caída al soltarte
+};
 const ABILITY_MUL = 1.6;   // habilidades 1 y 2
 const STUN_DMG_MUL = 1.5;  // daño extra que reciben los enemigos aturdidos (salvo el guardián) si no se les ejecuta
 const AIR_G = 380;        // gravedad reducida de los enemigos lanzados
@@ -339,9 +352,11 @@ const CHARS = [
   { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil, ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
   { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'flurry', role: 'Brawler, ejecutor',
     meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'heavy',
-    priType: 'reaper', priCd: 5, secType: 'dragon', secCd: 1 },
+    priType: 'reaper', priCd: 5, secType: 'dragon', secCd: 1,
+    moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
   { name: 'Ámbar',    color: '#f5c542', mark: 'star',    family: 'golpe', chargedMelee: 'starfall', role: 'Brawler ninja',
-    meleeKit: CLAW_KIT, meleeStyle: 'claw', finisher: 'heavy' },
+    meleeKit: CLAW_KIT, meleeStyle: 'claw', finisher: 'heavy',
+    moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
   { name: 'Marea',    color: '#3f8ff5', mark: 'ring',    family: 'tirador', role: 'Tirador, rebote',
     priType: 'grenade', priCd: 5,                                      // granada en arco al objetivo fijado
     shotStyle: 'revolver', shotCd: 0.6, shot: 2.4, shotKb: 2.5,         // revólver: más lento, más daño y empuje
@@ -860,7 +875,7 @@ function enterRoom(r, dir) {
   players.forEach((p, i) => {
     const off = (i - (n - 1) / 2) * 30;
     if (entry === 'left' || entry === 'right') { p.x = bx; p.y = by + off; } else { p.x = bx + off; p.y = by; }
-    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.leap = null; p.dragonRush = null; p.shieldCharge = null; p.shieldOn = false; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
+    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.jump = null; p.leap = null; p.dragonRush = null; p.shieldCharge = null; p.shieldOn = false; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
   });
   if (!r.cleared) { if (!r.waves) r.waves = makeEncounter(r); r.wave = 0; spawnWave(); }
   if (r.type === 'treasure' && !r.looted) {
@@ -979,10 +994,11 @@ function beamLength(x, y, ax, ay, max) {
 }
 
 // Habilidad de movimiento: de momento todos usan 'dash'; aquí se añadirán otros tipos
-function startMovement(p) {
+function startMovement(p, mx, my) {
   const c = p.ch;
   p.moveCd = c.moveCd;
-  if (c.moveType === 'dash') { p.moveT = c.moveTime; p.mdx = p.fx; p.mdy = p.fy; }
+  if (c.moveType === 'jump') startJump(p, mx || 0, my || 0);
+  else if (c.moveType === 'dash') { p.moveT = c.moveTime; p.mdx = p.fx; p.mdy = p.fy; }
   else if (c.moveType === 'teleport') { // aparece al instante un poco más adelante; las paredes lo frenan
     const x0 = p.x, y0 = p.y, d = beamLength(x0, y0, p.fx, p.fy, c.moveDist);
     burst(x0, y0 - 12, p.color, 10);
@@ -991,6 +1007,82 @@ function startMovement(p) {
     effects.push({ type: 'tracer', x: x0, y: y0, ax: p.fx, ay: p.fy, len: d, w: 10, z2: 0, t: 0, dur: 0.25, color: p.color });
     burst(p.x, p.y - 12, p.color, 12);
   }
+}
+// ---------- Salto ----------
+// Busca a un enemigo en el aire hacia el que saltar: el fijado primero, si no el más cercano delante
+function jumpTarget(p, dx, dy, moving) {
+  let best = null, bs = 1e9;
+  for (const e of liveTargets()) {
+    if (!e.airborne || e.grabbed || e.frozenAir) continue;
+    const vx = e.x - p.x, vy = e.y - p.y, d = Math.hypot(vx, vy);
+    if (d > (moving ? JUMP.homeRange : JUMP.vertRange)) continue;
+    if (moving && d > e.r + p.r + 20 && (vx * dx + vy * dy) / (d || 1) < JUMP.homeCos) continue;
+    const sc = d - (p.lockOn && p.target === e ? 1000 : 0);
+    if (sc < bs) { bs = sc; best = e; }
+  }
+  return best;
+}
+function startJump(p, mx, my) {
+  const m = Math.hypot(mx, my), moving = m > 0.2, dx = moving ? mx / m : 0, dy = moving ? my / m : 0;
+  p.slash = null; p.flurry = null; p.mHold = null; p.mCharging = false; p.cast = null; p.kbx = p.kby = 0;
+  p.jump = { phase: 'arc', t: 0, x0: p.x, y0: p.y, dx, dy, target: null };
+  const e = jumpTarget(p, dx, dy, moving);
+  if (e) beginJumpReach(p, e);
+  burst(p.x, p.y, '#d8cfe6', 8); SFX.swing(false);
+}
+function beginJumpReach(p, e) {
+  const J = p.jump, vx = e.x - p.x, vy = e.y - p.y, d = Math.hypot(vx, vy) || 1;
+  J.phase = 'reach'; J.target = e; J.t = 0; J.x0 = p.x; J.y0 = p.y; J.z0 = p.z || 0;
+  J.ux = d > 1 ? vx / d : (p.ax || 1); J.uy = d > 1 ? vy / d : (p.ay || 0);
+  J.dur = Math.max(JUMP.reachMin, Math.min(JUMP.reachMax, Math.hypot(d, e.z) / JUMP.reachSpeed));
+  p.lockOn = true; p.target = e;
+}
+function jumpLand(p) {
+  p.z = 0; p.jump = null; p.postMoveT = p.ch.postMoveWindow; collide(p, true);
+  burst(p.x, p.y, '#d8cfe6', 8);
+}
+function updateJump(p, dt) { // devuelve true mientras el salto controla el desplazamiento
+  const J = p.jump;
+  p.kbx = p.kby = 0; p.mvx *= 0.9; p.mvy *= 0.9;
+  J.t += dt;
+  const e = J.target, alive = e && !e.dead && e.airborne && !e.grabbed && enemies.includes(e);
+  if (J.phase === 'arc') {
+    const k = Math.min(1, J.t / JUMP.dur), step = JUMP.dist / JUMP.dur * dt;
+    p.x += J.dx * step; p.y += J.dy * step; collide(p, true);
+    p.z = Math.sin(k * Math.PI) * JUMP.h;
+    for (const o of liveTargets()) { // roza a un enemigo en el aire: se engancha a él
+      if (!o.airborne || o.grabbed || o.frozenAir) continue;
+      if (Math.hypot(o.x - p.x, o.y - p.y) < o.r + p.r + JUMP.latchR) { beginJumpReach(p, o); return true; }
+    }
+    if (k >= 1) jumpLand(p);
+    return true;
+  }
+  if (!alive && J.phase !== 'fall') { J.phase = 'fall'; return true; }
+  if (J.phase === 'reach') {
+    const k = Math.min(1, J.t / J.dur), g = e.r + p.r + JUMP.gap;
+    const gx = e.x - J.ux * g, gy = e.y - J.uy * g;
+    p.x = J.x0 + (gx - J.x0) * k; p.y = J.y0 + (gy - J.y0) * k;
+    p.z = J.z0 + (e.z - J.z0) * k + Math.sin(k * Math.PI) * 18;
+    if (Math.random() < 0.6) particles.push({ x: p.x, y: p.y - 12 - p.z, vx: 0, vy: 0, life: 0.2, max: 0.2, color: p.color, s: 6 });
+    if (k >= 1) {
+      J.phase = 'air'; J.airT = 0; J.idle = 0;
+      effects.push({ type: 'ring', x: e.x, y: e.y - 12 - e.z, r: e.r + 14, t: 0, dur: 0.25, color: p.slotColor });
+    }
+    return true;
+  }
+  if (J.phase === 'air') { // pegado al enemigo: los dos flotan mientras le pegas
+    e.hang = 0.15;
+    const g = e.r + p.r + JUMP.gap;
+    p.x = e.x - J.ux * g; p.y = e.y - J.uy * g; collide(p, true);
+    p.z = e.z;
+    J.airT += dt; J.idle = p.slash ? 0 : J.idle + dt;
+    if (J.airT > JUMP.airMax || J.idle > JUMP.idle) J.phase = 'fall';
+    return true;
+  }
+  // caída
+  p.z = Math.max(0, (p.z || 0) - JUMP.fallSpeed * dt);
+  if (p.z <= 0) jumpLand(p);
+  return true;
 }
 function updateMovement(p, dt) { // devuelve true mientras la habilidad controla el desplazamiento
   const c = p.ch;
@@ -1129,8 +1221,8 @@ function updatePlayer(p, dt) {
     if (p.blocking) p.blockT += dt;
     p.bufD = 0;
   }
-  if (!special && c.moveType !== 'block' && p.bufD > 0 && p.moveCd <= 0 && !(p.slash && p.slash.def.lunge)) { p.slash = null; p.flurry = null; p.bufD = 0; startMovement(p); } // el dash cancela el golpe
-  if (!special && !updateMovement(p, dt)) {
+  if (!special && !p.jump && c.moveType !== 'block' && p.bufD > 0 && p.moveCd <= 0 && !(p.slash && p.slash.def.lunge)) { p.slash = null; p.flurry = null; p.bufD = 0; startMovement(p, mx, my); } // el dash cancela el golpe
+  if (!special && !(p.jump ? updateJump(p, dt) : updateMovement(p, dt))) {
     const s = p.slash;
     if (s && s.def.lunge && s.t < s.dur) {
       const close = s.def.lunge > 0 && !s.def.pass && tgt && Math.hypot(tgt.x - p.x, tgt.y - p.y) < tgt.r + p.r + 8;
@@ -1194,7 +1286,7 @@ function updatePlayer(p, dt) {
     const step = c.finisher && p.comboT > 0 ? p.combo + 1 : 1;
     let kind = 'normal';
     if (c.finisher && step === 3) kind = c.finisher;
-    else if (step === 1) {
+    else if (step === 1 && !p.jump) { // en el aire solo hay combo básico
       if (p.moveT > 0 || p.postMoveT > 0) { kind = 'afterMove'; p.moveT = 0; p.postMoveT = 0; }
       else if (tgt && radial > 0.4) kind = 'toward';
       else if (tgt && radial < -0.4) kind = 'away';
@@ -1203,7 +1295,7 @@ function updatePlayer(p, dt) {
     p.combo = c.finisher && step < 3 ? step : 0; p.comboT = p.combo ? c.comboWindow : 0;
     const def = c.meleeKit[kind];
     p.atkCd = c.meleeCd * (step === 3 ? 1.6 : 1);
-    if (kind !== 'away') { // paso de entrada hacia el fijado: cierra el hueco para que el golpe conecte
+    if (kind !== 'away' && !p.jump) { // paso de entrada hacia el fijado: cierra el hueco para que el golpe conecte
       const gap = tgt ? Math.hypot(tgt.x - p.x, tgt.y - p.y) - tgt.r - p.r - 6 : Infinity;
       // el impulso se frena a 12/s, así que recorre impulso / 12 px
       const st = !tgt ? 180 : gap < AIM.stepRange ? Math.min(gap, AIM.stepMax) * 12 : 280;
@@ -1211,14 +1303,14 @@ function updatePlayer(p, dt) {
     }
     p.slash = { kind, def, t: 0, dur: def.dur, ang: Math.atan2(p.ay, p.ax), hit: new Set(), side: (p.punchSide = -(p.punchSide || 1)) }; // side: alterna brazo
     if (kind !== 'normal' && kind !== 'normal2') floatText(p.x, p.y - 46 * c.size, def.name, p.slotColor);
-    if (c.chargedMelee) p.mHold = 0; // si se mantiene pulsado, empieza a cargar
+    if (c.chargedMelee && !p.jump) p.mHold = 0; // si se mantiene pulsado, empieza a cargar (en el aire no)
     if (c.meleeStyle === 'claw') SFX.claw(step === 3); else SFX.swing(step === 3 || kind !== 'normal');
   }
   if (p.slash) {
     const s = p.slash; s.t += dt;
     for (const e of enemies) {
       if (e.dead || e.spawnT > 0 || s.hit.has(e)) continue;
-      if (slashHits(p, s, e.x, e.y, e.r) && (!e.airborne || e.z < 70)) { s.hit.add(e); meleeHit(p, e, s); }
+      if (slashHits(p, s, e.x, e.y, e.r) && Math.abs((e.airborne ? e.z : 0) - (p.z || 0)) < 70) { s.hit.add(e); meleeHit(p, e, s); }
     }
     for (const b of bullets) if (slashHits(p, s, b.x, b.y, 0)) { b.life = 0; burst(b.x, b.y - 12, '#ffffff', 3); }
     if (c.meleeStyle === 'claw' && s.kind === 'heavy') { // Tajo sombra: siluetas y marca en X al atravesar
@@ -1368,6 +1460,7 @@ function testLaunch(p) {
 function abilityType(p, slot) { return slot === 'pri' ? p.ch.priType : p.ch.secType; }
 // Algunas habilidades necesitan un objetivo: si no lo hay, aparecen deshabilitadas
 function abilityReady(p, slot) {
+  if (p.jump) return false; // en el aire solo golpes básicos
   const t = abilityType(p, slot);
   if (t === 'drop') return !!dropTarget(p);
   if (t === 'ricochet') return !!ricochetTarget(p)[0];
@@ -2619,7 +2712,7 @@ function healPlayer(p, amt) {
 }
 function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
-  if (p.down || p.inv > 0 || p.phaseT > 0 || p.rush || p.drop || p.leap || p.dragonRush || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
+  if (p.down || p.inv > 0 || p.phaseT > 0 || p.jump || p.rush || p.drop || p.leap || p.dragonRush || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
   if (dmg == null) dmg = srcEnemy ? edmg(srcEnemy, 'touch') : 20;
   p.hp -= dmg; p.inv = 1.0; p.hurtFx = 0.5; SFX.hurt();
   floatText(p.x + (Math.random() - 0.5) * 14, p.y - 50 * p.ch.size, '-' + Math.round(dmg), '#ff5a6e');
@@ -2707,6 +2800,10 @@ function tryLaunch(e, force) {
 function execReach(e, p) { return e.r + p.r + 44; }
 function inExecRange(e) { return players.some(p => !p.down && Math.hypot(p.x - e.x, p.y - e.y) < execReach(e, p)); }
 function execCandidate(p) {
+  if (p.jump) { // en el aire solo se ejecuta al enemigo al que estás pegado, si está aturdido
+    const e = p.jump.target;
+    return p.jump.phase === 'air' && e && !e.dead && e.airborne && e.stunT > 0 ? e : null;
+  }
   let best = null, bd = 1e9;
   for (const e of enemies) {
     if (e.dead || !(e.stunT > 0) || e.airborne) continue; // solo se ejecuta en el suelo
@@ -2724,6 +2821,7 @@ function nearestAirborne(p) {
 function executeEnemy(e, p, how) {
   const ang = Math.atan2(e.y - p.y, e.x - p.x), ey = e.y - 12 - e.z;
   if (how === 'melee' && !p.ch.canMelee) how = 'ranged';
+  if (how === 'melee' && p.jump) how = 'air';
   if (how === 'ranged') { // disparo a quemarropa: la mira se cierra sobre el enemigo y un disparo lo atraviesa
     effects.push({ type: 'reticle', x: e.x, y: ey, t: 0, dur: 0.45, color: p.slotColor });
     effects.push({ type: 'execShot', x1: p.x + p.ax * 10, y1: p.y - 14, x2: e.x + Math.cos(ang) * 60, y2: ey + Math.sin(ang) * 48, t: 0, dur: 0.45, color: p.color });
@@ -2735,6 +2833,12 @@ function executeEnemy(e, p, how) {
     p.x = e.x + Math.cos(ang) * d; p.y = e.y + Math.sin(ang) * d; collide(p, true);
     p.inv = Math.max(p.inv, 0.6); p.slash = null;
     effects.push({ type: 'execute', x: e.x, y: ey, ang, len: 170, t: 0, dur: 0.55, color: p.slotColor });
+  } else if (how === 'air') { // ejecución aérea: golpe en cruz y caída en picado
+    p.slash = null;
+    effects.push({ type: 'execute', x: e.x, y: ey, ang, len: 140, t: 0, dur: 0.5, color: p.slotColor });
+    effects.push({ type: 'execute', x: e.x, y: ey, ang: ang + Math.PI / 2, len: 140, t: 0, dur: 0.5, color: p.slotColor });
+    burst(e.x, ey, p.color, 22);
+    if (p.jump) p.jump.phase = 'fall';
   } else if (how === 'reap') { // Puño ejecutor: corte sin teletransporte
     effects.push({ type: 'execute', x: e.x, y: ey, ang: ang + Math.PI / 2, len: 90, t: 0, dur: 0.45, color: p.slotColor });
   } else {
@@ -2897,6 +3001,7 @@ function updateEnemy(e, dt) {
   if (e.airborne) { // lanzado: indefenso mientras está en el aire
     if (e.frozenAir) e.vz = Math.min(e.vz, 0) - 900 * dt; // bloque de hielo: cae a plomo y se rompe al tocar el suelo
     else if (e.suspendT > 0) { e.suspendT -= dt; e.vz = 0; } // Suspensión: congelado en el aire
+    else if (e.hang > 0) { e.hang -= dt; e.vz = Math.max(-JUMP.hangFall, e.vz - AIR_G * dt); } // alguien le pega en el aire: flota
     else e.vz = Math.max(-AIR_FALL_MAX, e.vz - AIR_G * dt);
     e.z = Math.min(AIR_MAX_Z, e.z + e.vz * dt);
     if (e.z >= AIR_MAX_Z && e.vz > 0) e.vz = 0;
@@ -3806,7 +3911,7 @@ function drawAttackWarn(x, y) { // triángulo rojo con «!» que late
 }
 // Indicador de ejecución: brilla cuando alguien está a distancia de golpe (o siempre si está en el aire)
 function drawExecIndicator(e, y) {
-  const lit = !e.airborne && inExecRange(e), s = 10 + (lit ? Math.sin(time * 10) * 1.5 : 0); // en el aire queda apagado
+  const lit = (!e.airborne && inExecRange(e)) || players.some(q => q.jump && q.jump.phase === 'air' && q.jump.target === e), s = 10 + (lit ? Math.sin(time * 10) * 1.5 : 0); // en el aire queda apagado
   ctx.save(); ctx.translate(e.x, y);
   if (lit) { ctx.globalAlpha = 0.35 + 0.25 * Math.sin(time * 10); ctx.fillStyle = '#ffd54a'; ellipse(0, 0, s * 1.9, s * 1.9); ctx.globalAlpha = 1; }
   ctx.rotate(Math.PI / 4); ctx.fillStyle = lit ? '#ffd54a' : '#6f6136'; ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2;
