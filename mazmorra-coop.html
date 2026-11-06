@@ -858,7 +858,7 @@ function enterRoom(r, dir) {
   players.forEach((p, i) => {
     const off = (i - (n - 1) / 2) * 30;
     if (entry === 'left' || entry === 'right') { p.x = bx; p.y = by + off; } else { p.x = bx + off; p.y = by; }
-    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.leap = null; p.dragonRush = null; p.shieldCharge = null; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
+    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.leap = null; p.dragonRush = null; p.shieldCharge = null; p.shieldOn = false; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
   });
   if (!r.cleared) { if (!r.waves) r.waves = makeEncounter(r); r.wave = 0; spawnWave(); }
   if (r.type === 'treasure' && !r.looted) {
@@ -1036,7 +1036,7 @@ function updatePlayer(p, dt) {
   if (p.shotHold && !inp.s) p.shotHold = false; // tras la pausa, hay que soltar antes de volver a disparar
   p.revHolding = !p.down && !!(inp.a || inp.s); // para levantar a un caído cercano
   if (p.down) {
-    p.cast = null; p.charging = false; p.mCharging = false; p.mHold = null; p.flurry = null; p.shieldUp = false; p.blocking = false;
+    p.cast = null; p.charging = false; p.mCharging = false; p.mHold = null; p.flurry = null; p.shieldUp = false; p.shieldOn = false; p.blocking = false;
     const k = (p.ghost ? REVIVE.ghostSpeed : REVIVE.crawl) * c.speed;
     let cx = inp.x || 0, cy = inp.y || 0; const cm = Math.hypot(cx, cy); if (cm > 1) { cx /= cm; cy /= cm; }
     p.x += cx * k * dt; p.y += cy * k * dt; collide(p, true);
@@ -1272,7 +1272,7 @@ function updatePlayer(p, dt) {
 
   // habilidades: al pulsar se ve la previsualización, al soltar se lanza
   // con la torreta desplegada, volver a pulsar su botón la guarda al instante
-  updateShieldWall(p, inp, dt); // escudo en alto: se mantiene mientras se pulsa la habilidad
+  updateShieldWall(p, qP, dt); // escudo en alto: cada pulsación de la habilidad lo alza o lo baja
   if (qP && c.priType === 'turret' && myTurret(p)) recallTurret(p);
   else if (eP && c.secType === 'turret' && myTurret(p)) recallTurret(p);
   else if (!p.cast) {
@@ -1660,14 +1660,16 @@ function updateCover(dt) {
     }
   }
 }
-// Escudo en alto (Ceniza): mientras se mantiene la habilidad, cubre el frente, refleja balas y protege a los de detrás.
+// Escudo en alto (Ceniza): es un interruptor; una pulsación lo alza y otra lo baja. Alzado cubre el frente, refleja balas y protege a los de detrás.
 // Tiene resistencia: se gasta con cada impacto y poco a poco mientras está alzado; guardado se recupera. Si se rompe, hay que esperar a que se llene
-function updateShieldWall(p, inp, dt) {
+function updateShieldWall(p, qP, dt) {
   const c = p.ch;
   if (c.priType !== 'raiseShield') return;
   const W = AB.wall;
   if (p.shieldHp == null) p.shieldHp = W.max;
-  const want = (!!inp.q || !!p.shieldCharge) && !p.shieldBroken && !p.rush && !p.drop && !p.leap;
+  if (qP && !p.shieldBroken) p.shieldOn = !p.shieldOn; // roto no se puede alzar
+  if (p.shieldBroken) p.shieldOn = false;
+  const want = (!!p.shieldOn || !!p.shieldCharge) && !p.shieldBroken && !p.rush && !p.drop && !p.leap;
   if (want && !p.shieldUp) { p.shieldUp = true; p.blockT = 0; p.perfectUsed = false; p.slash = null; p.mHold = null; p.mCharging = false; SFX.hit(false); }
   else if (!want && p.shieldUp) { p.shieldUp = false; p.shieldRegenT = W.regenDelay; }
   if (p.shieldUp) { p.blockT = (p.blockT || 0) + dt; wearShield(p, W.drain * dt); }
@@ -1680,7 +1682,7 @@ function updateShieldWall(p, inp, dt) {
 function wearShield(p, amount) {
   p.shieldHp = Math.max(0, (p.shieldHp == null ? AB.wall.max : p.shieldHp) - amount);
   if (p.shieldHp <= 0 && !p.shieldBroken) { // se rompe
-    p.shieldBroken = true; p.shieldUp = false; p.shieldRegenT = AB.wall.regenDelay;
+    p.shieldBroken = true; p.shieldUp = false; p.shieldOn = false; p.shieldRegenT = AB.wall.regenDelay;
     floatText(p.x, p.y - 46 * p.ch.size, 'Escudo roto', '#ff8f8f'); burst(p.x + p.ax * 16, p.y - 14, '#b7b1c6', 16); shake = Math.max(shake, 5);
   }
 }
@@ -3187,7 +3189,7 @@ const ABILITY_TEXT = {
   overdrive: ['Purga', 'Onda que vacía el calor; luego dispara rápido sin calentarse'],
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla'],
   overcharge: ['Sobrecarga', 'Más cadencia; la torreta cura a los aliados cerca'],
-  raiseShield: ['Escudo en alto', 'Refleja balas y cubre al grupo; se gasta'],
+  raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; se gasta'],
   vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
   taunt: ['Provocación', 'Atrae a los enemigos; su guardia cubre todo'],
   grenade: ['Granada', 'En arco al fijado: explota y lo lanza'],
