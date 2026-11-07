@@ -96,6 +96,8 @@ body.touch.landscape #btns{--A:min(124px,33vh); right:max(10px,env(safe-area-ins
 body.touch.landscape #bPause{top:6px; right:6px; width:min(44px,11vh); height:min(44px,11vh)}
 body.touch.landscape #bTest{top:6px; right:calc(min(44px,11vh) + 12px); height:min(44px,11vh)}
 body.touch.landscape #ring{width:min(100px,28vh); height:min(100px,28vh)}
+/* modo mando: se oculta la interfaz táctil; Pausa y pantalla completa siguen visibles */
+body.touch.padmode #stickZone, body.touch.padmode #btns, body.touch.padmode #bTest{display:none}
 /* vertical: aviso para girar el móvil */
 #rotate{position:fixed; inset:0; z-index:10; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:24px; text-align:center; background:var(--bg); color:var(--fg)}
 body.touch.portrait:not(.rotdismiss) #rotate{display:flex}
@@ -553,6 +555,11 @@ function pollPads() { pads = navigator.getGamepads ? Array.from(navigator.getGam
 function padsConnected() { return Math.min(4, pads.filter(gp => gp && gp.connected).length); }
 addEventListener('gamepadconnected', pollPads);
 addEventListener('gamepaddisconnected', pollPads);
+// Modo mando: si alguien juega con un mando, se oculta la interfaz táctil (salvo Pausa y pantalla completa).
+// Se activa al detectar actividad de cualquier mando y se desactiva al tocar la pantalla.
+function padActivity() { return pads.some(gp => gp && gp.connected && (gp.buttons.some(b => b.pressed) || gp.axes.some(a => Math.abs(a) > 0.5))); }
+function updatePadMode() { if (padActivity()) document.body.classList.add('padmode'); }
+addEventListener('pointerdown', e => { if (e.pointerType === 'touch') document.body.classList.remove('padmode'); }, true);
 const touch = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
 const ZERO = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
 // ---------- Controles configurables (Teclado A, Teclado B y mandos) ----------
@@ -6665,6 +6672,7 @@ const STEP = 1 / 60;
 function frame(now) {
   acc += Math.min(0.1, (now - last) / 1000); last = now;
   pollPads();
+  updatePadMode();
   while (acc >= STEP) { update(STEP); acc -= STEP; }
   if (isMenuState() !== lastMenu) resize(); // al cambiar entre menú y juego, el lienzo cambia de tamaño
   draw();
