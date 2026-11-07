@@ -545,6 +545,7 @@ addEventListener('blur', () => { keys.clear(); mouse.l = mouse.r = false; });
 const k = c => keys.has(c) ? 1 : 0;
 // El ratón pertenece al teclado A: apunta, dispara y fija objetivo
 const mouse = { sx: W / 2, sy: H / 2, active: false, l: false, r: false, m: false };
+let portalT = 0, portalClick = false; // portal de salida: segundos de aviso y flanco del clic anterior
 let wheelSteps = 0;
 function toWorld(e) { const r = cvs.getBoundingClientRect(); mouse.sx = (e.clientX - r.left) / r.width * W; mouse.sy = (e.clientY - r.top) / r.height * H; } // a mundo con mouseWorld(), que tiene en cuenta la cámara
 cvs.addEventListener('mousemove', e => { toWorld(e); mouse.active = true; });
@@ -1153,7 +1154,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
   useRoom(r);
-  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
+  room = r; r.visited = true; portalT = 0; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
   const entry = dir ? OPP[dir] : null;
@@ -1221,7 +1222,7 @@ function roomCleared() {
   room.cleared = true; bullets = []; hazards = [];
   let revived = false;
   for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
-  if (room.type === 'boss') { room.stairs = true; showBanner('Guardián derrotado, baja por la escalera'); }
+  if (room.type === 'boss') { room.stairs = true; showBanner('Guardián derrotado: haz clic junto al portal'); }
   else {
     showBanner(revived ? 'Sala despejada, compañeros de vuelta' : 'Sala despejada');
     if (Math.random() < 0.3) pickups.push({ x: (MID_X + 0.5) * T, y: (MID_Y + 0.5) * T, t: 0 });
@@ -4567,7 +4568,8 @@ function update(dt) {
       const d = exitDir(p);
       if (d && room.doors[d]) { enterRoom(room.doors[d], d); break; }
     }
-    if (room.stairs && players.some(p => !p.down && !p.npc && Math.hypot(p.x - (MID_X + 0.5) * T, p.y - (MID_Y + 0.5) * T) < 20)) nextFloor();
+    // El portal no se activa al pisarlo: hay que hacer clic junto a él y luego golpear cerca
+    if (room.stairs) updatePortal(dt);
   }
 
   updateCamera(dt);
@@ -5371,13 +5373,50 @@ function shade(hex, k) { // aclara (k > 0) u oscurece (k < 0) un color #rrggbb
   return 'rgb(' + f(n >> 16) + ',' + f((n >> 8) & 255) + ',' + f(n & 255) + ')';
 }
 
-function drawStairs() {
-  const x = MID_X * T, y = MID_Y * TK;
-  ctx.fillStyle = '#050407'; ctx.fillRect(x + 2, y + 2, T - 4, TK - 4);
-  ctx.fillStyle = '#4a4258';
-  for (let i = 0; i < 4; i++) ctx.fillRect(x + 4 + i * 3, y + 5 + i * 6, T - 8 - i * 6, 3);
-  ctx.strokeStyle = `rgba(255,213,74,${0.5 + 0.4 * Math.sin(time * 4)})`; ctx.lineWidth = 2;
-  ctx.strokeRect(x + 1, y + 1, T - 2, TK - 2);
+// Escalera anterior: sustituida por el portal, se conserva comentada
+// function drawStairs() {
+//   const x = MID_X * T, y = MID_Y * TK;
+//   ctx.fillStyle = '#050407'; ctx.fillRect(x + 2, y + 2, T - 4, TK - 4);
+//   ctx.fillStyle = '#4a4258';
+//   for (let i = 0; i < 4; i++) ctx.fillRect(x + 4 + i * 3, y + 5 + i * 6, T - 8 - i * 6, 3);
+//   ctx.strokeStyle = `rgba(255,213,74,${0.5 + 0.4 * Math.sin(time * 4)})`; ctx.lineWidth = 2;
+//   ctx.strokeRect(x + 1, y + 1, T - 2, TK - 2);
+// }
+
+// Portal de salida (sale al vencer al guardián). Se activa haciendo clic junto a él y después golpeando cerca.
+const PORTAL = { x: (MID_X + 0.5) * T, y: (MID_Y + 0.5) * T };
+function updatePortal(dt) {
+  const [mx, my] = mouseWorld(), clicked = mouse.l && !portalClick;
+  portalClick = mouse.l;
+  if (clicked && Math.hypot(mx - PORTAL.x, my - PORTAL.y) < 40) portalT = 4;
+  portalT = Math.max(0, portalT - dt);
+  for (const p of players) {
+    if (p.down || p.npc) continue;
+    const a = !!readDevice(p.dev).a, edge = a && !p.portalAtk; // solo el primer frame de la pulsación
+    p.portalAtk = a;
+    if (edge && portalT > 0 && Math.hypot(p.x - PORTAL.x, p.y - PORTAL.y) < 46) { nextFloor(); return; }
+  }
+}
+function drawPortal() {
+  const cx = PORTAL.x, cy = (MID_Y + 0.5) * TK, pulse = 0.5 + 0.5 * Math.sin(time * 3);
+  ctx.save(); ctx.translate(cx, cy);
+  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, T * 0.5);
+  g.addColorStop(0, 'rgba(214,190,255,0.95)'); g.addColorStop(0.5, 'rgba(120,80,200,0.55)'); g.addColorStop(1, 'rgba(60,30,110,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, T * 0.5, TK * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 2; i++) {
+    ctx.strokeStyle = `rgba(220,186,255,${0.45 + 0.3 * pulse - i * 0.15})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, 0, T * (0.36 - i * 0.1), TK * (0.36 - i * 0.1), time * (i ? -1.3 : 1.1), 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.fillStyle = '#f1e6ff'; ctx.globalAlpha = 0.6 + 0.3 * pulse;
+  ctx.beginPath(); ctx.ellipse(0, 0, 4, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  if (portalT > 0) { // aviso junto al portal, se desvanece al acabar el tiempo
+    ctx.save(); ctx.globalAlpha = Math.min(1, portalT);
+    ctx.font = `bold 13px ${FONT}`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.fillStyle = '#f1e6ff';
+    const ly = (MID_Y + 0.5) * TK - 44; // por encima de la cabeza de quien esté junto al portal
+    ctx.strokeText('Golpear para avanzar', PORTAL.x, ly); ctx.fillText('Golpear para avanzar', PORTAL.x, ly);
+    ctx.restore();
+  }
 }
 
 function drawSlash(p) {
@@ -6210,7 +6249,7 @@ function drawGame() {
   ctx.scale(cam.z, cam.z);
   ctx.translate(-cam.x, -cam.y);
   drawFloor();
-  if (room.stairs) drawStairs();
+  if (room.stairs) drawPortal();
   // Capa del suelo: zonas, avisos y previsualizaciones se dibujan en el plano aplastado (círculos → elipses)
   ctx.save(); ctx.scale(1, K);
   drawHazards(); drawFriendlyZones(); drawVines(); drawArcOrbs('floor'); drawTargets(); drawPreviews(); drawComboHints(); drawChargeHints();
