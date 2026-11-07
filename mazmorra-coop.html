@@ -1049,12 +1049,21 @@ function genTiles(r) {
   if (r.type === 'normal') {
     const qx = mx - 2, qy = my - 2; // último índice útil del cuadrante (el resto lo pone el espejo)
     const free = (x, y) => x >= 3 && y >= 2 && x <= qx && y <= qy && t[y][x] === 0 && t[y - 1][x] !== 1 && t[y][x - 1] !== 1;
-    const tpl = ri(0, 4);
+    const tpl = [0, 2, 3, 5, 6][ri(0, 4)]; // plantillas activas (rejilla y columnata desactivadas, ver abajo)
     if (tpl === 0) { const n = ri(1, 3); for (let i = 0; i < n; i++) { const x = ri(3, qx), y = ri(2, qy); if (free(x, y)) set(x, y, 2); } }
-    else if (tpl === 1) { const sx = ri(3, 4), sy = ri(3, 4); for (let x = 3; x <= qx; x += sx) for (let y = 3; y <= qy; y += sy) if (free(x, y)) set(x, y, 2); }
+    // DESACTIVADA (tpl 1, rejilla de columnas): entorpecía el ritmo de combate.
+    // else if (tpl === 1) { const sx = ri(3, 4), sy = ri(3, 4); for (let x = 3; x <= qx; x += sx) for (let y = 3; y <= qy; y += sy) if (free(x, y)) set(x, y, 2); }
     else if (tpl === 2) { const n = ri(1, 2); for (let i = 0; i < n; i++) { const x = ri(3, Math.max(3, qx - 1)), y = ri(2, Math.max(2, qy - 1)); for (const [a, b] of [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]]) if (free(a, b) && rng() < 0.85) set(a, b, 2); } }
     else if (tpl === 3) { const y = Math.min(qy, ri(3, 4)); for (let x = 4; x <= qx; x++) if ((x - 4) % 5 !== 3 && free(x, y)) set(x, y, 2); } // murete con huecos
-    else { const x = Math.min(qx, ri(5, 7)); for (let y = 2; y <= qy; y++) if (y % 3 !== 0 && free(x, y)) set(x, y, 2); }     // columnata vertical
+    // DESACTIVADA (tpl 4, columnata vertical): entorpecía el ritmo de combate.
+    // else { const x = Math.min(qx, ri(5, 7)); for (let y = 2; y <= qy; y++) if (y % 3 !== 0 && free(x, y)) set(x, y, 2); }     // columnata vertical
+    else if (tpl === 5) { // cobertura en diagonal: tres rocas que dibujan un carril para flanquear
+      for (let i = 0; i < 3; i++) { const x = 3 + i * 2, y = 2 + i; if (free(x, y)) set(x, y, 2); }
+    }
+    else { // cuña: dos alas que apuntan al centro; quien va delante queda cubierto por quien va detrás
+      const x = ri(5, qx), y = ri(3, Math.max(3, qy - 2));
+      for (let i = 0; i < 3; i++) for (const b of [y + i, y - i]) if (free(x + i, b)) set(x + i, b, 2);
+    }
   }
   // Nada de bolsas sin salida: lo que no se alcanza desde el centro pasa a ser roca
   const seen = t.map(row => row.map(() => false)), q = [[mx, my]]; seen[my][mx] = true;
