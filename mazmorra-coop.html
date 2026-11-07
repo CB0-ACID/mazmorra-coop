@@ -3724,7 +3724,7 @@ function meleeHit(p, e, s) {
   impactFx(p, e, heavy, s.kind === 'flurry');
   if (e.dead) return;
   if (s.def.launcher && tryLaunch(e, s.def.forceLaunch)) { p.lockOn = true; p.target = e; } // quien lo lanza lo fija al instante
-  if (e.airborne) e.vz = Math.max(e.vz, s.kind === 'uppercut' ? 260 : 120);
+  if (e.airborne && !bossStunnedAir(e)) e.vz = Math.max(e.vz, s.kind === 'uppercut' ? 260 : 120);
 }
 // ability: disparo que viene de una habilidad (rebotante); si no, es un disparo normal
 function shotHit(p, e, dmg, kb, sx, sy, ability, staMul) {
@@ -3736,7 +3736,7 @@ function shotHit(p, e, dmg, kb, sx, sy, ability, staMul) {
     damageEnemy(e, sx, sy, dmg * 0.4 * mul, sta, kb);
   }
   else damageEnemy(e, sx, sy, dmg * mul, 0, kb); // tier 1: sin estamina, el disparo quita vida normal
-  if (!e.dead && e.airborne) e.vz = Math.max(e.vz, JUGGLE_VZ); // lo mantiene flotando
+  if (!e.dead && e.airborne && !bossStunnedAir(e)) e.vz = Math.max(e.vz, JUGGLE_VZ); // lo mantiene flotando
 }
 function stunEnemy(e) {
   e.stunT = e.type === 'boss' ? 2.5 : 3.5; e.sta = 0;
@@ -3746,7 +3746,9 @@ function stunEnemy(e) {
 }
 // Guardián: solo se le puede levantar por los aires con la estamina al 50 % o menos
 const BOSS_LAUNCH_STA = 0.5;
-function bossLaunchable(e) { return e.type === 'boss' && e.sta <= e.maxSta * BOSS_LAUNCH_STA; }
+function bossLaunchable(e) { return e.type === 'boss' && e.stunT <= 0 && e.sta <= e.maxSta * BOSS_LAUNCH_STA; }
+// Un guardián aturdido en el aire no se mantiene volando con golpes: cae
+function bossStunnedAir(e) { return e.type === 'boss' && e.airborne && e.stunT > 0; }
 // Lanzar por los aires: siempre es posible (salvo un enemigo que ya vuela, el gólem en pleno salto y el guardián por encima del 50 % de estamina)
 function launchable(e, force) {
   if (e.airborne || e.state === 'leap') return false;
@@ -3963,6 +3965,7 @@ function updateEnemy(e, dt) {
   const dec = Math.max(0, 1 - 10 * dt);
   if (e.airborne) { // lanzado: indefenso mientras está en el aire
     if (e.frozenAir) e.vz = Math.min(e.vz, 0) - 900 * dt; // bloque de hielo: cae a plomo y se rompe al tocar el suelo
+    else if (bossStunnedAir(e)) e.vz = Math.max(-AIR_FALL_MAX, e.vz - AIR_G * dt); // guardián aturdido: cae, sin flotar ni subir
     else if (e.suspendT > 0) { e.suspendT -= dt; e.vz = 0; } // Suspensión: congelado en el aire
     else if (e.hang > 0) { e.hang -= dt; e.vz = Math.max(-JUMP.hangFall, e.vz - AIR_G * dt); } // alguien le pega en el aire: flota
     else e.vz = Math.max(-AIR_FALL_MAX, e.vz - AIR_G * dt);
