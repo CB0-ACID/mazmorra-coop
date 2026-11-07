@@ -269,6 +269,7 @@ const AB = {
                // chargeTime: 1.2, chargeDist0: 100, chargeDist1: 240, chargeSpeed: 520, chargeDmg: 0.5, chargeKb: 680 }, // valores anteriores de la embestida
                chargeTime: 1.2, chargeDist0: 130, chargeDist1: 300, chargeSpeed: 560, chargeDmg: 0.9, chargeDmg1: 2.2, chargeKb: 760,
                chargeInvAfter: 0.35, chargeWaveR0: 55, chargeWaveR1: 95, chargeWaveDmg: 0.8, chargeWaveKb: 420, // embestida reforzada: más daño y recorrido, invulnerable y onda al terminar
+               flingKb0: 1150, flingKb1: 1700, flingSpread: 0.3, slamSpeed: 380, slamDmg: 1.4, slamGetup: 0.7, bowlMul: 0.6, // knockback: arrastra delante del escudo y al final los despide (÷10 ≈ px recorridos); contra muro: daño y aturdido; contra otro enemigo: lo arrolla
                zone: 34 }, // Escudo en alto (Ceniza): zona de protección = arco de ±arc rad y p.r + zone de radio (ahí rebotan las balas)
   grenade:   { range: 320, r: 55, dmg: 1, fly: 0.55 },
   ricochet:  { chargeTime: 1, maxMul: 2, groundHops: 2, firstMul: 1.6 }, // el primer objetivo siempre recibe ×1,6 // Disparo rebotante (Marea): mantener carga hasta ×2 de daño; en el suelo salta a dos más
@@ -2232,17 +2233,45 @@ function updateSpecial(p, dt) {
       // const dmg = W.chargeDmg * (1 + R.lv); // daño anterior
       const dmg = (W.chargeDmg + (W.chargeDmg1 - W.chargeDmg) * R.lv) * p.ch.melee * MELEE_MUL;
       damageEnemy(e, p.x, p.y, dmg, dmg * 1.5, 0); hitstop = Math.max(hitstop, 0.04);
-      if (!e.dead) { const kb = W.chargeKb * (0.6 + 0.6 * R.lv) * (e.type === 'boss' ? 0.2 : 1); e.kbx = R.dx * kb; e.kby = R.dy * kb; impactFx(p, e, true); }
+      // if (!e.dead) { const kb = W.chargeKb * (0.6 + 0.6 * R.lv) * (e.type === 'boss' ? 0.2 : 1); e.kbx = R.dx * kb; e.kby = R.dy * kb; impactFx(p, e, true); } // empuje anterior (se quedaba corto)
+      if (!e.dead) {
+        if (e.type === 'boss') { const kb = W.chargeKb * (0.6 + 0.6 * R.lv) * 0.2; e.kbx = R.dx * kb; e.kby = R.dy * kb; } // al guardián solo lo empuja un poco
+        else { e.slammed = false; (R.carry || (R.carry = [])).push(e); } // el resto queda pegado al escudo y se lo lleva por delante
+        impactFx(p, e, true);
+      }
+    }
+    if (R.carry) { // arrastra a los enemigos golpeados delante del escudo, sin que puedan actuar
+      const px = -R.dy, py = R.dx;
+      for (const e of R.carry) {
+        if (e.dead || e.airborne) continue;
+        const lat = Math.max(-(p.r + 10), Math.min(p.r + 10, (e.x - p.x) * px + (e.y - p.y) * py)), fd = p.r + e.r + 6;
+        e.x += (p.x + R.dx * fd + px * lat - e.x) * 0.7; e.y += (p.y + R.dy * fd + py * lat - e.y) * 0.7;
+        e.kbx = e.kby = 0; e.hitstun = Math.max(e.hitstun || 0, 0.15);
+        if (collide(e, false)) { shieldSlam(p, e, R.dx, R.dy); R.left = 0; } // lo estampa contra el muro: la embestida termina ahí
+      }
+      R.carry = R.carry.filter(e => !e.dead && !e.slammed);
     }
     if (collide(p, true) || R.left <= 0 || !p.shieldUp) { // fin de la embestida: onda de choque e invulnerabilidad un instante más
       p.shieldCharge = null;
       const wr = W.chargeWaveR0 + (W.chargeWaveR1 - W.chargeWaveR0) * R.lv, wd = W.chargeWaveDmg * (1 + R.lv) * p.ch.melee * MELEE_MUL;
+      const flung = new Set();
+      for (const e of (R.carry || [])) { // los que llevaba por delante salen despedidos
+        if (e.dead || e.airborne) continue;
+        damageEnemy(e, p.x, p.y, wd, wd, 0); if (e.dead) continue; // también reciben la onda de choque
+        const px = -R.dy, py = R.dx, side = Math.sign((e.x - p.x) * px + (e.y - p.y) * py) || 0;
+        let kb = W.flingKb0 + (W.flingKb1 - W.flingKb0) * R.lv;
+        if (e.elite) kb *= 0.6; if (e.tier === 3) kb *= 0.5;
+        e.kbx = (R.dx + px * side * W.flingSpread) * kb; e.kby = (R.dy + py * side * W.flingSpread) * kb;
+        e.hitstun = Math.max(e.hitstun || 0, 0.45); e.slammed = false; flung.add(e);
+        shieldFlung.push({ e, t: 0.6, by: p, bowl: true });
+      }
+      if (flung.size) hitstop = Math.max(hitstop, 0.08);
       for (const e of liveTargets()) {
-        if (e.airborne) continue;
+        if (e.airborne || flung.has(e)) continue;
         const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1;
         if (d > wr + e.r) continue;
         damageEnemy(e, p.x, p.y, wd, wd, 0);
-        if (!e.dead) { const kb = W.chargeWaveKb * (e.type === 'boss' ? 0.2 : 1); e.kbx = dx / d * kb; e.kby = dy / d * kb; }
+        if (!e.dead) { const kb = W.chargeWaveKb * (e.type === 'boss' ? 0.2 : 1); e.kbx = dx / d * kb; e.kby = dy / d * kb; if (e.type !== 'boss') shieldFlung.push({ e, t: 0.4, by: p, bowl: false }); }
       }
       effects.push({ type: 'ring', x: p.x + R.dx * 14, y: p.y + R.dy * 14, r: wr, t: 0, dur: 0.3, color: '#dff3ff' });
       burst(p.x + R.dx * 14, p.y - 10, '#dff3ff', 16); shake = Math.max(shake, 6); SFX.hit(true);
@@ -2553,6 +2582,38 @@ function castTaunt(p) {
   for (const e of liveTargets()) if (Math.hypot(e.x - p.x, e.y - p.y) < AB.taunt.r) { e.tauntBy = p; e.tauntT = AB.taunt.time; }
   effects.push({ type: 'ring', x: p.x, y: p.y, r: AB.taunt.r, t: 0, dur: 0.45, color: '#ff6b6b' });
   floatText(p.x, p.y - 46 * p.ch.size, 'Provocación', '#ff8f8f'); shake = Math.max(shake, 4);
+}
+// Knockback de la embestida de escudo: los enemigos despedidos que chocan con un muro se estampan (daño y aturdidos)
+// y los que chocan con otro enemigo lo arrollan y lo empujan también
+const shieldFlung = [];
+function shieldSlam(p, e, dx, dy) {
+  const W = AB.wall;
+  e.slammed = true;
+  damageEnemy(e, e.x - dx * 10, e.y - dy * 10, W.slamDmg * p.ch.melee * MELEE_MUL, W.slamDmg * p.ch.melee * MELEE_MUL * 2, 0);
+  e.kbx = e.kby = 0; if (!e.dead) e.getup = Math.max(e.getup || 0, W.slamGetup);
+  burst(e.x + dx * e.r, upY(e.y + dy * e.r, 12), '#d8cfe6', 16); effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 16, t: 0, dur: 0.25, color: '#ffffff' });
+  shake = Math.max(shake, 7); hitstop = Math.max(hitstop, 0.07); SFX.hit(true);
+  floatText(e.x, e.y - 40, '¡Contra el muro!', '#ffffff');
+}
+function updateShieldFlung(dt) {
+  const W = AB.wall;
+  for (const f of shieldFlung) {
+    const e = f.e; f.t -= dt;
+    if (e.dead || e.airborne || f.t <= 0) { f.done = true; continue; }
+    const sp = Math.hypot(e.kbx, e.kby);
+    if (sp < W.slamSpeed) { if (f.t < 0.3) f.done = true; continue; }
+    const ux = e.kbx / sp, uy = e.kby / sp;
+    if (isSolid(Math.floor((e.x + ux * (e.r + 4)) / T), Math.floor((e.y + uy * (e.r + 4)) / T), false)) { shieldSlam(f.by, e, ux, uy); f.done = true; continue; }
+    if (f.bowl) for (const o of liveTargets()) { // arrolla a otros enemigos por el camino
+      if (o === e || o.airborne || o.type === 'boss' || o.bowled === f || Math.hypot(o.x - e.x, o.y - e.y) > o.r + e.r) continue;
+      o.bowled = f;
+      const d = W.slamDmg * 0.5 * f.by.ch.melee * MELEE_MUL;
+      damageEnemy(o, e.x, e.y, d, d, 0);
+      if (!o.dead) { const kb = sp * W.bowlMul; o.kbx = ux * kb; o.kby = uy * kb; o.hitstun = Math.max(o.hitstun || 0, 0.35); shieldFlung.push({ e: o, t: 0.5, by: f.by, bowl: false }); }
+      burst(o.x, upY(o.y, 12), '#d8cfe6', 8); shake = Math.max(shake, 4); SFX.hit(false);
+    }
+  }
+  for (let i = shieldFlung.length - 1; i >= 0; i--) if (shieldFlung[i].done) shieldFlung.splice(i, 1);
 }
 // Lanzar escudo (Ceniza, con el escudo bajado): vuela en línea recta; al impactar rebota hacia el enemigo más cercano
 // (hasta 2 rebotes) y después vuelve solo. Mientras está en el aire no se puede alzar el escudo
@@ -4675,7 +4736,7 @@ function update(dt) {
   for (const e of enemies) if (e.state !== 'leap') collide(e, false);
   leash();
   updateHazards(dt);
-  updateChains(dt); updateShieldThrows(dt);
+  updateChains(dt); updateShieldThrows(dt); updateShieldFlung(dt);
   updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateStalacs(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
 
   for (const b of bullets) {
