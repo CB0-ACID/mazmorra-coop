@@ -925,8 +925,14 @@ cvs.addEventListener('pointerdown', e => {
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
   } else if (state === 'options') {
     if (OPT.cap) { OPT.cap = null; return; } // un toque mientras se espera una tecla cancela la captura
-    for (let i = 0; i < 3; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
+    for (let i = 0; i < OPT_TABS.length; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
     for (let r = 1; r <= optList().length + 2; r++) if (inside(optRowRect(r))) { OPT.row = r; activateOptRow(); return; }
+  } else if (state === 'tutorial') {
+    const g = tutGeo();
+    if (!inside([g.px, g.py, g.pw, g.ph])) { tutClose(); return; } // toque o clic fuera de la ventana: cierra
+    for (let i = 0; i < TUT_TABS.length; i++) if (inside(tutTabRect(i))) { TUT.tab = i; TUT.at = 0; return; }
+    if (inside(tutBtn(true))) { tutAdvance(); return; }
+    if (inside(tutBtn(false))) { tutClose(); return; }
   } else if (state === 'over') {
     if (overT > 1.2) for (let i = 0; i < 3; i++) if (inside(overRect(i))) { overSel = i; chooseOver(i); return; }
   } else if (state === 'pause') {
@@ -966,6 +972,7 @@ function startGame() {
       prev: { a: true, s: true, d: true, q: true, e: true, l: true, c: true }, slash: null, target: null }));
   }
   newRun();
+  startTutorial(); // antes de jugar, un aviso por personaje (si está activado en General)
 }
 
 // ---------- Generación de la mazmorra ----------
@@ -4181,6 +4188,7 @@ function update(dt) {
   if (state === 'select') { updateSelect(dt); return; }
   if (state === 'pause') { updatePause(); return; }
   if (state === 'options') { updateOptions(); return; }
+  if (state === 'tutorial') { updateTutorial(dt); return; }
   if (state === 'over') {
     overT += dt;
     for (const dev of DEVICES) {
@@ -5919,7 +5927,7 @@ function draw() {
   if (state === 'count') drawCount();
   else if (state === 'select') drawSelect();
   else if (state === 'options') drawOptions();
-  else { drawGame(); if (state === 'pause') drawPause(); }
+  else { drawGame(); if (state === 'pause') drawPause(); if (state === 'tutorial') drawTutorial(); }
 }
 
 // ---------- Menú de derrota ----------
@@ -5953,6 +5961,189 @@ function drawOver() {
   });
   ctx.fillStyle = '#8f86a0'; ctx.font = '400 11.5px ' + FONT;
   ctx.fillText('Elige con el ratón, o con la dirección y golpe', W / 2, H / 2 + 168);
+}
+
+// ---------- Tutorial previo a la run (un aviso por personaje) ----------
+// Se abre al empezar cada run: una vez por personaje del grupo, en orden, con el juego en pausa.
+// Pestañas: Golpes, Habilidades y Estrategia. Atacar pasa de pestaña (en la última, al siguiente personaje o a jugar);
+// Movimiento, Esc o un toque/clic fuera de la ventana lo cierran. Se desactiva en Opciones > General.
+const TUT_TABS = ['Golpes', 'Habilidades', 'Estrategia'];
+const TUT = { on: (() => { try { return localStorage.getItem('mz-tutorial') !== '0'; } catch (_) { return true; } })(), queue: [], idx: 0, tab: 0, at: 0, t: 0 };
+function setTutOn(v) { TUT.on = v; try { localStorage.setItem('mz-tutorial', v ? '1' : '0'); } catch (_) {} }
+function startTutorial() {
+  if (!TUT.on) return;
+  const seen = [];
+  for (const p of players) if (!seen.includes(p.ch)) seen.push(p.ch);
+  if (!seen.length) return;
+  TUT.queue = seen; TUT.idx = 0; TUT.tab = 0; TUT.at = 0; TUT.t = 0;
+  state = 'tutorial';
+}
+function tutAdvance() {
+  if (TUT.tab < TUT_TABS.length - 1) { TUT.tab++; TUT.at = 0; return; }
+  TUT.idx++;
+  if (TUT.idx >= TUT.queue.length) { resume(); return; }
+  TUT.tab = 0; TUT.at = 0; TUT.t = 0;
+}
+function tutClose() { resume(); }
+function updateTutorial(dt) {
+  TUT.at += dt; TUT.t += dt;
+  if (pausePressed()) { tutClose(); return; } // Esc / Start también cierran
+  if (TUT.t < 0.35) return; // margen: no consume el golpe que abrió la pantalla
+  for (const dev of DEVICES) {
+    const m = menuInput(dev);
+    if (m.d) { tutClose(); return; }
+    if (m.a) { tutAdvance(); return; }
+    if (m.dx) { TUT.tab = (TUT.tab + m.dx + TUT_TABS.length) % TUT_TABS.length; TUT.at = 0; }
+  }
+}
+// Geometría de la ventana (la misma para dibujar y para los toques)
+function tutGeo() { const pw = Math.min(W - 24, 680), ph = Math.min(H - 24, 520); return { px: (W - pw) / 2, py: (H - ph) / 2, pw, ph }; }
+function tutTabRect(i) { const g = tutGeo(), tw = (g.pw - 36 - 2 * 8) / 3; return [g.px + 18 + i * (tw + 8), g.py + 62, tw, 30]; }
+function tutBtn(next) { const g = tutGeo(); return next ? [g.px + g.pw - 18 - 170, g.py + g.ph - 50, 170, 32] : [g.px + 18, g.py + g.ph - 50, 110, 32]; }
+// Animación de la caja: personaje a la izquierda, enemigo de prueba a la derecha que se marca al recibir el golpe
+const TUT_ANIM_OF = { beam: 'line', rush: 'line', area: 'ring', drop: 'ring', raiseShield: 'pulse', taunt: 'pulse', vine: 'ring', roots: 'ring',
+  frostburst: 'proj', frostMode: 'pulse', volley: 'line', overdrive: 'pulse', grenade: 'proj', ricochet: 'proj', turret: 'pulse', overcharge: 'pulse',
+  reaper: 'line', dragon: 'pulse' };
+const TUT_MOVE_ANIM = { dash: 'line', stride: 'line', teleport: 'line', jump: 'proj', flip: 'proj', block: 'pulse' };
+const TUT_CHARGED_ANIM = { seismic: { shape: 'disc', r: 80 }, arcane: { shape: 'disc', r: 80, reach: 60 }, uppercut: { shape: 'thrust', len: 115, width: 56 }, starfall: { shape: 'disc', r: 55, reach: 80 } };
+const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas' };
+function tutAnim(s, x, y, w, h, col, k) {
+  rrect(x, y, w, h, 8); ctx.fillStyle = '#0f0c16'; ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.rect(x + 1, y + 1, w - 2, h - 2); ctx.clip();
+  const cx = x + w * 0.2, cy = y + h / 2, ext = s.len || s.range || ((s.reach || 0) + (s.r || 0)) || 60;
+  const sc = Math.min(1, (w * 0.72) / ext), E = ext * sc, ex = cx + E * 0.72, ey = cy;
+  const g = Math.min(1, k * 1.5), fade = k < 0.6 ? 1 : Math.max(0, 1 - (k - 0.6) / 0.4);
+  const hit = k > 0.5 && k < 0.95;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(ex, ey, 6, 0, Math.PI * 2); ctx.fillStyle = hit ? '#ffffff' : '#6d6480'; ctx.fill();
+  ctx.globalAlpha = fade; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 3;
+  switch (s.shape) {
+    case 'arc': { const a = s.arc || 1; ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, s.range * sc), -a / 2, -a / 2 + a * g); ctx.stroke(); break; }
+    case 'spin': case 'wave': ctx.beginPath(); ctx.arc(cx, cy, Math.max(2, (s.range || 40) * sc * g), 0, Math.PI * 2); ctx.stroke(); break;
+    case 'ring': ctx.beginPath(); ctx.arc(ex, ey, 6 + 22 * g, 0, Math.PI * 2); ctx.stroke(); break;
+    case 'pulse': ctx.beginPath(); ctx.arc(cx, cy, 12 + 24 * g, 0, Math.PI * 2); ctx.stroke(); break;
+    case 'thrust': case 'line': {
+      const L = (s.len || 110) * sc * g, hw = Math.max(2, (s.width || 6) * sc / 2);
+      ctx.globalAlpha = fade * 0.55; ctx.fillRect(cx, cy - hw, L, hw * 2);
+      ctx.globalAlpha = fade; ctx.strokeRect(cx, cy - hw, L, hw * 2); break;
+    }
+    case 'disc': {
+      const dx = (s.reach || 0) * sc, R = Math.max(3, (s.r || 30) * sc * g);
+      ctx.beginPath(); ctx.arc(cx + dx, cy, R, 0, Math.PI * 2); ctx.globalAlpha = fade * 0.35; ctx.fill();
+      ctx.globalAlpha = fade; ctx.stroke(); break;
+    }
+    default: { // 'shot' y 'proj': un proyectil que avanza hacia el enemigo
+      const px = cx + (ex - cx) * g, py = cy - (s.shape === 'proj' ? Math.sin(Math.PI * g) * 18 : 0);
+      ctx.globalAlpha = fade * 0.35; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
+      ctx.globalAlpha = fade; ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill(); break;
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#0f0c16'; ctx.stroke();
+  ctx.restore();
+}
+// Una tarjeta: animación a la izquierda, nombre, subtítulo y descripción
+function tutCard(it, x, y, w, h, c, k) {
+  rrect(x, y, w, h, 8); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
+  const sw = Math.min(112, Math.round(w * 0.4));
+  tutAnim(it.anim, x + 6, y + 6, sw, h - 12, c.color, k);
+  const tx = x + sw + 16, tw = x + w - tx - 8;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f2eefa'; fitText(it.name, tx, y + 20, tw, '700', 14);
+  ctx.fillStyle = c.color; fitText(it.sub.toUpperCase(), tx, y + 35, tw, '600', 10.5);
+  ctx.fillStyle = '#d8d0e6'; ctx.font = '400 12px ' + FONT;
+  wrapText(it.desc, tx, y + 52, tw, 15, Math.max(1, Math.floor((h - 58) / 15)));
+}
+function tutK(i) { return Math.min(1, ((TUT.at + i * 0.3) % 1.8) / 1.4); }
+// Golpes del personaje: cuerpo a cuerpo (su juego de golpes) o disparo y especiales si es tirador/ágil
+function tutMoveItems(c) {
+  const out = [], K = c.meleeKit || {};
+  const fx = d => (d.launcher ? ' · lanza' : '') + (d.lunge > 0 ? ' · avanza hacia el enemigo' : d.lunge < 0 ? ' · retrocede' : '') + (d.pass ? ' · atraviesa al enemigo' : '') + (d.wave ? ' · empuja a todos' : '');
+  const dmgOf = d => 'Daño ×' + String(d.dmg).replace('.', ',') + fx(d) + '.';
+  if (c.canMelee) {
+    const order = [['normal', 'Ataque · combo'], ['normal2', 'Ataque · combo'], ['heavy', 'Golpe fuerte'], ['afterMove', 'Tras moverte'], ['toward', 'Avanzando'], ['away', 'Retrocediendo']];
+    for (const [key, label] of order) {
+      const d = K[key]; if (!d) continue;
+      out.push({ name: d.name, sub: c.finisher === key ? 'Remate del combo' : label, desc: dmgOf(d), anim: d });
+    }
+    if (c.finisher === 'flurry' && K.flurry) out.push({ name: K.flurry.name, sub: 'Remate del combo', desc: 'Cinco puñetazos seguidos; no lanza.', anim: { shape: 'thrust', len: 60, width: 30 } });
+    if (c.chargedMelee && CHARGED_TEXT[c.chargedMelee]) { const t = CHARGED_TEXT[c.chargedMelee]; out.push({ name: t[0], sub: 'Mantener Atacar', desc: t[1] + '.', anim: TUT_CHARGED_ANIM[c.chargedMelee] }); }
+  } else {
+    out.push({ name: TUT_SHOT_NAME[c.shotStyle] || 'Disparo', sub: 'Atacar', desc: shotText(c) + '.', anim: { shape: 'shot' } });
+    specialSlots(c).forEach(s => out.push({ name: s.name, sub: s.kind, desc: s.body, anim: { shape: 'shot', len: 110 } }));
+  }
+  return out;
+}
+// Habilidades 1 y 2 y movimiento, con su recarga y requisito
+function tutAbilityItems(c) {
+  const out = [];
+  const slot = (type, n, cd) => {
+    const t = ABILITY_TEXT[type] || [type, ''], need = ABILITY_NEEDS[type];
+    out.push({ name: t[0], sub: 'Habilidad ' + n + (cd ? ' · recarga ' + fmtS(cd) : ''), desc: t[1] + (need ? '. ' + need + '.' : '.'), anim: { shape: TUT_ANIM_OF[type] || 'pulse', len: 110, r: 30 } });
+  };
+  slot(c.priType, 1, c.priCd); slot(c.secType, 2, c.secCd);
+  const mv = MOVES[c.moveType] || MOVES.dash;
+  out.push({ name: mv.name, sub: 'Movimiento' + (c.moveCd ? ' · pausa ' + fmtS(c.moveCd) : ''), desc: mv.desc + '.', anim: { shape: TUT_MOVE_ANIM[c.moveType] || 'line', len: 110 } });
+  return out;
+}
+function tutTabMoves(c, x, y, w, h) {
+  const items = tutMoveItems(c), rows = Math.ceil(items.length / 2), cw = (w - 8) / 2, rh = Math.min(118, (h - (rows - 1) * 8) / rows);
+  items.forEach((it, i) => tutCard(it, x + (i % 2) * (cw + 8), y + Math.floor(i / 2) * (rh + 8), cw, rh, c, tutK(i)));
+}
+function tutTabAbilities(c, x, y, w, h) {
+  const items = tutAbilityItems(c), rh = Math.min(118, (h - (items.length - 1) * 8) / items.length);
+  items.forEach((it, i) => tutCard(it, x, y + i * (rh + 8), w, rh, c, tutK(i)));
+}
+const TUT_STRAT = {
+  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2) atrae a los enemigos cercanos hacia ti; úsala para proteger a un compañero herido.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
+  'Musgo': ['Liana (1) ralentiza y engancha; Raíces (2) inmovilizan. Combínalas para acorralar.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
+  'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
+  'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
+  'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.'],
+  'Ámbar': ['Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
+  'Marea': ['El revólver tiene 6 balas y se recarga solo si no disparas durante unos segundos.', 'La granada (1) va al enemigo fijado: úsala para agrupar enemigos.', 'Disparo rebotante (2): mantenlo cargado para rebotar con más daño.'],
+  'Ciruela': ['El gatling es continuo y sin carga: mantén el fuego y reposiciónate con el movimiento.', 'La torreta (1) dispara sola un rato; colócala donde pasen los enemigos.', 'Sobrecarga (2) acelera a la torreta y cura a los aliados cercanos.']
+};
+function tutTabStrategy(c, x, y, w) {
+  let yy = y + 14;
+  for (const tip of TUT_STRAT[c.name] || []) {
+    ctx.fillStyle = c.color; ctx.font = '700 15px ' + FONT; ctx.textAlign = 'left'; ctx.fillText('•', x + 2, yy + 14);
+    ctx.fillStyle = '#e6dff2'; ctx.font = '400 14px ' + FONT;
+    const lines = wrapText(tip, x + 18, yy + 14, w - 18, 19, 4) || 1;
+    yy += lines * 19 + 16;
+  }
+}
+function drawTutorial() {
+  const c = TUT.queue[TUT.idx]; if (!c) return;
+  const g = tutGeo(), x0 = g.px + 18, cw = g.pw - 36, top = g.py + 104, chh = g.py + g.ph - 60 - top;
+  ctx.save();
+  ctx.fillStyle = 'rgba(6,4,10,0.72)'; ctx.fillRect(0, 0, W, H);
+  rrect(g.px, g.py, g.pw, g.ph, 12); ctx.fillStyle = '#16121e'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = c.color; ctx.stroke();
+  ctx.textAlign = 'left'; ctx.fillStyle = c.color; ctx.font = '700 22px ' + FONT; ctx.fillText(c.name, x0, g.py + 34);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT; ctx.fillText(c.role, x0, g.py + 52);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#8f86a0'; ctx.font = '600 13px ' + FONT; ctx.fillText((TUT.idx + 1) + ' / ' + TUT.queue.length, g.px + g.pw - 18, g.py + 34);
+  TUT_TABS.forEach((label, i) => {
+    const [x, y, w, h] = tutTabRect(i), sel = i === TUT.tab;
+    rrect(x, y, w, h, 8); ctx.fillStyle = sel ? '#2f2640' : '#16121e'; ctx.fill();
+    ctx.lineWidth = sel ? 2 : 1.5; ctx.strokeStyle = sel ? c.color : '#3b3349'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#b9afc9'; ctx.font = (sel ? '700 ' : '600 ') + '14px ' + FONT;
+    ctx.fillText(label, x + w / 2, y + 20);
+  });
+  if (TUT.tab === 0) tutTabMoves(c, x0, top, cw, chh);
+  else if (TUT.tab === 1) tutTabAbilities(c, x0, top, cw, chh);
+  else tutTabStrategy(c, x0, top, cw);
+  const lastTab = TUT.tab === TUT_TABS.length - 1, lastChar = TUT.idx === TUT.queue.length - 1;
+  const nextLabel = lastTab ? (lastChar ? 'Empezar' : 'Siguiente personaje') : 'Siguiente';
+  const [bx, by, bw, bh] = tutBtn(true), [cx2, cy2, cw2, ch2] = tutBtn(false);
+  rrect(bx, by, bw, bh, 8); ctx.fillStyle = '#2f2640'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = c.color; ctx.stroke();
+  rrect(cx2, cy2, cw2, ch2, 8); ctx.fillStyle = '#16121e'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.font = '700 14px ' + FONT;
+  ctx.fillStyle = '#f2eefa'; ctx.fillText(nextLabel, bx + bw / 2, by + 21);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '600 14px ' + FONT; ctx.fillText('Cerrar', cx2 + cw2 / 2, cy2 + 21);
+  ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT;
+  ctx.fillText('Atacar (' + bindName('kb1', 'atk') + '): siguiente · ' + bindName('kb1', 'dash') + ' o clic fuera: cerrar', g.px + g.pw / 2, g.py + g.ph - 6);
+  ctx.restore();
 }
 
 // ---------- Pausa ----------
@@ -6002,12 +6193,13 @@ function drawPause() {
 // ---------- Opciones de control (desde el menú principal o la pausa) ----------
 // Pestañas: Teclado A, Teclado B y Mandos (la asignación de mandos vale para todos). Fila 0 = pestañas;
 // filas 1..n = acciones; luego «Restaurar» y «Volver».
-const OPT_TABS = [['kb1', 'Teclado A'], ['kb2', 'Teclado B'], ['pad', 'Mandos']];
+const OPT_TABS = [['kb1', 'Teclado A'], ['kb2', 'Teclado B'], ['pad', 'Mandos'], ['gen', 'General']];
+const GEN_OPTS = [{ id: 'tut', label: 'Tutorial al empezar cada personaje' }]; // pestaña General: interruptores de juego
 const OPT = { tab: 0, row: 0, from: 'count', cap: null, key: null, capT: 0, capIgnore: new Set() };
 // Mientras se espera una tecla nueva, la primera pulsación (sin repetición) se guarda para la asignación
 addEventListener('keydown', e => { if (state === 'options' && OPT.cap && !e.repeat) { OPT.key = e.code; e.preventDefault(); } });
-function optList() { const dev = OPT_TABS[OPT.tab][0]; return BIND_DEF.filter(a => dev === 'pad' ? a.pad : true); }
-function optTabRect(i) { const w = 170, g = 10; return [LW / 2 - (3 * w + 2 * g) / 2 + i * (w + g), 96, w, 34]; }
+function optList() { const dev = OPT_TABS[OPT.tab][0]; if (dev === 'gen') return GEN_OPTS; return BIND_DEF.filter(a => dev === 'pad' ? a.pad : true); }
+function optTabRect(i) { const n = OPT_TABS.length, w = 130, g = 8; return [LW / 2 - (n * w + (n - 1) * g) / 2 + i * (w + g), 96, w, 34]; }
 function optRowRect(r) { return r < 1 ? [0, 0, 0, 0] : [LW / 2 - 270, 140 + (r - 1) * 26, 540, 22]; }
 function openOptions(from) {
   OPT.from = from; OPT.row = 0; OPT.cap = null; OPT.key = null;
@@ -6041,7 +6233,8 @@ function padCaptureButton() {
 }
 function activateOptRow() {
   const dev = OPT_TABS[OPT.tab][0], L = optList().length, r = OPT.row;
-  if (r === 0) { OPT.tab = (OPT.tab + 1) % 3; return; }
+  if (r === 0) { OPT.tab = (OPT.tab + 1) % OPT_TABS.length; return; }
+  if (dev === 'gen') { if (r <= L) setTutOn(!TUT.on); else if (r === L + 1) setTutOn(true); else closeOptions(); return; }
   if (r <= L) { startCapture(dev, optList()[r - 1].id); return; }
   if (r === L + 1) { BINDS[dev] = defaultFor(dev); saveBinds(); return; }
   closeOptions();
@@ -6069,7 +6262,7 @@ function updateOptions() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
     if (m.dy) OPT.row = (OPT.row + m.dy + R) % R;
-    if (m.dx && OPT.row === 0) OPT.tab = (OPT.tab + m.dx + 3) % 3;
+    if (m.dx && OPT.row === 0) OPT.tab = (OPT.tab + m.dx + OPT_TABS.length) % OPT_TABS.length;
     if (m.a) { activateOptRow(); if (state !== 'options') return; if (OPT.cap) return; }
   }
   if (back) closeOptions();
@@ -6098,7 +6291,7 @@ function drawOptions() {
   };
   list.forEach((a, i) => {
     const capping = OPT.cap && OPT.cap.id === a.id && OPT.cap.dev === dev;
-    row(i + 1, a.label, capping ? (dev === 'pad' ? 'pulsa un botón…' : 'pulsa una tecla…') : bindName(dev, a.id));
+    row(i + 1, a.label, capping ? (dev === 'pad' ? 'pulsa un botón…' : 'pulsa una tecla…') : dev === 'gen' ? (TUT.on ? 'Activado' : 'Desactivado') : bindName(dev, a.id));
   });
   row(L + 1, 'Restaurar valores por defecto de esta pestaña', null);
   row(L + 2, 'Volver', null);
