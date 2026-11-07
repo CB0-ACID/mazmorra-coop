@@ -62,6 +62,8 @@ body.touch footer{display:none}
   background:conic-gradient(var(--chgc, rgba(255,255,255,.35)) calc(var(--chg,0) * 1turn), transparent 0);
 }
 #bAtk.alt{box-shadow:0 0 14px 2px var(--altc, rgba(255,255,255,.5))} /* golpe especial disponible */
+#bLock.confirm{border-color:#ffd54a !important; box-shadow:0 0 16px 3px rgba(255,213,74,.75); animation:lockPulse .9s ease-in-out infinite}
+@keyframes lockPulse{50%{transform:scale(1.1)}}
 #bAtk.swap canvas{animation:icoSwap .18s ease-out}
 @keyframes icoSwap{0%{transform:translate(-50%,-50%) scale(.55); opacity:.3} 100%{transform:translate(-50%,-50%) scale(1); opacity:1}}
 #btns button.ico > span{display:none} /* con icono, el texto sobra */
@@ -1571,7 +1573,7 @@ function roomCleared() {
   musicFanfare(room.type === 'boss' ? 'boss' : 'room');
   let revived = false;
   for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
-  if (room.type === 'boss') { room.stairs = true; showBanner('Guardián derrotado: haz clic junto al portal'); }
+  if (room.type === 'boss') { room.stairs = true; showBanner('Guardián derrotado: ve al portal y pulsa Fijar'); }
   else {
     showBanner(revived ? 'Sala despejada, compañeros de vuelta' : 'Sala despejada');
     if (Math.random() < 0.3) pickups.push({ x: (MID_X + 0.5) * T, y: (MID_Y + 0.5) * T, t: 0 });
@@ -1924,7 +1926,11 @@ function updatePlayer(p, dt) {
   const inp0 = readDevice(p.dev), c = p.ch;
   const atkBtn = !!(inp0.a || inp0.s), inp = Object.assign({}, inp0, { a: atkBtn, s: atkBtn }); // golpear y atacar son el mismo botón
   const pressed = kk => !!inp[kk] && !p.prev[kk];
-  const aP0 = pressed('a'), sP0 = pressed('s'), dP = pressed('d'), qP = pressed('q'), eP = pressed('e'), lP = pressed('l'), cP = pressed('c');
+  const aP0 = pressed('a'), sP0 = pressed('s'), dP = pressed('d'), qP = pressed('q'), eP = pressed('e'), lP0 = pressed('l'), cP = pressed('c');
+  const near = p.npc ? null : interactFor(p); // botón de fijar = confirmar: si hay algo al lado (portal, escudo de Ceniza), la pulsación es para eso
+  p.interact = near;
+  if (lP0 && near) near.act(p);
+  const lP = lP0 && !near;
   if (p.coverBy && dP) detachCover(p); // el dash saca al aliado de detrás del escudo
   const aP = aP0 || sP0; // botón único de ataque: golpea, dispara o ejecuta según el personaje y la situación
   p.bufA = aP ? BUFFER : (p.bufA || 0) - dt; p.bufD = dP ? BUFFER : (p.bufD || 0) - dt; // búfer de entrada
@@ -1985,6 +1991,7 @@ function updatePlayer(p, dt) {
   else if (lP) cycleTarget(p, 1);
   if (inp.l) {
     p.lHold = (p.lHold || 0) + dt;
+    if (lP0 && near) p.lHoldDone = true; // la pulsación de confirmar no cuenta como «mantener para soltar»
     if (p.lHold >= 0.45 && !p.lHoldDone && !c.autoLock && p.lockOn) {
       p.lockOn = false; p.target = null; p.lHoldDone = true;
       floatText(p.x, p.y - 46 * c.size, 'Sin objetivo', p.slotColor);
@@ -2763,6 +2770,61 @@ function updateRevive(dt) {
     }
   }
 }
+// ---------- Confirmar con el botón de fijar ----------
+// Las acciones de «confirmar» en partida usan el botón de fijar/apuntar. Mientras haya una al alcance, ese botón
+// hace la acción en vez de fijar. Para añadir otra, se suma una entrada a INTERACTS.
+// near(p) → true si está al alcance · act(p) → la hace · label(p) → texto del aviso
+const INTERACT = { portalR: 46, coverR: 44 };
+let portalGo = false; // alguien ha confirmado el portal: se cruza al final de la actualización
+const INTERACTS = [
+  { id: 'portal', label: () => 'Cruzar el portal',
+    near: p => room.stairs && Math.hypot(p.x - PORTAL.x, p.y - PORTAL.y) < INTERACT.portalR,
+    act: () => { portalGo = true; } },
+  { id: 'coverOff', label: () => 'Bajar de la espalda', // ya cubierto: el mismo botón te baja (también el movimiento)
+    near: p => !!p.coverBy,
+    act: p => detachCover(p) },
+  { id: 'cover', label: p => { const cz = coverHost(p); return 'Subir a la espalda' + (cz ? ' de ' + cz.ch.name : ''); },
+    near: p => !!coverHost(p),
+    act: p => { const cz = coverHost(p); if (cz) attachCover(p, cz); } }
+];
+function interactFor(p) {
+  if (p.down || p.ghost) return null;
+  for (const it of INTERACTS) if (it.near(p)) return it;
+  return null;
+}
+// Ceniza con el escudo alzado, libre y al alcance de p (o null)
+function coverHost(a) {
+  if (a.down || a.coverBy || a.covering || a.coverCd > 0 || a.rush || a.drop || a.leap || a.dragonRush || a.reapDash) return null;
+  for (const cz of players) {
+    if (cz === a || cz.ch.priType !== 'raiseShield' || !cz.shieldUp || cz.down || cz.covering) continue;
+    if (Math.hypot(a.x - cz.x, a.y - cz.y) < cz.r + a.r + INTERACT.coverR) return cz;
+  }
+  return null;
+}
+function attachCover(a, cz) {
+  a.coverBy = cz; cz.covering = a;
+  floatText(a.x, a.y - 46 * a.ch.size, 'A cubierto', a.slotColor); SFX.hit(false);
+}
+// Nombre del botón de fijar del dispositivo, para los avisos
+function confirmLabel(dev) {
+  if (dev === 'touch') return 'Fijar';
+  const n = bindName(/^pad/.test(dev) ? 'pad' : dev, 'lock').split(' / ')[0];
+  return n && n !== '—' ? n : 'Fijar';
+}
+// Aviso sobre la cabeza de quien tiene una acción al alcance: [botón] texto
+function drawInteractHints() {
+  for (const p of players) {
+    const it = p.interact; if (!it || p.npc || p.down) continue;
+    const key = confirmLabel(p.dev), txt = it.label(p), y = p.y - 46 * p.ch.size - 26 - (p.z || 0), pulse = 0.85 + 0.15 * Math.sin(time * 6);
+    ctx.save(); ctx.font = '700 11px ' + FONT;
+    const kw = Math.max(18, ctx.measureText(key).width + 10), tw = ctx.measureText(txt).width, w = kw + 6 + tw + 10, x = p.x - w / 2;
+    ctx.globalAlpha = 0.92; rrect(x, y - 10, w, 20, 6); ctx.fillStyle = 'rgba(14,10,22,0.85)'; ctx.fill();
+    ctx.globalAlpha = pulse; rrect(x + 3, y - 7, kw, 14, 4); ctx.fillStyle = p.slotColor; ctx.fill();
+    ctx.globalAlpha = 1; ctx.textAlign = 'center'; ctx.fillStyle = '#16121e'; ctx.fillText(key, x + 3 + kw / 2, y + 4);
+    ctx.textAlign = 'left'; ctx.fillStyle = '#f2eefa'; ctx.fillText(txt, x + kw + 9, y + 4);
+    ctx.restore();
+  }
+}
 // Cobertura: con el escudo alzado, el aliado que se acerca se coloca solo detrás de Ceniza.
 // Ceniza mueve al conjunto; el aliado sigue atacando (básico y cargado) hacia donde quiera. Sale con su dash o al bajar el escudo
 function coverSpot(cz, a) { const d = cz.r + a.r + 6; return [cz.x - cz.ax * d, cz.y - cz.ay * d]; }
@@ -2777,10 +2839,10 @@ function updateCover(dt) {
     if (cz.covering && (!cz.shieldUp || cz.down || cz.covering.down)) { detachCover(cz.covering); continue; }
     if (!cz.shieldUp || cz.down || cz.covering) continue;
     for (const a of players) {
+      if (!a.npc) continue; // los jugadores suben con el botón de fijar (INTERACTS); solo el aliado IA se pone detrás solo
       if (a === cz || a.down || a.coverBy || a.covering || a.coverCd > 0 || a.rush || a.drop || a.leap || a.dragonRush || a.reapDash) continue;
       if (Math.hypot(a.x - cz.x, a.y - cz.y) < cz.r + a.r + AB.wall.coverR) {
-        a.coverBy = cz; cz.covering = a;
-        floatText(a.x, a.y - 46 * a.ch.size, 'A cubierto', a.slotColor); SFX.hit(false);
+        attachCover(a, cz);
         break;
       }
     }
@@ -6531,8 +6593,12 @@ function shade(hex, k) { // aclara (k > 0) u oscurece (k < 0) un color #rrggbb
 //   ctx.strokeRect(x + 1, y + 1, T - 2, TK - 2);
 // }
 
-// Portal de salida (sale al vencer al guardián). Se activa haciendo clic junto a él y después golpeando cerca.
+// Portal de salida (sale al vencer al guardián). Se cruza poniéndose al lado y pulsando el botón de fijar.
 const PORTAL = { x: (MID_X + 0.5) * T, y: (MID_Y + 0.5) * T };
+function updatePortal(dt) { // se cruza confirmando con el botón de fijar al lado (INTERACTS)
+  if (portalGo) { portalGo = false; nextFloor(); }
+}
+/* Portal anterior: clic junto al portal y después golpear cerca
 function updatePortal(dt) {
   const [mx, my] = mouseWorld(), clicked = mouse.l && !portalClick;
   portalClick = mouse.l;
@@ -6545,6 +6611,7 @@ function updatePortal(dt) {
     if (edge && portalT > 0 && Math.hypot(p.x - PORTAL.x, p.y - PORTAL.y) < 46) { nextFloor(); return; }
   }
 }
+*/
 function drawPortal() {
   const cx = PORTAL.x, cy = (MID_Y + 0.5) * TK, pulse = 0.5 + 0.5 * Math.sin(time * 3);
   ctx.save(); ctx.translate(cx, cy);
@@ -6928,7 +6995,7 @@ function drawPlayer(p) {
       ctx.fillStyle = p.covering ? '#bfeaf5' : 'rgba(191,234,245,0.25)'; ctx.strokeStyle = '#bfeaf5'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(p.x - 7, iy - 7); ctx.lineTo(p.x + 7, iy - 7); ctx.lineTo(p.x + 7, iy + 1); ctx.lineTo(p.x, iy + 8); ctx.lineTo(p.x - 7, iy + 1); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.font = '700 10px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = '#bfeaf5';
-      ctx.fillText(p.covering ? 'Cubriendo a J' + p.covering.id : 'Ponte detrás', p.x, iy - 12);
+      ctx.fillText(p.covering ? 'Cubriendo a J' + p.covering.id : 'Súbete con ' + (players.find(a => a !== p && a.interact && a.interact.id === 'cover') ? confirmLabel(players.find(a => a !== p && a.interact && a.interact.id === 'cover').dev) : 'Fijar'), p.x, iy - 12);
       ctx.restore();
     }
   }
@@ -7458,7 +7525,7 @@ function drawGame() {
     for (const it of list) it.f();
     for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
-    drawArcOrbs('air'); drawGrenades(); drawCoralAir(); drawDolls(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts();
+    drawArcOrbs('air'); drawGrenades(); drawCoralAir(); drawDolls(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts(); drawInteractHints();
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
@@ -7583,7 +7650,8 @@ function updateTouchButtons() {
     p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
   setBtn(e, abilityType(p, 'sec'), p.color, c.secType === 'dragon' ? Math.max(p.secCd / (p.secCdMax || c.secCd || 1), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
     p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0));
-  setBtn(lock, 'lock', p.color, 0, p.down, !!p.lockOn);
+  setBtn(lock, 'lock', p.color, 0, p.down, !!p.lockOn && !p.interact);
+  lock.el.classList.toggle('confirm', !!p.interact); // hay algo que confirmar al lado: el botón de fijar se ilumina
   for (const [b, slot, t] of [[q, 'pri', c.priType], [e, 'sec', c.secType]]) // cargas del Poder del dragón
     setPips(b, p.dragonCharges || 0, t === 'dragon' ? AB.dragon.max : 0, t === 'dragon' && p.cast === slot ? dragonLevel(p) : 0);
 }
