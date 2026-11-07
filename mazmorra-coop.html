@@ -246,7 +246,9 @@ const AB = {
   shield:    { r: 95, time: 3.5 },
   pillar:    { dist: 180, r: 62, delay: 0.35, dmg: 2 },
   taunt:     { r: 280, time: 4 },
-  vine:      { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 300, tick: 0.25, tickDmg: 0.6 }, // Liana giratoria (Musgo)
+  // vine:   { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 300, tick: 0.25, tickDmg: 0.6 }, // valores anteriores
+  vine:      { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 420, tick: 0.25, tickDmg: 0.9,
+               tetherHeal: 1, relaunch: 1.5 }, // Liana giratoria (Musgo). tetherHeal: vida por tic a Musgo y al aliado unidos; relaunch: s antes de volver a lanzar al mismo enemigo
   wall:      { max: 220, bulletCost: 8, hitCost: 15, drain: 2, coverR: 26, coverCd: 1, regen: 28, regenDelay: 0.6, reflectDmg: 2.5, arc: 1.05, speed: 0.6,
                chargeTime: 1.2, chargeDist0: 100, chargeDist1: 240, chargeSpeed: 520, chargeDmg: 0.5, chargeKb: 680 }, // Escudo en alto (Ceniza) y su embestida cargada
   grenade:   { range: 320, r: 55, dmg: 1, fly: 0.55 },
@@ -2235,13 +2237,14 @@ function castArea(p) {
   burst(p.x, p.y - 12, p.color, 24); shake = Math.max(shake, 6);
 }
 // Liana giratoria (Musgo): da una vuelta completa a su alrededor como la manilla de un reloj.
-// Daña y ralentiza a los enemigos que toca. Si alcanza a un aliado, se engancha y se convierte en una cuerda
+// Daña y lanza por los aires a los enemigos que toca (antes los ralentizaba). Si alcanza a un aliado, se engancha y se convierte en una cuerda
 // de energía entre los dos (como en el laboratorio de interacción): daña y ralentiza a quien la cruce, y si se tensa, tira de ambos
 function segD(px, py, ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)); return Math.hypot(px - (ax + t * dx), py - (ay + t * dy)); }
 function castVine(p) { p.vine = { t: 0, a0: Math.atan2(p.ay, p.ax), hit: new Set() }; p.tether = null; SFX.swing(true); }
 function vineHit(p, e, dmg) {
   damageEnemy(e, p.x, p.y, dmg, dmg, 120);
-  if (!e.dead) e.slowT = AB.vine.slowTime;
+  // if (!e.dead) e.slowT = AB.vine.slowTime; // antes ralentizaba; ahora lanza por los aires
+  if (!e.dead) { if (e.airborne) e.vz = Math.max(e.vz, 200); else tryLaunch(e, true); }
   burst(e.x, e.y - 12 - (e.z || 0), '#5fd068', 6);
 }
 function updateVines(dt) {
@@ -2255,7 +2258,7 @@ function updateVines(dt) {
       for (const e of liveTargets()) if (!v.hit.has(e) && segD(e.x, e.y, p.x, p.y, tx, ty) < e.r + 6) { v.hit.add(e); vineHit(p, e, V.dmg * ABILITY_MUL); }
       const ally = players.find(a => a !== p && !a.down && segD(a.x, a.y, p.x, p.y, tx, ty) < a.r + 4);
       if (ally) { // se engancha: cuerda de energía entre los dos
-        p.vine = null; p.tether = { other: ally, t: V.tetherTime, tick: 0 };
+        p.vine = null; p.tether = { other: ally, t: V.tetherTime, tick: 0, launched: new Map(), healAcc: 0, healTxt: 0 };
         floatText((p.x + ally.x) / 2, (p.y + ally.y) / 2 - 40, 'Unidos por la liana', '#5fd068'); SFX.launch();
         continue;
       }
@@ -2274,7 +2277,18 @@ function updateVines(dt) {
       T.tick -= dt;
       if (T.tick <= 0) {
         T.tick = V.tick;
-        for (const e of liveTargets()) if (!e.airborne && segD(e.x, e.y, p.x, p.y, o.x, o.y) < e.r + 6) vineHit(p, e, V.tickDmg * ABILITY_MUL);
+        // for (const e of liveTargets()) if (!e.airborne && segD(e.x, e.y, p.x, p.y, o.x, o.y) < e.r + 6) vineHit(p, e, V.tickDmg * ABILITY_MUL); // versión anterior
+        for (const e of liveTargets()) {
+          if (e.airborne || segD(e.x, e.y, p.x, p.y, o.x, o.y) >= e.r + 6) continue;
+          const last = T.launched.get(e);
+          if (last != null && time - last < V.relaunch) { damageEnemy(e, p.x, p.y, V.tickDmg * ABILITY_MUL, V.tickDmg * ABILITY_MUL, 60); continue; } // recién lanzado: solo daña
+          T.launched.set(e, time); vineHit(p, e, V.tickDmg * ABILITY_MUL); // daña y lanza por los aires
+        }
+        // la liana cura un poco a los dos unidos (el texto sale una vez por segundo para no saturar)
+        let got = 0;
+        for (const q of [p, o]) if (!q.down && q.hp < q.maxHp) { const g = Math.min(q.maxHp - q.hp, V.tetherHeal); q.hp += g; q.healFx = 0.3; got += g; }
+        T.healAcc += got; T.healTxt -= V.tick;
+        if (T.healTxt <= 0 && T.healAcc > 0) { floatText((p.x + o.x) / 2, (p.y + o.y) / 2 - 40, '+' + Math.round(T.healAcc) + ' \u2665', '#ff7a93'); T.healAcc = 0; T.healTxt = 1; }
       }
     }
   }
@@ -3065,7 +3079,8 @@ function updateArcOrbs(dt) {
       if (o.t >= cfg.vortex) { // estalla
         o.done = true;
         const p = o.owner, L = [];
-        for (const e of liveTargets()) if (Math.hypot(e.x - o.x, e.y - o.y) < o.R + e.r) { damageEnemy(e, o.x, o.y, o.dmg, o.dmg, 280); impactFx(p, e, true); launchOrBump(e, false, L); }
+        // for (const e of liveTargets()) if (Math.hypot(e.x - o.x, e.y - o.y) < o.R + e.r) { damageEnemy(e, o.x, o.y, o.dmg, o.dmg, 280); impactFx(p, e, true); launchOrBump(e, false, L); } // antes los lanzaba
+        for (const e of liveTargets()) if (Math.hypot(e.x - o.x, e.y - o.y) < o.R + e.r) { damageEnemy(e, o.x, o.y, o.dmg, o.dmg, 60); impactFx(p, e, true); L.push(e); } // atrae y estalla sin lanzar
         if (!p.down) lockNearestOf(p, L);
         effects.push({ type: 'ring', x: o.x, y: o.y, r: o.R, t: 0, dur: 0.35, color: p.color });
         effects.push({ type: 'ring', x: o.x, y: o.y, r: o.R * 0.6, t: 0, dur: 0.25, color: '#ffffff' });
@@ -4512,7 +4527,8 @@ const ABILITY_TEXT = {
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla'],
   overcharge: ['Sobrecarga', 'Más cadencia; la torreta cura a los aliados cerca'],
   raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; se gasta'],
-  vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
+  // vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
+  vine: ['Liana giratoria', 'Barre y lanza por los aires; con un aliado, os une y os cura'],
   taunt: ['Provocación', 'Atrae a los enemigos; su guardia cubre todo'],
   grenade: ['Granada', 'En arco al fijado: explota y lo lanza'],
   frostburst: ['Estallido helado', 'Mantén para ampliar el área; congela a los que están dentro; en el aire, se rompe'],
@@ -4524,7 +4540,7 @@ const ABILITY_TEXT = {
 const CHARGED_TEXT = {
   seismic: ['Martillo sísmico', 'El martillo golpea el suelo en área y lanza'],
   hook: ['Látigo de raíz', 'Desde el báculo: atrae al primero y lo lanza'],
-  arcane: ['Singularidad arcana', 'Orbe a distancia que atrae y estalla'],
+  arcane: ['Singularidad arcana', 'Orbe a distancia que atrae a los enemigos y estalla'],
   flurry: ['Ráfaga volcánica', 'Puñetazos en ráfaga, sin lanzar'],
   uppercut: ['Uppercut del dragón', 'Gancho ascendente de fuego que lanza'],
   starfall: ['Estrella fugaz', 'Golpea al caer; si acierta, recarga Embestida']
@@ -6322,7 +6338,7 @@ function tutTabAbilities(c, x, y, w, h) {
 }
 const TUT_STRAT = {
   'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2) atrae a los enemigos cercanos hacia ti; úsala para proteger a un compañero herido.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
-  'Musgo': ['Liana (1) ralentiza y engancha; Raíces (2) inmovilizan. Combínalas para acorralar.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
+  'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Raíces (2) inmovilizan.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
   'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
   'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
   'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.'],
