@@ -4564,6 +4564,9 @@ function updateEnemy(e, dt) {
     e.z = Math.min(AIR_MAX_Z, e.z + e.vz * dt);
     if (e.z >= AIR_MAX_Z && e.vz > 0) e.vz = 0;
     e.x += e.kbx * dt; e.y += e.kby * dt; e.kbx *= dec; e.kby *= dec; collide(e, false);
+    if (e.flying && !e.frozenAir && e.vz < 0 && e.z <= e.flyZ + Math.abs(e.vz) * dt + 1) { // volador: no toca el suelo; vuelve a su altura de vuelo sin impacto
+      e.z = e.flyZ; e.vz = 0; e.airborne = false; burst(e.x, e.y, '#c9b8ff', 4); return;
+    }
     if (e.z <= 0 && e.vz < 0) {
       if (e.frozenAir) { shatterEnemy(e); return; } // congelado en el aire: se rompe al caer
       e.z = 0; e.vz = 0; e.airborne = false; e.getup = 0.5; burst(e.x, e.y, '#d8cfe6', 8); shake = Math.max(shake, 3);
