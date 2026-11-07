@@ -1309,7 +1309,7 @@ function makeEnemy(type, x, y, elite) {
     spd: b.spd * (1 + 0.08 * dp), color: b.color, elite,
     spawnT: 0.7, flash: 0, kbx: 0, kby: 0, t: 1 + Math.random() * 1.2, anim: Math.random() * 6, state: 'walk',
     cd: 1 + Math.random(), cd2: 2, rot: 0, phase: Math.random() * 6, dirx: 0, diry: 0, face: 0, dead: false,
-    z: b.fly || 0, vz: 0, airborne: false, flying: !!b.fly, stunT: 0, getup: 0, calm: 0, swipeCd: 0, shots: 0,
+    z: b.fly || 0, flyZ: b.fly || 0, vz: 0, airborne: false, flying: !!b.fly, stunT: 0, getup: 0, calm: 0, swipeCd: 0, shots: 0,
     leapCd: 2 + Math.random() * 2, slamCd: 1, leapDur: 0.75, lungeCd: 1 + Math.random() * 1.5, spitCd: 1 + Math.random() * 1.5, windDur: 0, tx: 0, ty: 0, blinkCd: 2 + Math.random() * 2, bombCd: 2 + Math.random()
   };
 }
@@ -1900,7 +1900,7 @@ function updatePlayer(p, dt) {
       effects.push({ type: 'ring', x: ix, y: iy, r: s.def.r, t: 0, dur: 0.3, color: c.meleeStyle === 'staff' ? c.color : '#d8cfe6' });
       burst(ix, iy - 6, c.meleeStyle === 'staff' ? c.color : '#d8cfe6', 16); shake = Math.max(shake, 4);
     }
-    if (s.t >= s.dur) p.slash = null;
+    if (s.t >= s.dur) { if (!s.hit.size) floatText(p.x, p.y - p.r * 2 - 14, 'Fallo', '#9a95a8'); p.slash = null; } // el golpe no ha tocado a nadie
   }
 
   // golpe cargado: tras un golpe, mantener el botón carga y soltarlo lanza el ataque cargado
@@ -4239,7 +4239,11 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
 }
 function meleeHit(p, e, s) {
   const dmg = p.ch.melee * s.def.dmg * MELEE_MUL, heavy = s.kind === 'heavy' || s.def.dmg >= 1.5;
-  damageEnemy(e, p.x, p.y, dmg, dmg, s.def.kb);
+  if (e.flying && !s.def.launcher) { // volador: el golpe normal no le hace nada, y se avisa
+    if (!s.noted) { s.noted = true; floatText(e.x, upY(e.y, 16 + (e.z || 0)), 'Solo a distancia', '#c9b8ff'); }
+    return;
+  }
+  damageEnemy(e, p.x, p.y, dmg, dmg, s.def.kb, !!s.def.launcher); // los launchers también alcanzan a los voladores
   impactFx(p, e, heavy, s.kind === 'flurry');
   if (e.dead) return;
   if (s.def.launcher && tryLaunch(e, s.def.forceLaunch)) { p.lockOn = true; p.target = e; } // quien lo lanza lo fija al instante
@@ -4586,6 +4590,7 @@ function updateEnemy(e, dt) {
   e.x += (mv[0] * slowK + e.kbx) * dt; e.y += (mv[1] * slowK + e.kby) * dt; e.kbx *= dec; e.kby *= dec;
   const hit = collide(e, false);
   if (hit && (e.type === 'charger' || e.type === 'mite') && e.state === 'dash') { e.state = 'walk'; e.t = 1.2; shake = Math.max(shake, 3); burst(e.x, e.y - 12, '#d8cfe6', 8); }
+  if (e.flying && !e.airborne && e.z !== e.flyZ) e.z += (e.flyZ - e.z) * Math.min(1, dt * 4); // volador: vuelve a su altura tras un lanzamiento
   if (e.z <= 8 && e.state !== 'blinkOut' && isHot(e)) {
     for (const pl of players) if (!pl.down && Math.hypot(pl.x - e.x, pl.y - e.y) < pl.r + e.r) hurtPlayer(pl, e.x, e.y, e);
     for (const t of turrets) if (Math.hypot(t.x - e.x, t.y - e.y) < 10 + e.r) hurtTurret(t, 1); // también golpean a la torreta
