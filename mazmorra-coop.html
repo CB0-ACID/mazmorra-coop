@@ -285,7 +285,16 @@ const AB = {
                hot: 0.7, hotRays: 3,         // «Al rojo»: con este calor o más, quien reciba hotRays rayos en el suelo sale lanzado
                overheatHeat: 0.5 },          // sobrecalentada: descarga de emergencia como si tuviera este calor y corta el bloqueo
   overdrive: { r: 100, dmg: 2, kb: 420, time: 3 }, // Purga: onda de calor que daña y empuja; luego dispara más rápido sin calentarse
-  // ---- Coral · Chamuscado: marca de calor en los enemigos (de 0 a 3 llamitas) ----
+  // ---- Coral · Demoledora (lanzagranadas) ----
+  bomb:      { range: 270, r: 40, dmg: 1.5, sta: 0.16, kb: 240, juggle: 0.55, fly0: 0.22, fly1: 0.45, arc: 70,  // granada de impacto: en arco, pasa por encima y estalla al tocar
+               reloadDelay: 0.45, reloadEach: 0.5, tapMax: 0.2 },   // tambor: tras 0,45 s sin disparar recarga 1 granada cada 0,5 s; pulsación corta = granada
+  sticky:    { d0: 90, d1: 300, chargeTime: 0.8, fly: 0.38, arc: 80, max: 3, attachR: 16, // carga pegajosa: mantener aleja la mira; se pega a enemigo, aliado o suelo
+               r: 55, dmg: 2, sta: 0.35, stackR: 0.25,                 // al detonar: daño y estamina (× ABILITY_MUL); cada carga extra en el mismo enemigo suma daño y +25 % de radio
+               allyR: 85, allyMul: 1.5 },                              // bomba humana: pegada a un compañero, estalla a su alrededor, lanza a todos y a él no le hace nada
+  recoil:    { reach: 34, r: 58, dmg: 1.6, sta: 0.3, kb: 620, push: 700, inv: 0.25 }, // escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás
+  detonator: { cd: 0.6 },
+  mortar:    { cd: 9, range: 360, near: 240, r: 85, n: 6, delay0: 0.35, step: 0.22, shellR: 42, dmg: 1.2, sta: 0.12, fall: 0.3 }, // Lluvia de mortero
+  // ---- Coral · Chamuscado: marca de calor en los enemigos (de 0 a 3 llamitas) [sin uso desde la Demoledora] ----
   scorch:    { max: 3, time: 4, fade: 1.5,      // cada llamita dura 4 s; después se apagan de una en una cada 1,5 s
                perShot: 0.5,                      // disparo normal Al rojo: 1 llamita cada 2 impactos
                burn: 0.25,                        // quemadura: vida por segundo y por llamita
@@ -452,9 +461,12 @@ const CHARS = [
     shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300, moveType: 'flip', moveCd: 0.1, moveInvuln: false }, // ondas mágicas continuas; cargando, bola de nieve
   // [sustituido] Coral antes del rediseño del chamuscado:
   // { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
-  { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual',
-    secAlt: 'detonate', secAltBy: 'heat', secAltLabels: ['con poco calor', 'al rojo'], // habilidad 2: Purga; Al rojo y con chamuscados en la sala, Detonar
-    scorches: true, crossTrigger: true, moveType: 'roll' }, // dos pistolitas; Al rojo chamusca; disparar al rodar = Gatillo cruzado
+  // [sustituido] Coral del chamuscado (pistolas con calor):
+  // { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual',
+  //   secAlt: 'detonate', secAltBy: 'heat', secAltLabels: ['con poco calor', 'al rojo'], // habilidad 2: Purga; Al rojo y con chamuscados en la sala, Detonar
+  //   scorches: true, crossTrigger: true, moveType: 'roll' }, // dos pistolitas; Al rojo chamusca; disparar al rodar = Gatillo cruzado
+  { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Demoledora', shotMode: 'launcher', shotStyle: 'launcher', shotCd: 0.3, ammo: 4,
+    priType: 'detonator', priCd: AB.detonator.cd, secType: 'mortar', secCd: AB.mortar.cd, recoilShot: true }, // lanzagranadas de tambor; cargado, carga pegajosa; tras rodar, escopetazo
   { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'uppercut', role: 'Brawler · Ejecutor',
     meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'flurry',
     priType: 'reaper', priCd: 5, secType: 'dragon', secCd: 1,
@@ -725,6 +737,7 @@ let state = 'count';
 let floor, room, pal = PALETTES[0];
 let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [], missiles = [], dragonFx = [], stalacs = [];
 let embers = []; // brasas de la Rodada de Coral
+let cBombs = [], stickies = [], shells = []; // Coral: granadas en vuelo, cargas pegajosas y proyectiles de mortero
 let overT = 0, time = 0, fade = 0, shake = 0, banner = null, seed = 0, hitstop = 0, flashT = 0;
 let camKX = 0, camKY = 0; // empujón de cámara en la dirección del golpe
 const BUFFER = 0.25;      // búfer de entrada: una pulsación se recuerda 0,25 s (cubre toda la recuperación del golpe)
@@ -855,6 +868,7 @@ function npcInput(p) {
     const ph = p.npcT;
     let fire;
     if (!c.canShoot) fire = (ph % 0.28) < 0.05;                                   // cuerpo a cuerpo: golpes sueltos
+    else if (c.shotMode === 'launcher') fire = (ph % 0.5) < 0.08;                // granadas sueltas (pulsaciones cortas)
     else if (c.shotMode === 'heat') { if (p.heat > 0.75) p.npcCool = true; if (p.heat < 0.3) p.npcCool = false; fire = !p.npcCool && !(p.overheat > 0); } // no se sobrecalienta
     else if (c.shotMode === 'auto') fire = true;                                  // gatling: fuego continuo
     else if (c.shotMode === 'frost') fire = (ph % 1.2) < 1.0;                     // ondas y, al soltar, bola de nieve
@@ -1266,7 +1280,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
   useRoom(r);
-  room = r; r.visited = true; portalT = 0; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; embers = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
+  room = r; r.visited = true; portalT = 0; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; embers = []; cBombs = []; stickies = []; shells = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
   const entry = dir ? OPP[dir] : null;
@@ -1344,7 +1358,7 @@ function roomCleared() {
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
   floor = genFloor(seed, devStartDepth);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; p.hotMode = false; p.crossReady = false; p.crossCd = 0; p.emberT = 0; for (const kk in p.prev) p.prev[kk] = true; }
+  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; p.hotMode = false; p.crossReady = false; p.crossCd = 0; p.emberT = 0; p.loadT = 0; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
@@ -1931,6 +1945,7 @@ function updatePlayer(p, dt) {
 
   // disparo: cargado (mantener y soltar) o continuo con sobrecalentamiento
   if (!c.canShoot) { /* tanques y Brawlers: solo cuerpo a cuerpo */ }
+  else if (c.shotMode === 'launcher') updateLauncher(p, inp, aP, dt); // Coral: lanzagranadas
   else if (c.shotMode === 'heat') {
     if (p.overheat > 0) { p.overheat -= dt; p.heat = Math.max(0, p.overheat / c.overheatTime); } // bloqueado mientras se vacía
     else if (c.crossTrigger && p.crossReady && inp.s && (p.moveT > 0 || p.postMoveT > 0) && !p.shotHold) crossTrigger(p); // Gatillo cruzado
@@ -2164,6 +2179,7 @@ function abilityReady(p, slot) {
   if (t === 'shieldThrow') return !p.shieldBroken && !p.shieldOut; // no se puede lanzar roto ni dos a la vez
   if (t === 'dragon') return (p.dragonCharges || 0) > 0; // sin cargas no se puede usar
   if (t === 'detonate') return liveTargets().some(e => (e.scorch || 0) >= 1); // necesita algún chamuscado
+  if (t === 'detonator') return stickies.some(k => k.owner === p); // necesita alguna carga pegajosa
   if (t === 'reaper') return !!reaperTarget(p); // necesita un enemigo a tiro
   return true;
 }
@@ -2385,7 +2401,7 @@ function updateSpecial(p, dt) {
 const ABILITIES = {
   beam: castBeam, area: castArea, rush: startRush, drop: startDrop, ricochet: startRicochet,
   shield: castShield, pillar: castPillar, taunt: castTaunt, shieldThrow: castShieldThrow, roots: castRoots, vine: castVine, grenade: castGrenade, frostburst: castFrostburst, frostMode: castFrostMode, pull: castPull, blink: castBlink, suspend: castSuspend,
-  volley: castVolley, overdrive: castOverdrive, detonate: castDetonate, turret: castTurret, overcharge: castOvercharge,
+  volley: castVolley, overdrive: castOverdrive, detonate: castDetonate, detonator: castDetonator, mortar: castMortar, turret: castTurret, overcharge: castOvercharge,
   reaper: castReaper, dragon: castDragon
 };
 function useAbility(p, slot) {
@@ -2827,6 +2843,237 @@ function castVolley(p) {
   p.heat = 0; p.overheat = 0; p.heatDelay = 0; // gasta todo el calor (y corta el sobrecalentamiento)
   if (S.hot) { burst(p.x, p.y - 12, '#ff8f6b', 14); floatText(p.x, p.y - 46 * p.ch.size, 'Al rojo', '#ff7a3d'); }
   shake = Math.max(shake, 2 + 4 * S.h);
+}
+// ---------- Coral · Demoledora: lanzagranadas, cargas pegajosas, escopetazo y mortero ----------
+// Explosión de Coral: daña y empuja a los del suelo; a los que están en el aire los vuelve a subir (malabares explosivos)
+function coralBlast(x, y, r, hp, sta, kb, opt) {
+  opt = opt || {}; const hit = [];
+  for (const e of liveTargets()) {
+    if (Math.hypot(e.x - x, e.y - y) > r + e.r) continue;
+    if (e.airborne && (e.z || 0) > 150) continue; // demasiado alto: la explosión no le llega
+    const mul = opt.host === e ? opt.hostMul || 1 : 1;
+    damageEnemy(e, x, y, hp * mul, (opt.staFrac ? e.maxSta * opt.staFrac : sta) * mul, e.airborne ? 0 : kb, true);
+    if (e.dead) continue;
+    hit.push(e);
+    if (e.airborne) { if (!bossStunnedAir(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * (opt.juggle || AB.bomb.juggle)); }
+    else if (opt.launchAll || opt.host === e) tryLaunch(e, true);
+  }
+  effects.push({ type: 'ring', x, y, r, t: 0, dur: 0.3, color: opt.color || '#ffb347' });
+  effects.push({ type: 'ring', x, y, r: r * 0.5, t: 0, dur: 0.2, color: '#ffffff' });
+  burst(x, y - 10, opt.color || '#ffb347', Math.round(r / 3)); burst(x, y - 10, '#5f5a68', Math.round(r / 5));
+  shake = Math.max(shake, 2 + r / 15); SFX.hit(true);
+  return hit;
+}
+// Punto al que apunta: el objetivo (si está a tiro) o delante, a la distancia indicada
+function coralAimPoint(p, range, near) {
+  const tg = aimTgt(p);
+  if (tg && Math.hypot(tg.x - p.x, tg.y - p.y) <= range) return [tg.x, tg.y, tg];
+  const d = beamLength(p.x, p.y, p.ax, p.ay, near);
+  return [p.x + p.ax * d, p.y + p.ay * d, null];
+}
+function stickyLv(p) { return Math.min(1, Math.max(0, (p.chargeT - AB.bomb.tapMax) / AB.sticky.chargeTime)); }
+function stickyPoint(p) { const S = AB.sticky, d = beamLength(p.x, p.y, p.ax, p.ay, S.d0 + (S.d1 - S.d0) * stickyLv(p)); return [p.x + p.ax * d, p.y + p.ay * d]; }
+// Lanzagranadas: pulsación corta = granada de impacto; mantener = carga pegajosa; tras rodar = escopetazo
+function updateLauncher(p, inp, aP, dt) {
+  const c = p.ch, B = AB.bomb;
+  // recarga de una en una cuando dejas de disparar un momento
+  p.reloadT = 0;
+  if (p.ammo < c.ammo) {
+    p.idleT = (p.idleT || 0) + dt;
+    if (p.idleT >= B.reloadDelay) { p.loadT = (p.loadT || 0) + dt; if (p.loadT >= B.reloadEach) { p.loadT = 0; p.ammo++; SFX.reload(p.ammo >= c.ammo); } }
+  } else p.loadT = 0;
+  if (c.recoilShot && aP && (p.moveT > 0 || p.postMoveT > 0) && !p.shotHold) { // escopetazo de retroceso
+    p.postMoveT = 0; p.postMoveUsed = p.moveT > 0; p.shotHold = true; p.charging = false; p.shotCd = c.shotCd;
+    recoilBlast(p); return;
+  }
+  if (inp.s && !p.charging && !p.shotHold && p.shotCd <= 0 && p.moveT <= 0 && p.ammo > 0) { p.charging = true; p.chargeT = 0; }
+  if (!p.charging) return;
+  if (p.ammo <= 0 || p.moveT > 0) { p.charging = false; p.stickyAim = null; return; }
+  p.chargeT += dt; p.idleT = 0;
+  p.stickyAim = p.chargeT > B.tapMax ? stickyPoint(p) : null; // para dibujar la mira por encima de los personajes
+  if (inp.s) return;
+  p.charging = false; p.stickyAim = null; p.shotCd = c.shotCd; p.ammo--; p.idleT = 0; p.loadT = 0;
+  if (p.chargeT <= B.tapMax) fireBomb(p); else fireSticky(p);
+  p.recoilT = 0.12;
+}
+function fireBomb(p) {
+  const B = AB.bomb, [x1, y1, tg] = coralAimPoint(p, B.range, B.range * 0.75), d = Math.hypot(x1 - p.x, y1 - p.y);
+  const dur = B.fly0 + (B.fly1 - B.fly0) * Math.min(1, d / B.range);
+  cBombs.push({ kind: 'bomb', owner: p, x0: p.x + p.ax * 10, y0: p.y + p.ay * 10, x1, y1, tg, t: 0, dur, h: B.arc * Math.min(1, 0.35 + d / B.range), x: p.x, y: p.y, z: 18, spin: 0 });
+  SFX.swing(false);
+}
+function fireSticky(p) {
+  const S = AB.sticky, [x1, y1] = stickyPoint(p);
+  cBombs.push({ kind: 'sticky', owner: p, x0: p.x + p.ax * 10, y0: p.y + p.ay * 10, x1, y1, t: 0, dur: S.fly, h: S.arc, x: p.x, y: p.y, z: 18, spin: 0 });
+  SFX.swing(false);
+}
+function updateCBombs(dt) {
+  const B = AB.bomb;
+  for (const g of cBombs) {
+    g.t += dt; g.spin += dt * 16;
+    if (g.tg && !g.tg.dead && g.kind === 'bomb') { g.x1 = g.tg.x; g.y1 = g.tg.y; } // sigue al objetivo
+    const k = Math.min(1, g.t / g.dur);
+    g.x = g.x0 + (g.x1 - g.x0) * k; g.y = g.y0 + (g.y1 - g.y0) * k;
+    const zEnd = g.tg && g.tg.airborne ? 12 + g.tg.z : 0;
+    g.z = 18 + (zEnd - 18) * k + Math.sin(k * Math.PI) * g.h;
+    if (g.kind === 'sticky') { if (k >= 1) { g.done = true; landSticky(g); } continue; }
+    let boom = k >= 1, air = k >= 1 && !!(g.tg && !g.tg.dead && g.tg.airborne);
+    if (!boom && k > 0.3) for (const e of liveTargets()) { // de camino: estalla al tocar a alguien (por encima de los de delante pasa de largo)
+      if (Math.hypot(e.x - g.x, e.y - g.y) > e.r + 5) continue;
+      const ez = e.airborne ? 12 + e.z : 0;
+      if (Math.abs(g.z - ez - 10) < 24 + (e.airborne ? 0 : e.r * 0.6)) { boom = true; air = !!e.airborne; break; } // los grandes se tocan más arriba
+    }
+    if (!boom) continue;
+    g.done = true;
+    // [sustituido] const air = g.z > 30;
+    if (air) { // estalla en el aire: solo alcanza a los que están a esa altura
+      for (const e of liveTargets()) if (e.airborne && Math.hypot(e.x - g.x, e.y - g.y) < B.r + e.r && Math.abs(e.z + 12 - g.z) < 60) {
+        damageEnemy(e, g.x, g.y, B.dmg, e.maxSta * B.sta, 0, true);
+        if (!e.dead && !bossStunnedAir(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * B.juggle);
+      }
+      effects.push({ type: 'ring', x: g.x, y: g.y, r: B.r * 0.6, t: 0, dur: 0.25, color: '#ffb347' });
+      burst(g.x, g.y - g.z, '#ffb347', 12); shake = Math.max(shake, 4); SFX.hit(true);
+    } else {
+      coralBlast(g.x, g.y, B.r, B.dmg, 0, B.kb, { staFrac: B.sta }); // daña a los del suelo y sube a los que estén en el aire encima
+    }
+  }
+  cBombs = cBombs.filter(g => !g.done);
+}
+// La carga pegajosa se pega a lo más cercano al caer: enemigo, compañero (bomba humana) o suelo
+function landSticky(g) {
+  const S = AB.sticky, p = g.owner;
+  let host = null, kind = 'ground', bd = 1e9;
+  for (const e of liveTargets()) { const d = Math.hypot(e.x - g.x, e.y - g.y); if (d < e.r + S.attachR && d < bd) { bd = d; host = e; kind = 'enemy'; } }
+  for (const q of players) { if (q === p || q.down) continue; const d = Math.hypot(q.x - g.x, q.y - g.y); if (d < q.r + S.attachR && d < bd) { bd = d; host = q; kind = 'ally'; } }
+  const mine = stickies.filter(k => k.owner === p);
+  if (mine.length >= S.max) { const old = mine[0]; old.done = true; burst(old.x, old.y - 6, '#9a93a8', 6); } // la más antigua se apaga
+  stickies = stickies.filter(k => !k.done);
+  const ox = host ? g.x - host.x : 0, oy = host ? g.y - host.y : 0, m = Math.hypot(ox, oy) || 1, rr = host ? host.r * 0.6 : 0;
+  stickies.push({ owner: p, kind, host, ox: ox / m * rr, oy: oy / m * rr * 0.6, x: g.x, y: g.y, z: 0, t: 0 });
+  if (kind === 'ally') floatText(host.x, host.y - 50 * host.ch.size, '¡Bomba humana!', p.slotColor);
+  SFX.reload(false);
+}
+function updateStickies() {
+  for (const k of stickies) {
+    k.t = (k.t || 0) + 1 / 60;
+    const h = k.host;
+    if (k.kind === 'enemy' && (!h || h.dead || !enemies.includes(h))) { k.kind = 'ground'; k.host = null; k.z = 0; } // muere el enemigo: cae al suelo
+    if (k.kind === 'ally' && (!h || h.down)) { k.kind = 'ground'; k.host = null; k.z = 0; }
+    if (k.host) { k.x = h.x + k.ox; k.y = h.y + k.oy; k.z = (h.z || 0) + (k.kind === 'ally' ? 12 * h.ch.size : 10); }
+  }
+}
+// Detonador: hacen estallar todas tus cargas; las que comparten enemigo se suman en una sola explosión
+function castDetonator(p) {
+  const S = AB.sticky, mine = stickies.filter(k => k.owner === p);
+  if (!mine.length) return false;
+  const groups = new Map();
+  for (const k of mine) { const key = k.host || k; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(k); }
+  const launched = [];
+  for (const [key, list] of groups) {
+    const k0 = list[0], n = list.length, dmg = S.dmg * ABILITY_MUL;
+    if (k0.kind === 'ally') { // bomba humana: gran explosión alrededor del compañero, lanza a todos y a él no le hace nada
+      const q = k0.host, hit = coralBlast(q.x, q.y, S.allyR * (1 + S.stackR * (n - 1)), dmg * S.allyMul * n, dmg * S.allyMul * n, 380, { launchAll: true, juggle: 0.8, color: '#ff6fb5' });
+      launched.push(...hit);
+      floatText(q.x, q.y - 56 * q.ch.size, '¡Bum!', p.slotColor); shake = Math.max(shake, 10); hitstop = Math.max(hitstop, 0.08);
+    } else if (k0.kind === 'enemy') { // pegada a un enemigo: lo lanza; varias cargas en el mismo, más daño y más radio
+      const e = k0.host, hit = coralBlast(e.x, e.y, S.r * (1 + S.stackR * (n - 1)), dmg, dmg * 0.6, 300, { host: e, hostMul: n * 1.5, juggle: 0.75 });
+      launched.push(e); if (n > 1) floatText(e.x, upY(e.y, 50 + (e.z || 0)), '×' + n, '#ffb347');
+    } else coralBlast(k0.x, k0.y, S.r, dmg * 0.8, dmg * 0.5, 300, { juggle: 0.7 }); // en el suelo: explosión normal
+  }
+  stickies = stickies.filter(k => k.owner !== p);
+  if (!p.down) lockNearestOf(p, launched.filter(e => !e.dead && e.airborne));
+}
+// Escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás
+function recoilBlast(p) {
+  const R = AB.recoil, x = p.x + p.ax * R.reach, y = p.y + p.ay * R.reach;
+  for (const e of liveTargets()) {
+    if (Math.hypot(e.x - x, e.y - y) > R.r + e.r) continue;
+    damageEnemy(e, p.x, p.y, R.dmg, e.maxSta * R.sta, R.kb, true);
+    if (!e.dead && e.airborne && !bossStunnedAir(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * 0.6);
+  }
+  p.kbx -= p.ax * R.push; p.kby -= p.ay * R.push; p.inv = Math.max(p.inv, R.inv); p.recoilT = 0.2;
+  effects.push({ type: 'muzzle', x: p.x + p.ax * (p.r + 12), y: p.y - 14 + p.ay * (p.r + 12) * 0.8, ang: Math.atan2(p.ay, p.ax), t: 0, dur: 0.14, color: '#ffd54a', s: 1.6 });
+  effects.push({ type: 'ring', x, y, r: R.r, t: 0, dur: 0.25, color: '#ffb347' });
+  burst(x, y - 12, '#ffb347', 18); burst(x, y - 12, '#5f5a68', 10);
+  camKX = p.ax * 6; camKY = p.ay * 6; shake = Math.max(shake, 7); hitstop = Math.max(hitstop, 0.05); SFX.hit(true);
+  floatText(p.x, p.y - 46 * p.ch.size, 'Escopetazo', p.slotColor);
+}
+// Lluvia de mortero: caen varios proyectiles sobre la zona apuntada
+function mortarPoint(p) { const M = AB.mortar; return coralAimPoint(p, M.range, M.near); }
+function castMortar(p) {
+  const M = AB.mortar, [cx, cy] = mortarPoint(p);
+  for (let i = 0; i < M.n; i++) {
+    const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * M.r * (i === 0 ? 0 : 1); // el primero, al centro
+    let x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+    x = Math.max(T + 8, Math.min(COLS * T - T - 8, x)); y = Math.max(T + 8, Math.min(ROWS * T - T - 8, y));
+    shells.push({ owner: p, x, y, z: 0, t: 0, delay: M.delay0 + i * M.step });
+  }
+  effects.push({ type: 'ring', x: cx, y: cy, r: M.r, t: 0, dur: 0.4, color: p.color });
+  floatText(p.x, p.y - 46 * p.ch.size, 'Mortero', p.slotColor); SFX.swing(true);
+}
+function updateShells(dt) {
+  const M = AB.mortar;
+  for (const s of shells) {
+    s.t += dt;
+    s.z = Math.max(0, (s.delay - s.t) / M.fall) * 260; // cae en los últimos instantes
+    if (s.t < s.delay) continue;
+    s.done = true;
+    coralBlast(s.x, s.y, M.shellR, M.dmg * ABILITY_MUL, 0, 160, { juggle: 0.5, staFrac: M.sta });
+  }
+  shells = shells.filter(s => !s.done);
+}
+// Dibujo: en el suelo, la mira de la carga y los avisos del mortero
+function drawCoralFloor() {
+  for (const p of players) {
+    if (p.down || !p.charging || p.ch.shotMode !== 'launcher' || p.chargeT <= AB.bomb.tapMax) continue;
+    const [x, y] = stickyPoint(p), lv = stickyLv(p);
+    ctx.save(); ctx.strokeStyle = p.slotColor; ctx.fillStyle = p.slotColor; ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.5; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(x, y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 18, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lv); ctx.stroke();
+    ctx.globalAlpha = 0.2; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  for (const s of shells) {
+    const k = Math.min(1, s.t / s.delay);
+    ctx.save(); ctx.strokeStyle = '#ff6b6b'; ctx.fillStyle = '#ffb347'; ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.35 + 0.5 * k; ctx.beginPath(); ctx.arc(s.x, s.y, AB.mortar.shellR, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(s.x, s.y, AB.mortar.shellR * k, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+// Dibujo: granadas en vuelo, cargas pegajosas (con luz que parpadea) y proyectiles del mortero
+function drawCoralAir() {
+  const bomb = (x, y, z, rad, spin, col) => {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(x, y, rad * 1.1, rad * 0.45);
+    const yy = y - 12 - z;
+    ctx.save(); ctx.translate(x, yy); ctx.rotate(spin);
+    ctx.fillStyle = col; ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#16121e'; ctx.fillRect(-rad * 0.3, -rad - 2, rad * 0.6, 3);
+    ctx.restore();
+    return yy;
+  };
+  for (const g of cBombs) {
+    const yy = bomb(g.x, g.y, g.z, g.kind === 'sticky' ? 6 : 5, g.spin, g.kind === 'sticky' ? '#ff6fb5' : '#5a4a62');
+    if (g.kind === 'bomb') { ctx.fillStyle = Math.random() < 0.5 ? '#ffd54a' : '#ff8a3d'; ellipse(g.x - Math.cos(g.spin) * 6, yy - Math.sin(g.spin) * 6, 2, 2); }
+  }
+  for (const k of stickies) {
+    const yy = k.y - 12 - k.z + (k.kind === 'ground' ? 9 : 0);
+    if (k.kind === 'ground') { ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(k.x, k.y, 6, 2.6); }
+    ctx.fillStyle = '#ff6fb5'; ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(k.x, yy, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    const on = Math.floor((k.t || 0) * 4 + k.x) % 2 === 0;
+    ctx.fillStyle = on ? '#ffffff' : '#ff3b6b'; ctx.beginPath(); ctx.arc(k.x, yy - 1, 2, 0, Math.PI * 2); ctx.fill();
+    if (on) { ctx.globalAlpha = 0.35; ctx.fillStyle = k.owner.slotColor; ctx.beginPath(); ctx.arc(k.x, yy - 1, 8, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+  }
+  for (const s of shells) if (s.z > 0 && s.z < 260) bomb(s.x, s.y, s.z, 6, 0, '#5a4a62');
+  for (const p of players) { // mira de la carga pegajosa, visible aunque haya un enemigo grande delante
+    if (p.down || !p.charging || !p.stickyAim) continue;
+    const x = p.stickyAim[0], y = p.stickyAim[1] * K - 10, r = 7;
+    ctx.save(); ctx.strokeStyle = '#16121e'; ctx.lineWidth = 4;
+    const cross = () => { ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x - 3, y); ctx.moveTo(x + 3, y); ctx.lineTo(x + r, y); ctx.moveTo(x, y - r); ctx.lineTo(x, y - 3); ctx.moveTo(x, y + 3); ctx.lineTo(x, y + r); ctx.stroke(); };
+    cross(); ctx.strokeStyle = p.slotColor; ctx.lineWidth = 2; cross(); ctx.restore();
+  }
 }
 // ---------- Coral: chamuscado, Rodada, Gatillo cruzado, Detonar y combos de calor ----------
 function coralHot(p) { return (p.heat || 0) >= AB.volley.hot && !(p.overheat > 0); } // Al rojo
@@ -3788,6 +4035,11 @@ function drawPreviews() {
       ctx.setLineDash([]);
     } else if (type === 'overdrive') circle(p.x, p.y, AB.overdrive.r);
     else if (type === 'detonate') { for (const e of liveTargets()) if (scorchN(e) >= 1) circle(e.x, e.y, AB.detonate.r); }
+    else if (type === 'detonator') { // círculo en cada carga (más grande si se apilan o si va en un compañero)
+      const groups = new Map(); for (const k of stickies) if (k.owner === p) { const key = k.host || k; groups.set(key, (groups.get(key) || []).concat(k)); }
+      for (const [, L] of groups) { const k = L[0], S = AB.sticky; circle(k.x, k.y, (k.kind === 'ally' ? S.allyR : S.r) * (1 + S.stackR * (L.length - 1))); }
+    }
+    else if (type === 'mortar') { const [x, y] = mortarPoint(p); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(x, y); ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; circle(x, y, AB.mortar.r); }
     else if (type === 'reaper') { // salto al objetivo: dorado si lo ejecutará
       const e = reaperTarget(p);
       if (e) {
@@ -3866,6 +4118,7 @@ function drawChargeHints() {
 // Zonas amigas: Erupción a punto de brotar y cúpulas de Bastión
 function drawFriendlyZones() {
   drawEmbers(); // brasas de la Rodada de Coral
+  drawCoralFloor(); // Coral: mira de la carga pegajosa y avisos del mortero
   for (const z of pZones) {
     const k = Math.min(1, z.t / z.delay);
     ctx.save(); ctx.strokeStyle = z.owner.slotColor; ctx.fillStyle = z.owner.slotColor; ctx.lineWidth = 2;
@@ -4201,6 +4454,24 @@ function drawAbilityIcon(type, cx, cy, s, col) {
     case 'chargedShot': // bala que atraviesa, con ondas de carga detrás
       C('B', -1.3, 0, 0.6, { fill: false, w: th, a0: -0.9, a1: 0.9 }); C('B', -0.95, 0, 0.6, { fill: false, w: th, a0: -0.9, a1: 0.9 });
       P('L', [[1, 0], [0.55, -0.34], [-0.25, -0.34], [-0.25, 0.34], [0.55, 0.34]]); C('W', 0.5, -0.12, 0.1); break;
+    case 'launcher': // lanzagranadas: granada en arco
+      C('B', 0, 0.55, 0.85, { fill: false, w: th, a0: Math.PI * 1.1, a1: Math.PI * 1.9, dash: [0.2, 0.16] });
+      C('L', 0.55, 0.35, 0.38); R('D', 0.42, -0.15, 0.26, 0.16); C('W', 0.45, 0.25, 0.1);
+      R('B', -1, 0.45, 0.75, 0.42); C('D', -0.65, 0.66, 0.2); break;
+    case 'sticky': // carga pegajosa: bomba con luz y gotas
+      C('B', 0, 0.1, 0.62); C('D', 0, 0.1, 0.62, { fill: false, w: th });
+      C('W', 0, -0.15, 0.2); L('L', th, [[-0.45, 0.65], [-0.55, 0.95]]); L('L', th, [[0.45, 0.65], [0.55, 0.95]]);
+      L('L', th, [[-0.85, -0.75], [-0.55, -0.5]]); L('L', th, [[0.85, -0.75], [0.55, -0.5]]); L('L', th, [[0, -1], [0, -0.7]]); break;
+    case 'recoil': // escopetazo: fogonazo delante y flecha hacia atrás
+      P('L', [[1, 0], [0.35, -0.6], [0.45, -0.15], [0.05, -0.3], [0.2, 0], [0.05, 0.3], [0.45, 0.15], [0.35, 0.6]]);
+      L('B', TH, [[-0.1, 0], [-0.75, 0]]); P('B', [[-1, 0], [-0.6, -0.38], [-0.6, 0.38]]); break;
+    case 'detonator': // detonador: caja con pulsador y rayos
+      R('B', -0.55, -0.1, 1.1, 0.95); R('D', -0.55, 0.55, 1.1, 0.3); C('L', 0, -0.25, 0.32); C('W', -0.08, -0.33, 0.1);
+      L('L', th, [[-0.95, -0.85], [-0.6, -0.55]]); L('L', th, [[0.95, -0.85], [0.6, -0.55]]); L('L', th, [[0, -1.05], [0, -0.75]]); break;
+    case 'mortar': // mortero: tres granadas cayendo sobre una zona
+      C('B', 0, 0.62, 0.95, { fill: false, w: th, dash: [0.2, 0.16], a0: 0, a1: Math.PI * 2 });
+      for (const [x, y] of [[-0.5, -0.55], [0.15, -0.95], [0.55, -0.25]]) { L('D', th, [[x - 0.12, y - 0.35], [x, y]]); C('L', x, y, 0.22); }
+      C('B', 0, 0.62, 0.22); break;
     case 'heat': // ráfaga continua que se calienta: balas y llama
       L('L', th, [[-1, -0.5], [-0.65, -0.5]]); L('L', th, [[-0.45, -0.5], [-0.1, -0.5]]);
       L('L', th, [[-1, 0.15], [-0.65, 0.15]]); L('L', th, [[-0.45, 0.15], [-0.1, 0.15]]);
@@ -4914,6 +5185,7 @@ function update(dt) {
   updateChains(dt); updateShieldThrows(dt); updateShieldFlung(dt);
   updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateStalacs(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
   updateScorch(dt); updateEmbers(dt); // Coral: chamuscado y brasas
+  updateCBombs(dt); updateStickies(); updateShells(dt); // Coral: granadas, cargas pegajosas y mortero
 
   for (const b of bullets) {
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
@@ -5113,6 +5385,8 @@ const ABILITY_TEXT = {
   volley: ['Abanico', 'Gasta el calor en un cono de disparos; al rojo, lanza'],
   overdrive: ['Purga', 'Onda que vacía el calor; luego dispara rápido sin calentarse'],
   detonate: ['Detonar', 'Al rojo: hace estallar a todos los chamuscados; con 2+ llamitas los lanza'],
+  detonator: ['Detonador', 'Estallan tus cargas: lanzan a quien las lleve; en un compañero, bomba humana'],
+  mortar: ['Lluvia de mortero', 'Mantén para apuntar: caen 6 granadas sobre la zona'],
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla'],
   overcharge: ['Sobrecarga', 'Más cadencia; la torreta cura a los aliados cerca'],
   raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; se gasta'],
@@ -5142,6 +5416,7 @@ function chargedSlot(c, p) {
   if (!c.canShoot) return null;
   if (c.shotMode === 'frost') { const m = FROST_MODE[p ? frostModeOf(p) : 0]; return { icon: m.icon, title: 'Disparo: ' + m.name, desc: m.desc }; }
   if (c.shotMode === 'heat') return { icon: 'heat', title: 'Fuego continuo: Ráfaga', desc: 'Sin carga; si no paras, se sobrecalienta' };
+  if (c.shotMode === 'launcher') return { icon: 'sticky', title: 'Disparo cargado: Carga pegajosa', desc: 'Se pega a enemigo, compañero o suelo; estalla con el Detonador' };
   if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: 'Sin carga ni calentamiento' };
   return { icon: 'chargedShot', title: 'Disparo cargado: Tiro perforante', desc: 'Mantén y suelta: hasta ×' + c.chargeMaxMul + ' de daño y atraviesa' };
 }
@@ -5161,6 +5436,7 @@ function specialSlots(c) {
   });
   const out = [];
   if (c.shotStyle === 'revolver') out.push({ icon: 'fanFire', kind: 'Tras moverte', name: 'Vaciar el tambor', body: 'Bravata: recarga y, con el tambor recargado, hace ×1,5 de daño.' });
+  if (c.recoilShot) out.push({ icon: 'recoil', kind: 'Tras moverte', name: 'Escopetazo', body: 'Explosión a bocajarro que empuja mucho y te impulsa hacia atrás. No gasta granadas.' });
   if (c.crossTrigger) out.push({ icon: 'volley', kind: 'Tras moverte', name: 'Gatillo cruzado', body: 'Las dos pistolas a la vez, ×2 de daño cada una y sin calentar.' });
   if (c.postMoveMissile) out.push({ icon: 'missile', kind: 'Tras moverte', name: 'Misil teledirigido', body: 'Un misil que sigue al objetivo.' });
   return out;
@@ -5169,7 +5445,7 @@ function specialSlots(c) {
 const ABILITY_NEEDS = {
   drop: 'Necesita un enemigo en el aire', suspend: 'Necesita enemigos en el aire', ricochet: 'Necesita un objetivo',
   frostburst: 'Necesita un enemigo a tiro', dragon: 'Nivel 1 se recarga solo; 2 y 3, ejecutando', reaper: 'Necesita un enemigo cerca', raiseShield: 'Se desgasta; si se rompe, espera', shieldThrow: 'Sin escudo alzado; mientras vuela no puedes alzarlo',
-  turret: 'Una torreta a la vez', grenade: 'Va al enemigo fijado'
+  turret: 'Una torreta a la vez', grenade: 'Va al enemigo fijado', detonator: 'Necesita cargas puestas'
 };
 const fmtS = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
 function shotText(c) {
@@ -5178,6 +5454,7 @@ function shotText(c) {
   if (!c.canShoot) return 'Sin disparo';
   if (c.shotMode === 'auto') return c.postMoveMissile ? 'Continuo; tras moverte, misil teledirigido (y otro de la torreta)' : 'Instantáneo y continuo, sin carga';
   if (c.shotMode === 'heat') return 'Ráfaga instantánea que se sobrecalienta';
+  if (c.shotMode === 'launcher') return 'Granadas en arco que estallan al tocar; tambor de 4 que se recarga solo';
   if (c.shotType === 'hitscan') return 'Instantáneo, cargable';
   return c.shotSpeed < 300 ? 'Proyectil lento, cargable' : 'Proyectil, cargable';
 }
@@ -5278,7 +5555,7 @@ function abilityBody(type, cd) {
 // Etiquetas de interacción: con qué hace el personaje daño, control o apoyo (sacadas de su kit y habilidades)
 const ABILITY_CHIP = {
   beam: 'Daño lineal', area: 'Lanza en área', rush: 'Embiste', drop: 'Caída Izuna', ricochet: 'Rebota',
-  shield: 'Bloquea balas', raiseShield: 'Bloquea balas', volley: 'Cono de disparos', overdrive: 'Purga de calor', detonate: 'Detona marcas',
+  shield: 'Bloquea balas', raiseShield: 'Bloquea balas', volley: 'Cono de disparos', overdrive: 'Purga de calor', detonate: 'Detona marcas', detonator: 'Bomba humana', mortar: 'Bombardeo en zona',
   turret: 'Torreta', overcharge: 'Cura aliados', taunt: 'Provoca', grenade: 'Explota', frostburst: 'Congela',
   frostMode: 'Cambia de disparo', vine: 'Barrido', roots: 'Inmoviliza', reaper: 'Ejecuta', dragon: 'Multiobjetivo'
 };
@@ -5294,6 +5571,7 @@ function interactionChips(c) {
   if (c.moveType === 'flip') add('Doble salto');
   if (c.moveType === 'dash' || c.moveType === 'stride' || c.moveType === 'roll') add('Invulnerable al esquivar');
   if (c.shotStyle === 'revolver') add('Tambor de 6');
+  if (c.shotMode === 'launcher') add('Malabares explosivos');
   // [sustituido] if (c.shotMode === 'heat') add('Sobrecalentamiento');
   if (c.shotMode === 'heat') add(c.scorches ? 'Calor y chamuscado' : 'Sobrecalentamiento'); // Coral: una sola etiqueta para no desbordar la ficha
   if (c.shotMode === 'auto') add('Fuego continuo');
@@ -6013,10 +6291,18 @@ function bookPos(p) {
 // Armas de los personajes a distancia: pistolitas (Coral), gatling (Ciruela) y libro mágico (Escarcha)
 function drawRangedWeapon(p) {
   const c = p.ch, st = c.shotStyle;
-  if (st !== 'dual' && st !== 'gatling' && st !== 'book') return;
+  // [sustituido] if (st !== 'dual' && st !== 'gatling' && st !== 'book') return;
+  if (st !== 'dual' && st !== 'gatling' && st !== 'book' && st !== 'launcher') return;
   const a = Math.atan2(p.ay, p.ax), ux = Math.cos(a), uy = Math.sin(a), lift = 14 * c.size + (p.z || 0);
   ctx.save(); ctx.lineCap = 'round';
-  if (st === 'dual') {
+  if (st === 'launcher') { // lanzagranadas: tubo gordo con tambor
+    const kick = Math.max(0, (p.recoilT || 0) / 0.12), gx = p.x + ux * (p.r - 4 - kick * 4), gy = p.y - lift * 0.65 + uy * (p.r - 4 - kick * 4) * 0.8, L = 18;
+    ctx.strokeStyle = '#16121e'; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + ux * L, gy + uy * L * 0.8); ctx.stroke();
+    ctx.strokeStyle = '#6b5a74'; ctx.lineWidth = 7; ctx.stroke();
+    ctx.strokeStyle = '#f6a3c8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(gx + ux * (L - 3), gy + uy * (L - 3) * 0.8); ctx.lineTo(gx + ux * L, gy + uy * L * 0.8); ctx.stroke(); // boca
+    ctx.fillStyle = '#16121e'; ellipse(gx + ux * 4, gy + uy * 3 + 2, 6.5, 6.5); ctx.fillStyle = '#4a3a54'; ellipse(gx + ux * 4, gy + uy * 3 + 2, 5, 5); // tambor
+    ctx.fillStyle = '#f6a3c8'; for (let i = 0; i < (p.ammo || 0); i++) { const a = i * Math.PI / 2 + 0.6; ellipse(gx + ux * 4 + Math.cos(a) * 2.6, gy + uy * 3 + 2 + Math.sin(a) * 2.6, 1.2, 1.2); }
+  } else if (st === 'dual') {
     for (const side of [-1, 1]) {
       const kick = p.gunSide === side && (p.recoilT || 0) > 0 ? p.recoilT / 0.08 : 0;
       const gx = p.x + ux * (p.r - 3) - uy * side * 8, gy = p.y - lift * 0.7 + uy * (p.r - 3) * 0.8 + ux * side * 6;
@@ -6701,7 +6987,7 @@ let projSaved = null;
 function projectOn() {
   projSaved = []; const seen = new Set();
   const thrown = players.map(p => p.shieldOut).filter(Boolean); // escudos lanzados de Ceniza
-  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles, stalacs, thrown]) for (const o of L) {
+  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles, stalacs, thrown, cBombs, stickies, shells]) for (const o of L) {
     if (seen.has(o)) continue; seen.add(o);
     for (const k of PROJ_KEYS) { const v = o[k]; if (typeof v === 'number') { projSaved.push(o, k, v); o[k] = v * K; } }
   }
@@ -6770,7 +7056,7 @@ function drawGame() {
     for (const it of list) it.f();
     for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
-    drawArcOrbs('air'); drawGrenades(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts();
+    drawArcOrbs('air'); drawGrenades(); drawCoralAir(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts();
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
@@ -6855,6 +7141,11 @@ function attackContext(p) {
     const am = post && !p.jump && specialSlots(c).find(sp => sp.kind === SPECIAL_KIND.afterMove);
     if (am) return { icon: am.icon, lv: null, alt: true };
     return { icon: base, lv: null };
+  }
+  if (c.shotMode === 'launcher') { // Coral: carga pegajosa al mantener; escopetazo tras rodar
+    if (post) return { icon: 'recoil', lv: null, alt: true };
+    if (p.charging && p.chargeT > AB.bomb.tapMax) return { icon: 'sticky', lv: stickyLv(p) };
+    return { icon: 'launcher', lv: null };
   }
   if (p.charging && (c.shotMode === 'frost' || c.shotMode === 'charge')) { // solo los disparos que se cargan
     const cs = chargedSlot(c, p); return { icon: cs ? cs.icon : base, lv: p.chargeT / (c.chargeTime || 1) };

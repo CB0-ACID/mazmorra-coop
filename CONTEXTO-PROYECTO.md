@@ -13,7 +13,7 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
 
 ## Archivos
 1. **mazmorra-coop.html**: el prototipo jugable (≈257 kB).
-   - 8 personajes en 4 roles: Ceniza (tanque defensor), Musgo (tanque mago), Escarcha (ágil, escarcha), Coral (ágil, ráfaga), Brasa (brawler ejecutor), Ámbar (brawler ninja), Marea (tirador, rebote), Ciruela (tirador, torreta).
+   - 8 personajes en 4 roles: Ceniza (tanque defensor), Musgo (tanque mago), Escarcha (ágil, escarcha), Coral (ágil, demoledora: lanzagranadas), Brasa (brawler ejecutor), Ámbar (brawler ninja), Marea (tirador, rebote), Ciruela (tirador, torreta).
    - Enemigos por tiers: mite y slime (T1), charger y shooter (T2), golem y splitter (T3), guardián del piso (T4).
    - Sistemas: vida y estamina de enemigos, aturdimiento y ejecuciones, lanzar enemigos por los aires y rematarlos (juggle), bloqueo con bloqueo perfecto, hitstop/hitstun, búfer de entrada, rescate de compañeros caídos (fantasma si se agota el tiempo), aliado IA, habilidades 1 y 2 y ataques cargados.
    - Entradas: Teclado A, Teclado B, táctil y hasta 4 mandos (Gamepad API). Menú de pausa con guía de controles y modo de prueba.
