@@ -1929,6 +1929,7 @@ function updatePlayer(p, dt) {
   const aP0 = pressed('a'), sP0 = pressed('s'), dP = pressed('d'), qP = pressed('q'), eP = pressed('e'), lP0 = pressed('l'), cP = pressed('c');
   const near = p.npc ? null : interactFor(p); // botón de fijar = confirmar: si hay algo al lado (portal, escudo de Ceniza), la pulsación es para eso
   p.interact = near;
+  p.carryHintT = (p.carryHintT || 0) - dt; // aviso de cómo soltar la torreta, unos segundos tras cargarla
   if (lP0 && near) near.act(p);
   const lP = lP0 && !near;
   if (p.coverBy && dP) detachCover(p); // el dash saca al aliado de detrás del escudo
@@ -1992,6 +1993,7 @@ function updatePlayer(p, dt) {
   if (inp.l) {
     p.lHold = (p.lHold || 0) + dt;
     if (lP0 && near) p.lHoldDone = true; // la pulsación de confirmar no cuenta como «mantener para soltar»
+    if (p.lHold >= INTERACT.dropHold && !p.lHoldDone && carriedBy(p)) { dropTurret(p); p.lHoldDone = true; } // llevando la torreta, mantener Fijar la suelta
     if (p.lHold >= 0.45 && !p.lHoldDone && !c.autoLock && p.lockOn) {
       p.lockOn = false; p.target = null; p.lHoldDone = true;
       floatText(p.x, p.y - 46 * c.size, 'Sin objetivo', p.slotColor);
@@ -2191,7 +2193,7 @@ function updatePlayer(p, dt) {
       p.postMoveT = 0; p.shotHold = true; p.shotCd = c.shotCd;
       fireMissile(p, p.x + p.ax * 14, p.y + p.ay * 14, 14, Math.atan2(p.ay, p.ax), missileTarget(p, p.x, p.y));
       const t = myTurret(p);
-      if (t) fireMissile(p, t.x, t.y, 20, t.ang, missileTarget(null, t.x, t.y));
+      if (t) fireMissile(p, t.x, t.y, 20 + (t.z || 0), t.ang, missileTarget(null, t.x, t.y));
       floatText(p.x, p.y - 46 * c.size, 'Misil', p.slotColor);
     }
     if (inp.s && p.shotCd <= 0 && p.moveT <= 0 && !p.shotHold) { p.shotCd = c.shotCd * (p.overchargeT > 0 ? AB.overcharge.mul : 1); fireShot(p, c.shot, 0); }
@@ -2774,7 +2776,7 @@ function updateRevive(dt) {
 // Las acciones de «confirmar» en partida usan el botón de fijar/apuntar. Mientras haya una al alcance, ese botón
 // hace la acción en vez de fijar. Para añadir otra, se suma una entrada a INTERACTS.
 // near(p) → true si está al alcance · act(p) → la hace · label(p) → texto del aviso
-const INTERACT = { portalR: 46, coverR: 44 };
+const INTERACT = { portalR: 46, coverR: 44, turretR: 40, dropHold: 0.45 }; // turretR: alcance para coger la torreta · dropHold: segundos manteniendo Fijar para soltarla
 let portalGo = false; // alguien ha confirmado el portal: se cruza al final de la actualización
 const INTERACTS = [
   { id: 'portal', label: () => 'Cruzar el portal',
@@ -2783,6 +2785,9 @@ const INTERACTS = [
   { id: 'coverOff', label: () => 'Bajar de la espalda', // ya cubierto: el mismo botón te baja (también el movimiento)
     near: p => !!p.coverBy,
     act: p => detachCover(p) },
+  { id: 'turretPick', label: p => { const t = turretNear(p); return t && t.owner !== p ? 'Cargar la torreta de ' + t.owner.ch.name : 'Cargar la torreta'; },
+    near: p => !!turretNear(p),
+    act: p => { const t = turretNear(p); if (t) pickTurret(p, t); } },
   { id: 'cover', label: p => { const cz = coverHost(p); return 'Subir a la espalda' + (cz ? ' de ' + cz.ch.name : ''); },
     near: p => !!coverHost(p),
     act: p => { const cz = coverHost(p); if (cz) attachCover(p, cz); } }
@@ -2814,8 +2819,10 @@ function confirmLabel(dev) {
 // Aviso sobre la cabeza de quien tiene una acción al alcance: [botón] texto
 function drawInteractHints() {
   for (const p of players) {
-    const it = p.interact; if (!it || p.npc || p.down) continue;
-    const key = confirmLabel(p.dev), txt = it.label(p), y = p.y - 46 * p.ch.size - 26 - (p.z || 0), pulse = 0.85 + 0.15 * Math.sin(time * 6);
+    const it = p.interact; if (p.npc || p.down) continue;
+    const carryTxt = !it && carriedBy(p) && p.carryHintT > 0 ? 'Mantén: soltar la torreta' : null;
+    if (!it && !carryTxt) continue;
+    const key = confirmLabel(p.dev), txt = it ? it.label(p) : carryTxt, y = p.y - 46 * p.ch.size - 26 - (p.z || 0), pulse = 0.85 + 0.15 * Math.sin(time * 6);
     ctx.save(); ctx.font = '700 11px ' + FONT;
     const kw = Math.max(18, ctx.measureText(key).width + 10), tw = ctx.measureText(txt).width, w = kw + 6 + tw + 10, x = p.x - w / 2;
     ctx.globalAlpha = 0.92; rrect(x, y - 10, w, 20, 6); ctx.fillStyle = 'rgba(14,10,22,0.85)'; ctx.fill();
@@ -3646,8 +3653,38 @@ function recallTurret(p) {
   t.gone = true; p.turretHp = t.hp; turrets = turrets.filter(q => !q.gone);
   burst(t.x, t.y - 20, p.color, 10); floatText(t.x, t.y - 40, 'Guardada', p.slotColor);
 }
+// Llevar la torreta a la espalda: cualquier jugador puede cargarla (Fijar a su lado) y soltarla (mantener Fijar).
+// A cuestas sigue disparando, curando con Sobrecarga y gastando su tiempo, pero no recibe daño ni para balas
+function carriedBy(p) { return turrets.find(t => t.carrier === p && !t.gone) || null; }
+function turretNear(p) {
+  if (p.ghost || carriedBy(p)) return null;
+  let best = null, bd = 1e9;
+  for (const t of turrets) {
+    if (t.gone || t.carrier) continue;
+    const d = Math.hypot(t.x - p.x, t.y - p.y);
+    if (d < p.r + INTERACT.turretR && d < bd) { best = t; bd = d; }
+  }
+  return best;
+}
+function pickTurret(p, t) {
+  t.carrier = p; p.carryHintT = 3;
+  burst(t.x, t.y - 20, t.color, 8); floatText(p.x, p.y - 46 * p.ch.size, 'Torreta a cuestas', p.slotColor); SFX.hit(false);
+}
+function dropTurret(p, quiet) {
+  const t = carriedBy(p); if (!t) return;
+  let x = p.x + p.ax * 34, y = p.y + p.ay * 34;
+  if (isSolid(Math.floor(x / T), Math.floor(y / T), false)) { x = p.x; y = p.y; }
+  t.carrier = null; t.z = 0; t.x = x; t.y = y;
+  burst(x, y - 20, t.color, 8);
+  if (!quiet) floatText(x, y - 40, 'Torreta colocada', p.slotColor);
+}
+function carryTurret(t) { // la torreta va sobre la espalda de quien la lleva
+  const p = t.carrier, d = p.r * 0.6;
+  t.x = p.x - p.ax * d; t.y = p.y - p.ay * d - 1; t.z = 16 * p.ch.size + (p.z || 0);
+}
 function hurtTurret(t, dmg) {
   if (t.gone || t.inv > 0) return;
+  if (t.carrier) return; // a cuestas no recibe daño
   t.hp -= dmg; t.inv = 0.5; burst(t.x, t.y - 20, '#ffffff', 5);
 }
 // Al desaparecer (por tiempo o destruida) deja un corazón, salvo si estaba sobrecargada
@@ -3680,6 +3717,8 @@ function updateTurrets(dt) {
   for (const t of turrets) {
     if (t.gone) continue;
     t.life -= dt; t.cd -= dt; t.inv -= dt;
+    if (t.carrier && (t.carrier.down || t.carrier.ghost || !players.includes(t.carrier))) dropTurret(t.carrier, true); // si cae quien la lleva, se queda en el suelo
+    if (t.carrier) carryTurret(t);
     if (t.hp <= 0 || t.life <= 0) { endTurret(t, t.hp <= 0); continue; }
     turretHeal(t, dt);
     if (t.cd > 0) continue;
@@ -3693,7 +3732,7 @@ function updateTurrets(dt) {
     if (!best) { t.cd = 0.15; continue; }
     t.cd = AB.turret.rate * (air ? 1 : 2) * (t.owner.overchargeT > 0 ? AB.overcharge.mul : 1);
     t.ang = Math.atan2(best.y - t.y, best.x - t.x);
-    effects.push({ type: 'zap', x1: t.x, y1: t.y - 20, x2: best.x, y2: upY(best.y, 12 + best.z), t: 0, dur: 0.15, color: t.color });
+    effects.push({ type: 'zap', x1: t.x, y1: upY(t.y, 20 + (t.z || 0)), x2: best.x, y2: upY(best.y, 12 + best.z), t: 0, dur: 0.15, color: t.color });
     shotHit(t.owner, best, AB.turret.dmg, 40, t.x, t.y);
   }
   turrets = turrets.filter(t => !t.gone);
@@ -4558,10 +4597,13 @@ function drawFriendlyZones() {
 }
 function drawTurret(t) {
   const over = t.owner.overchargeT > 0, blink = t.inv > 0 && Math.floor(time * 20) % 2;
-  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ellipse(t.x, t.y, 10, 4);
+  if (!t.carrier) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ellipse(t.x, t.y, 10, 4); }
   if (over) {
     ctx.save(); ctx.globalAlpha = 0.18 + 0.08 * Math.sin(time * 6); ctx.strokeStyle = '#7ee08a'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); // zona de curación
     ctx.beginPath(); ctx.arc(t.x, t.y, AB.overcharge.healR, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
+  if (t.carrier) { ctx.save(); ctx.translate(0, -(t.z || 0)); } // a cuestas: el mismo dibujo, levantado
+  if (over) {
     ctx.save(); ctx.globalAlpha = 0.35 + 0.25 * Math.sin(time * 18); ctx.fillStyle = '#ffe066'; ellipse(t.x, t.y - 20, 16, 16); ctx.restore();
   }
   ctx.strokeStyle = '#4a4258'; ctx.lineWidth = 3;
@@ -4573,6 +4615,7 @@ function drawTurret(t) {
   ctx.strokeStyle = t.slot; ctx.lineWidth = 2; // anillo: tiempo restante
   ctx.beginPath(); ctx.arc(t.x, t.y - 20, 11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, t.life / AB.turret.time)); ctx.stroke();
   bar(t.x - 12, t.y - 38, 24, 3, t.hp / AB.turret.hp, '#7ee08a'); // vida propia
+  if (t.carrier) ctx.restore();
 }
 // Tras el segundo golpe del combo, el Brawler ve el área que cubrirá su remate
 function drawComboHints() {
@@ -5641,7 +5684,7 @@ function update(dt) {
       const wp = players.find(q => q.shieldUp && !q.down && inShieldZone(q, b, dt)); // toda bala que entra en la zona del escudo rebota (se mira el tramo recorrido, por si va rápida)
       if (wp) { reflectBullet(wp, b); b.life = 0; continue; }
     }
-    { const tt = turrets.find(q => !q.gone && Math.hypot(q.x - b.x, q.y - b.y) < 12 + b.r); if (tt) { hurtTurret(tt, 1); b.life = 0; continue; } } // la torreta para balas y sufre
+    { const tt = turrets.find(q => !q.gone && !q.carrier && Math.hypot(q.x - b.x, q.y - b.y) < 12 + b.r); if (tt) { hurtTurret(tt, 1); b.life = 0; continue; } } // la torreta para balas y sufre
     for (const p of players) if (!p.down && Math.hypot(p.x - b.x, p.y - b.y) < p.r + b.r) { if (p.shieldUp && blocks(p, b.x - b.vx * 0.05, b.y - b.vy * 0.05)) { reflectBullet(p, b); b.life = 0; } else if (blocks(p, b.x - b.vx * 0.05, b.y - b.vy * 0.05)) { onBlock(p, b.x - b.vx * 0.05, b.y - b.vy * 0.05, null, b); b.life = 0; } else if (hurtPlayer(p, b.x, b.y, null, b.dmg || 16)) b.life = 0; break; }
   }
   bullets = bullets.filter(b => b.life > 0);
@@ -5841,7 +5884,7 @@ const ABILITY_TEXT = {
   detonate: ['Detonar', 'Al rojo: hace estallar a todos los chamuscados; con 2+ llamitas los lanza'],
   detonator: ['Detonador', 'Estallan tus cargas: lanzan a quien las lleve; en un compañero, bomba humana'],
   mortar: ['Lluvia de mortero', 'Mantén para apuntar: caen 6 granadas sobre la zona'],
-  turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla'],
+  turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla. Cualquiera puede cargarla a la espalda'],
   overcharge: ['Sobrecarga', 'Más cadencia; la torreta cura a los aliados cerca'],
   raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; se gasta'],
   // vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
