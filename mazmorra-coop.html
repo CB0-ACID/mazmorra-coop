@@ -859,20 +859,151 @@ const SFX = {
   revolver(lv) { if (sfxOk('rev', 0.05)) { noise(0.2, 1400, 180, 0.75, 'lowpass', 0.8); tone(0.14, 170 - lv * 40, 45, 0.8, 'triangle'); noise(0.03, 6000, 3000, 0.4, 'highpass', 0.6); } },
   claw(heavy) { if (sfxOk('swing', 0.03)) { noise(heavy ? 0.14 : 0.07, heavy ? 5000 : 7000, heavy ? 1500 : 2500, heavy ? 0.45 : 0.3, 'highpass', 0.8); tone(0.05, 1400, 900, 0.08, 'triangle'); } }
 };
-// ---------- Música de fondo sintetizada (sin archivos) ----------
-// Tres pistas en bucle según lo que pasa en la sala:
-//   calm  → sin enemigos (sala despejada, menús)
-//   fight → hay enemigos en la sala
-//   boss  → sala del guardián sin despejar
-// Dos fanfarrias que comparten el mismo motivo: 'room' al despejar una sala y 'boss_win', más larga y elaborada, al derrotar al guardián.
+// ---------- Música de fondo sintetizada (sin archivos): arreglo orquestal y dinámico ----------
+// Todo son variaciones de la «Danza deslizante de las doncellas» de las Danzas polovtsianas de Borodin (Príncipe Igor, dominio público),
+// la melodía que se hizo famosa como «Stranger in Paradise».
+//   menu    → la sección central de la danza (otro segmento), con arpa, flauta y cuerdas
+//   calm    → explorar: el tema principal lento, en menor, con celesta, drones y mucha reverberación
+//   fight   → combate: el tema en Re menor, ensanchado (notas al doble de largo) sobre cuerdas en ostinato, metales, coro y timbales
+//   boss    → guardián: el tema en Do menor armónica, rápido, metales y coro, con fases según la vida del guardián
+//   room / boss_win → fanfarrias en La mayor: la del guardián empieza igual que la de sala y sigue con la segunda frase del tema
+// Reacciona a la partida en tiempo real (musicMix): capas por intensidad (enemigos vivos), fases del guardián (<50 % coro y cuerdas agudas;
+// <25 % sube medio tono y acelera), y poca vida (algún jugador por debajo del 35 %): latido, sonido apagado y algo más de tempo.
 // Cómo se escriben: cada ficha es una semicorchea (16 por compás). Una nota ('D5', 'F#4', 'Bb3'), varias a la vez unidas con '+' ('D4+F#4+A4'),
-// '-' alarga la anterior, '.' es silencio y '|' solo separa compases para leer mejor.
-// En bajo y arpegio también valen fichas relativas al acorde del compás: R/1 raíz, 3 tercera, 5 quinta, O/8 octava.
-// Batería: k bombo, s caja, h charles, t tom, c platillo (combinables con '+').
-// Un patrón más corto que la pista se repite (p. ej., un compás de batería para todos). 'shift' transporta en semitonos las notas escritas de una voz.
-// La música se activa, desactiva y ajusta en Opciones > Sonido (AUD); M silencia todo.
-const MUSIC_VOL = 0.5; // volumen de la música respecto al general (los efectos suenan por encima)
+// '-' alarga la anterior, '.' es silencio y '|' solo separa compases. En voces con 'base' valen fichas relativas al acorde del compás:
+// R/1 raíz, 3 tercera, 5 quinta, O/8 octava (también combinadas: '1+3+5'). 'shift' transporta en semitonos las notas escritas de una voz.
+// Instrumentos (inst): strings, brass, choir, flute, celesta, harp, ost (cuerdas cortas), lowstr (graves), drone, pad.
+// Percusión: T timbal (afinado a la raíz del acorde), k tambor grave, s caja, r caja suave, c platillo, w platillo al revés, b golpe sub, h maraca.
+// Capas (layer): base siempre; drive y peak las abre el mezclador según la partida. 'verb' es la cantidad de reverberación de la pista.
+// Un patrón más corto que la pista se repite. 'loopStart' (en semicorcheas) hace que el bucle vuelva ahí y no al principio (introducciones).
+const MUSIC_VOL = 0.55; // volumen de la música respecto al general (los efectos suenan por encima)
 const restBars = n => Array(n * 16).fill('.').join(' ');
+const bars = (...b) => b.join(' | ');
+const toks = s => s.split(/\s+/).filter(x => x && x !== '|');
+const augment = s => toks(s).map(x => x === '.' ? '. .' : x + ' -').join(' '); // cada nota dura el doble
+const delayStr = (s, n) => { const a = toks(s); return Array(n).fill('.').concat(a.slice(0, a.length - n)).join(' '); }; // eco retrasado n semicorcheas
+const oneShot = (len, hits) => { const a = Array(len).fill('.'); for (const k in hits) a[k] = hits[k]; return a.join(' '); }; // golpes sueltos en posiciones fijas
+// Tema principal, tal cual (La mayor)
+const THEME_A = bars(
+  'B4 - - - B4 - - - F#5 - - - - - - -',
+  'E5 - F#5 - D5 - - - C#5 - B4 - C#5 - D5 -',
+  'E5 - - - - - - - F#5 - - - C#5 - B4 -',
+  'A4 - F#4 - F#4 - B4 - - - - - - - . .',
+  'C#5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
+  'F#4 - - - - - - - - - G#4 - A4 - C#5 -');
+// Exploración: La menor natural; el Si-Si-Fa del arranque (tritono) lo vuelve inquietante. Ritmo algo arrastrado
+const THEME_EXPLORE = bars(
+  'B4 - - - - - B4 - F5 - - - - - - -',
+  'E5 - - F5 D5 - - - C5 - - B4 C5 - D5 -',
+  'E5 - - - - - - - F5 - - - C5 - B4 -',
+  'A4 - - F4 F4 - B4 - - - - - - - . .',
+  'C5 - - B4 A4 - - - G4 - A4 - G4 - - -',
+  'F4 - - - - - - - - - G4 - A4 - C5 -');
+// Combate: La menor melódica (Do natural), notas repetidas cortadas; se transporta a Re menor y se ensancha
+const THEME_FIGHT = bars(
+  'B4 - . B4 - . B4 - F#5 - - - - - . .',
+  'E5 - F#5 - D5 - - - C5 - B4 - C5 - D5 -',
+  'E5 - - - . . E5 - F#5 - - - C5 - B4 -',
+  'A4 - F#4 - F#4 - B4 - - - - - . . . .',
+  'C5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
+  'F#4 - - - - - . . . . G#4 - A4 - C5 -');
+// Guardián: La menor armónica (Fa natural, Sol#); se transporta a Do menor
+const THEME_BOSS = bars(
+  'B4 - - . B4 - - . F5 - - - - - - -',
+  'E5 - F5 - D5 - - - C5 - B4 - C5 - D5 -',
+  'E5 - - - - - - - F5 - - - C5 - B4 -',
+  'A4 - F4 - F4 - B4 - - - - - - - . .',
+  'C5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
+  'F4 - - - - - - - - - G#4 - A4 - C5 -');
+// Menú: la sección central de la misma danza (La mayor)
+const THEME_MENU = bars(
+  'B4 - - - B4 - - - D5 - - - - - - -',
+  'E5 - D5 - C#5 - - - B4 - C#5 - D5 - - -',
+  'E5 - - - - - - - F#5 - - - E5 - C#5 -',
+  'F#5 - F#5 - A5 - - - - - - - . . . .',
+  'B5 - - - A5 - G#5 - F#5 - E5 - D5 - C#5 -',
+  'C#5 - D5 - E5 - - - D5 - C#5 - B4 - - -',
+  'B4 - D5 - E5 - D5 - C#5 - B4 - A4 - B4 -',
+  'C#5 - - - D5 - C#5 - A4 - - - - - - -',
+  'B4 - - - B4 - - - F#5 - - - - - - -',
+  'E5 - F#5 - D5 - - - C#5 - B4 - C#5 - - -',
+  'C#5 - - - - - - - - - - - - - - -',
+  '. . . . . . . . . . . . . . . .');
+const MUSIC_DEF = {
+  menu: { bpm: 84, loop: true, verb: 0.45, fadeIn: 1.5,
+    chords: ['Bm', 'E', 'A', 'D', 'E', 'A', 'Bm', 'A', 'Bm', 'E', 'A', 'A'],
+    voices: [
+      { notes: THEME_MENU, inst: 'flute', gain: 0.13 },
+      { notes: delayStr(THEME_MENU, 6), shift: -12, inst: 'strings', gain: 0.035 }, // eco grave en canon
+      { notes: '1 5 8 3 5 8 1 5 8 3 5 8 1 5 8 5', base: 50, inst: 'harp', gain: 0.07 },
+      { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'pad', gain: 0.035 },
+      { notes: 'R - - - - - - - 5 - - - - - - -', base: 38, inst: 'lowstr', gain: 0.1 },
+      { drums: bars('T . . . . . . . . . . . . . . .', restBars(3)), gain: 0.35 }
+    ] },
+  calm: { bpm: 56, loop: true, verb: 0.75, fadeIn: 2.5,
+    chords: ['Dm', 'Am', 'F', 'Dm', 'Em', 'Bb', 'Dm', 'Am', 'F', 'Dm', 'Em', 'Bb'],
+    voices: [
+      { notes: THEME_EXPLORE + ' | ' + restBars(6), inst: 'celesta', gain: 0.12 },
+      { notes: delayStr(THEME_EXPLORE + ' | ' + restBars(6), 3), shift: 12, inst: 'celesta', gain: 0.03 }, // eco agudo
+      { notes: restBars(6) + ' | ' + THEME_EXPLORE, shift: -12, inst: 'choir', gain: 0.06 }, // segunda vuelta: coro grave
+      { notes: 'A1 - - - - - - - - - - - - - - -', inst: 'drone', gain: 0.07 }, // pedal en La: choca con el Sib, inquieta
+      { notes: 'R - - - - - - - - - - - - - - -', base: 38, inst: 'drone', gain: 0.06 },
+      { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'pad', gain: 0.03 },
+      { drums: bars('T . . . . . . . . . . . . . . .', '. . . . . . . . . . . . w . . .'), gain: 0.3 }
+    ] },
+  fight: { bpm: 120, loop: true, verb: 0.3, fadeIn: 0.3, loopStart: 32,
+    chords: ['Dm', 'A', 'Em', 'Em', 'A', 'A', 'Dm', 'Dm', 'G', 'G', 'A', 'A', 'Bdim', 'A'],
+    voices: [
+      { notes: restBars(2) + ' | ' + augment(THEME_FIGHT), shift: -7, inst: 'brass', gain: 0.14 }, // metales: el tema en Re menor
+      { notes: restBars(2) + ' | ' + augment(THEME_FIGHT), shift: 5, inst: 'strings', gain: 0.06, layer: 'peak' }, // violines una octava arriba
+      { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'choir', gain: 0.045, layer: 'peak' },
+      { notes: 'R - - - - - - - R - - - 5 - - -', base: 38, inst: 'lowstr', gain: 0.14 },
+      { notes: '1 1 8 1 5 1 8 1 1 1 8 1 5 1 8 5', base: 50, inst: 'ost', gain: 0.05, layer: 'drive' },
+      { drums: 'T . . . . . . . T . . . . . T .', gain: 0.9 },
+      { drums: 'k . . k . . k . k . . k s . k .', gain: 0.75, layer: 'drive' },
+      { drums: oneShot(224, { 0: 'b+c+T', 24: 'r', 26: 'r', 28: 's', 29: 's', 30: 's', 31: 's', 32: 'c', 128: 'c' }), gain: 0.8 } // entrada y platillos
+    ] },
+  boss: { bpm: 136, loop: true, verb: 0.3, fadeIn: 0.2, loopStart: 16,
+    chords: ['Cm', 'Fm', 'G', 'Cm', 'Fm', 'G', 'Ab', 'Fm', 'G', 'Cm', 'Fm', 'G', 'Ab'],
+    voices: [
+      { notes: restBars(1) + ' | ' + THEME_BOSS + ' | ' + THEME_BOSS, shift: -9, inst: 'brass', gain: 0.14 },
+      { notes: restBars(7) + ' | ' + THEME_BOSS, shift: 3, inst: 'strings', gain: 0.06 }, // segunda vuelta: violines
+      { notes: restBars(1) + ' | ' + THEME_BOSS + ' | ' + THEME_BOSS, shift: 3, inst: 'choir', gain: 0.06, layer: 'peak' }, // coro (fase 2)
+      { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 55, inst: 'pad', gain: 0.035 },
+      { notes: 'R . R . R . R . R . R . 5 . R .', base: 36, inst: 'lowstr', gain: 0.13 },
+      { notes: '1 8 1 8 5 8 1 8 1 8 1 8 5 8 3 8', base: 48, inst: 'ost', gain: 0.05, layer: 'drive' },
+      { drums: 'T . . . T . . . T . . . T . T T', gain: 0.9 },
+      { drums: 'k . s k . k s . k k s . k . s s', gain: 0.7, layer: 'drive' },
+      { drums: oneShot(208, { 16: 'c', 112: 'c' }), gain: 0.6, layer: 'peak' }, // platillo al empezar cada vuelta del tema
+      { drums: oneShot(208, { 0: 'b+c+T', 8: 'r', 10: 'r', 12: 's', 13: 's', 14: 's', 15: 's' }), gain: 0.8 }
+    ] },
+  // Fanfarria de sala: la primera frase del tema, rápida, que resuelve en La mayor
+  room: { bpm: 150, loop: false, verb: 0.35, len: 24, chords: ['Bm', 'A'],
+    voices: [
+      { notes: 'B4 B4 F#5 - - - E5 F#5 D5 C#5 B4 C#5 D5 - E5 - | A5 - - - - - - -', inst: 'brass', gain: 0.15 },
+      { notes: '. . . . . . C#5 D5 B4 A4 G#4 A4 B4 - C#5 - | E5 - - - - - - -', inst: 'strings', gain: 0.08 },
+      { notes: '. . . . . . E4+G#4+B4 - - - - - - - - - | A4+C#5+E5 - - - - - - -', inst: 'choir', gain: 0.05 },
+      { notes: 'B2 . . . . . E2 . . . . . E2 - - - | A1 - - - - - - -', inst: 'lowstr', gain: 0.14 },
+      { drums: 'T . . . r . T . . . r . s s s s | T+c+b . . . . . . .', gain: 0.85 }
+    ] },
+  // Fanfarria del guardián: empieza igual que la de sala, sigue con la segunda frase del tema una octava arriba,
+  // armonía a terceras, arpegios de arpa, redoble de timbal y un arpegio final de La mayor
+  boss_win: { bpm: 150, loop: false, verb: 0.4, len: 88, chords: ['Bm', 'D', 'A', 'E', 'A', 'A'],
+    voices: [
+      { notes: bars('B4 B4 F#5 - - - E5 F#5 D5 C#5 B4 C#5 D5 - E5 -', 'F#5 - - - C#6 - B5 - A5 - F#5 - F#5 - B5 -', 'C#6 - B5 - A5 - G#5 - A5 - G#5 - F#5 - - -',
+        'G#5 - A5 - C#6 - - - B5 - - - G#5 - E5 -', 'A5 - C#6 - E6 - - - A6 - - - - - - -', '- - - - - - - -'), inst: 'brass', gain: 0.15 },
+      { notes: bars('. . . . . . C#5 D5 B4 A4 G#4 A4 B4 - C#5 -', 'D5 - - - A5 - G#5 - F#5 - D5 - D5 - G#5 -', 'A5 - G#5 - E5 - E5 - F#5 - E5 - D5 - - -',
+        'E5 - F#5 - A5 - - - G#5 - - - E5 - B4 -', 'E5 - A5 - C#6 - - - E6 - - - - - - -', '- - - - - - - -'), inst: 'strings', gain: 0.08 },
+      { notes: bars('. . . . . . E4+G#4+B4 - - - - - - - - -', 'D4+F#4+A4 - - - - - - - - - - - - - - -', 'C#4+E4+A4 - - - - - - - E4+G#4+B4 - - - - - - -',
+        'E4+G#4+B4+D5 - - - - - - - - - - - - - - -', 'A3+E4+A4+C#5 - - - - - - - - - - - - - - -', '- - - - - - - -'), inst: 'choir', gain: 0.05 },
+      { notes: bars(restBars(1), '1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8', '1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8', '1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8',
+        '8 5 3 1 8 5 3 1 . . . . . . . .', '. . . . . . . .'), base: 62, inst: 'harp', gain: 0.07 },
+      { notes: bars('B2 . . . . . E2 . . . . . E2 - - -', 'D2 - - - D3 - - - D2 - - - A2 - - -', 'C#2 - - - C#3 - - - E2 - - - E3 - - -',
+        'E2 - - - E3 - - - E2 - E2 - E2 - E2 -', 'A1 - - - - - - - - - - - - - - -', '- - - - - - - -'), inst: 'lowstr', gain: 0.14 },
+      { drums: bars('T . . . r . T . . . r . s s s s', 'T+c . . . s . . . T . . . s . r r', 'T . . . s . . . T . T . s . r r',
+        'T . . . s . . . T T T T T T T T', 'T+c+b . . . . . . . . . . . . . . .', '. . . . . . . .'), gain: 0.9 }
+    ] }
+};
 /* Música anterior (Re menor, composición propia), sustituida por las variaciones de Borodin. Se deja comentada:
 const MUSIC_DEF = {
   calm: { bpm: 84, loop: true, fadeIn: 1.2,
@@ -932,6 +1063,7 @@ const MUSIC_DEF = {
     ] }
 };
 */
+/* Primera versión de las variaciones de Borodin (sonido 8 bits), sustituida por el arreglo orquestal y dinámico. Se deja comentada:
 // Toda la música son variaciones del tema más conocido de las Danzas polovtsianas de Borodin (Príncipe Igor, 1890, dominio público):
 // la «Danza deslizante de las doncellas», la melodía que luego se hizo famosa como «Stranger in Paradise». Tema de 6 compases en La.
 //   calm  → versión tranquila en La mayor; la segunda vuelta repite la melodía una octava arriba, más suave
@@ -1015,6 +1147,7 @@ const MUSIC_DEF = {
         'k . h . s . h . t t t t s s s s', 'k+c . . . . . . . . . . . . . . .', '. . . . . . . .'), gain: 0.9 }
     ] }
 };
+*/
 const mf = m => 440 * Math.pow(2, (m - 69) / 12);
 const NOTE_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 function parseNote(s) { const m = /^([A-G])(#|b)?(-?\d)$/.exec(s); return m ? 12 * (+m[3] + 1) + NOTE_PC[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) : null; }
@@ -1024,17 +1157,17 @@ function parseChord(s) {
 }
 const REL = { R: 0, 1: 0, 3: 1, 5: 2, O: 3, 8: 3 };
 function compileMusic(def) {
-  const len = def.len || def.chords.length * 16, chords = def.chords.map(parseChord), steps = Array.from({ length: len }, () => []);
+  const len = def.len || def.chords.length * 16, chords = def.chords.map(parseChord), steps = Array.from({ length: len }, () => []), layers = new Set(['base']);
   for (const v of def.voices) {
-    const tk = (v.drums || v.notes).split(/\s+/).filter(x => x && x !== '|');
+    v.layer = v.layer || 'base'; layers.add(v.layer);
+    const tk = toks(v.drums || v.notes);
     let cur = null; // nota(s) abiertas que '-' alarga
     for (let i = 0; i < len; i++) {
-      const tok = tk[i % tk.length];
+      const tok = tk[i % tk.length], ch = chords[Math.floor(i / 16) % chords.length];
       if (tok === '-') { if (cur) for (const ev of cur) ev.len++; continue; }
       cur = null;
       if (tok === '.') continue;
-      if (v.drums) { for (const d of tok.split('+')) steps[i].push({ drum: d, gain: v.gain }); continue; }
-      const ch = chords[Math.floor(i / 16) % chords.length];
+      if (v.drums) { for (const d of tok.split('+')) steps[i].push({ drum: d, gain: v.gain, pc: ch.pc, layer: v.layer }); continue; }
       cur = tok.split('+').map(t => {
         let m = parseNote(t); if (m !== null) m += v.shift || 0;
         if (m === null && t in REL) { const root = v.base + ((ch.pc - v.base % 12) + 12) % 12; m = REL[t] === 3 ? root + 12 : root + ch.iv[REL[t]]; }
@@ -1044,93 +1177,190 @@ function compileMusic(def) {
       }).filter(Boolean);
     }
   }
-  return { bpm: def.bpm, loop: def.loop, fadeIn: def.fadeIn || 0.3, len, steps };
+  return { bpm: def.bpm, loop: def.loop, verb: def.verb || 0.3, fadeIn: def.fadeIn || 0.3, loopStart: def.loopStart || 0, len, steps, layers: [...layers] };
 }
 let MUSIC = null; // pistas compiladas (al primer uso)
-const MUS = { mode: null, track: null, bus: null, step: 0, next: 0, fanUntil: 0, duck: 1, get on() { return AUD.on && AUD.musOn; } };
+const MUS = { mode: null, track: null, bus: null, layers: {}, lv: {}, step: 0, next: 0, fanUntil: 0, duck: 1, tempo: 1, trans: 0, transWant: 0,
+  filter: null, verb: null, cut: 18000, last: 0, dyn: { danger: 0, inten: 0, bossFrac: 1 }, get on() { return AUD.on && AUD.musOn; } };
 // function setMusicOn(v) { MUS.on = v; try { localStorage.setItem('mz-music', v ? '1' : '0'); } catch (_) {} } // sustituido por Opciones > Sonido
-function mVoice(bus, t, midi, dur, wave, gain, cut) {
-  const o = actx.createOscillator(), g = actx.createGain(), end = t + dur, rel = Math.min(0.15, 0.04 + dur * 0.3);
-  o.type = wave; o.frequency.value = mf(midi);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
-  g.gain.exponentialRampToValueAtTime(gain * 0.6, Math.min(end, t + 0.2)); g.gain.setValueAtTime(gain * 0.6, end);
-  g.gain.exponentialRampToValueAtTime(0.0001, end + rel);
-  let node = o;
-  if (cut) { const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut; f.Q.value = 1.5; o.connect(f); node = f; }
-  node.connect(g); g.connect(bus); o.start(t); o.stop(end + rel + 0.05);
+// Cadena: pista → filtro (se cierra con poca vida) → musicNode; y un envío a la reverberación (respuesta de impulso generada)
+function musicGraph() {
+  if (MUS.filter) return;
+  MUS.filter = actx.createBiquadFilter(); MUS.filter.type = 'lowpass'; MUS.filter.frequency.value = 18000; MUS.filter.Q.value = 0.5; MUS.filter.connect(musicNode);
+  const sr = actx.sampleRate, n = Math.floor(sr * 3.2), ir = actx.createBuffer(2, n, sr);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let y = 0; for (let i = 0; i < n; i++) { y = y * 0.55 + (Math.random() * 2 - 1) * 0.45; d[i] = y * Math.pow(1 - i / n, 2.6); } }
+  MUS.verb = actx.createConvolver(); MUS.verb.buffer = ir; MUS.verb.connect(MUS.filter);
 }
-function mNoise(bus, t, dur, freq, type, gain) {
-  const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
-  s.buffer = noiseBuf; s.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = 0.8;
-  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  s.connect(f); f.connect(g); g.connect(bus); s.start(t, Math.random() * 0.4); s.stop(t + dur + 0.05);
+// ---- Instrumentos (osciladores, filtros y envolventes; cada nota crea sus nodos y se suelta sola)
+function mEnv(g, t, peak, a, hold, rel) { // ataque, mantenimiento y caída; devuelve cuándo termina
+  const e = t + Math.max(a, hold);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.setValueAtTime(peak, e); g.gain.exponentialRampToValueAtTime(0.0001, e + rel);
+  return e + rel;
 }
-function mSweep(bus, t, dur, f0, f1, gain, wave) {
+function mOsc(t, end, f, wave, det, out, lfo) {
+  const o = actx.createOscillator(); o.type = wave; o.frequency.value = f; o.detune.value = det;
+  if (lfo) lfo.connect(o.detune);
+  o.connect(out); o.start(t); o.stop(end + 0.05); return o;
+}
+function mLfo(t, end, rate, depth, delay) { // vibrato (en cents)
+  const l = actx.createOscillator(), g = actx.createGain(); l.frequency.value = rate;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(depth, t + (delay || 0.25)); l.connect(g); l.start(t); l.stop(end + 0.05); return g;
+}
+function mFilter(type, f, q) { const b = actx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; }
+const INST = {
+  strings(out, t, f, dur, g) { const lp = mFilter('lowpass', 2600, 0.7), e = actx.createGain(), end = mEnv(e, t, g, 0.12, dur, 0.35), lfo = mLfo(t, end, 5.5, 7, 0.3);
+    for (const d of [-9, 0, 9]) mOsc(t, end, f, 'sawtooth', d, lp, lfo); lp.connect(e); e.connect(out); },
+  pad(out, t, f, dur, g) { const lp = mFilter('lowpass', 1100, 0.5), e = actx.createGain(), end = mEnv(e, t, g, 0.9, dur, 1.2);
+    for (const d of [-12, 0, 12]) mOsc(t, end, f, 'sawtooth', d, lp); lp.connect(e); e.connect(out); },
+  brass(out, t, f, dur, g) { const lp = mFilter('lowpass', 400, 2), e = actx.createGain(), end = mEnv(e, t, g, 0.04, dur, 0.22), lfo = mLfo(t, end, 5, 5, 0.35);
+    lp.frequency.setValueAtTime(350, t); lp.frequency.exponentialRampToValueAtTime(Math.min(4000, f * 9), t + 0.07); lp.frequency.setTargetAtTime(Math.min(2600, f * 5), t + 0.07, 0.25);
+    for (const d of [-6, 6]) mOsc(t, end, f, 'sawtooth', d, lp, lfo); lp.connect(e); e.connect(out); },
+  choir(out, t, f, dur, g) { const e = actx.createGain(), end = mEnv(e, t, g, 0.35, dur, 0.6), lfo = mLfo(t, end, 5, 9, 0.4), mix = actx.createGain();
+    const f1 = mFilter('bandpass', 700, 4), f2 = mFilter('bandpass', 1150, 5), f3 = mFilter('lowpass', 500, 0.5);
+    for (const d of [-12, 0, 12]) mOsc(t, end, f, 'sawtooth', d, mix, lfo);
+    for (const b of [f1, f2, f3]) { mix.connect(b); b.connect(e); } e.connect(out); },
+  flute(out, t, f, dur, g) { const e = actx.createGain(), end = mEnv(e, t, g, 0.06, dur, 0.25), lfo = mLfo(t, end, 5.2, 10, 0.3), h = actx.createGain(); h.gain.value = 0.25;
+    mOsc(t, end, f, 'sine', 0, e, lfo); mOsc(t, end, f * 2, 'sine', 0, h, lfo); h.connect(e);
+    mNoiseRaw(e, t, 0.08, 3000, 'bandpass', g * 0.25); e.connect(out); },
+  celesta(out, t, f, dur, g) { const e = actx.createGain(), e2 = actx.createGain(), end = t + 2.4;
+    e.gain.setValueAtTime(g, t); e.gain.exponentialRampToValueAtTime(0.0001, end); e2.gain.setValueAtTime(g * 0.35, t); e2.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    mOsc(t, end, f, 'sine', 0, e); mOsc(t, end, f * 4.01, 'sine', 0, e2); e.connect(out); e2.connect(out); },
+  harp(out, t, f, dur, g) { const lp = mFilter('lowpass', 3200, 1), e = actx.createGain(), end = t + 1.6;
+    e.gain.setValueAtTime(g, t); e.gain.exponentialRampToValueAtTime(0.0001, end); lp.frequency.setValueAtTime(3200, t); lp.frequency.exponentialRampToValueAtTime(600, t + 0.6);
+    mOsc(t, end, f, 'triangle', 0, lp); mOsc(t, end, f * 2, 'sine', 3, lp); lp.connect(e); e.connect(out); },
+  ost(out, t, f, dur, g) { const lp = mFilter('lowpass', 1900, 1), e = actx.createGain(), end = t + Math.min(dur, 0.16);
+    e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(g, t + 0.006); e.gain.exponentialRampToValueAtTime(0.0001, end);
+    for (const d of [-6, 6]) mOsc(t, end, f, 'sawtooth', d, lp); lp.connect(e); e.connect(out); },
+  lowstr(out, t, f, dur, g) { const lp = mFilter('lowpass', 650, 0.8), e = actx.createGain(), end = mEnv(e, t, g, 0.05, dur, 0.3);
+    for (const d of [-7, 7]) mOsc(t, end, f, 'sawtooth', d, lp); mOsc(t, end, f / 2, 'sine', 0, e); lp.connect(e); e.connect(out); },
+  drone(out, t, f, dur, g) { const lp = mFilter('lowpass', 280, 0.7), e = actx.createGain(), end = mEnv(e, t, g, 1.4, dur, 1.6);
+    for (const d of [-10, 10]) mOsc(t, end, f, 'sawtooth', d, lp); lp.connect(e); e.connect(out); }
+};
+function mNoiseRaw(out, t, dur, freq, type, gain, q) {
+  const s = actx.createBufferSource(), f = mFilter(type, freq, q || 0.8), g = actx.createGain();
+  s.buffer = noiseBuf; s.loop = true; g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(out); s.start(t, Math.random() * 0.4); s.stop(t + dur + 0.05);
+}
+function mSweep(out, t, dur, f0, f1, gain, wave) {
   const o = actx.createOscillator(), g = actx.createGain();
   o.type = wave; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(bus); o.start(t); o.stop(t + dur + 0.05);
+  o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05);
 }
-function mDrum(bus, t, d, k) {
-  if (d === 'k') mSweep(bus, t, 0.2, 140, 42, 0.6 * k, 'sine');
-  else if (d === 's') { mNoise(bus, t, 0.14, 1800, 'bandpass', 0.35 * k); mSweep(bus, t, 0.08, 200, 120, 0.15 * k, 'triangle'); }
-  else if (d === 'h') mNoise(bus, t, 0.04, 7000, 'highpass', 0.1 * k);
-  else if (d === 't') mSweep(bus, t, 0.22, 170, 70, 0.4 * k, 'triangle');
-  else if (d === 'c') mNoise(bus, t, 1.2, 4500, 'highpass', 0.22 * k);
+function mDrum(out, t, d, k, pc, trans) {
+  if (d === 'T') { const f = mf(38 + ((pc - 2 + 12) % 12) + trans); mSweep(out, t, 1.1, f * 1.04, f, 0.55 * k, 'sine'); mSweep(out, t, 0.5, f * 2.02, f * 2, 0.12 * k, 'triangle'); mNoiseRaw(out, t, 0.12, 380, 'lowpass', 0.35 * k); }
+  else if (d === 'k') { mSweep(out, t, 0.6, 85, 38, 0.6 * k, 'sine'); mNoiseRaw(out, t, 0.15, 160, 'lowpass', 0.5 * k); }
+  else if (d === 's') { mNoiseRaw(out, t, 0.18, 2400, 'bandpass', 0.3 * k); mSweep(out, t, 0.08, 190, 140, 0.12 * k, 'triangle'); }
+  else if (d === 'r') mNoiseRaw(out, t, 0.12, 2600, 'bandpass', 0.14 * k);
+  else if (d === 'c') { mNoiseRaw(out, t, 2.4, 5200, 'highpass', 0.16 * k); mNoiseRaw(out, t, 1.2, 8500, 'bandpass', 0.08 * k, 2); }
+  else if (d === 'w') { const s = actx.createBufferSource(), f = mFilter('highpass', 3200, 0.7), g = actx.createGain(); // platillo al revés: crece y corta
+    s.buffer = noiseBuf; s.loop = true; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12 * k, t + 1.1); g.gain.linearRampToValueAtTime(0, t + 1.15);
+    s.connect(f); f.connect(g); g.connect(out); s.start(t); s.stop(t + 1.2); }
+  else if (d === 'b') mSweep(out, t, 1.6, 60, 28, 0.7 * k, 'sine');
+  else if (d === 'h') mNoiseRaw(out, t, 0.05, 8000, 'highpass', 0.06 * k);
 }
-function playMusicStep(tr, i, t, sd, bus) {
+function mHeart(t, g) { // latido de poca vida: «pum-pum» grave, sin filtrar
+  mSweep(musicNode, t, 0.22, 70, 42, 0.5 * g, 'sine'); mSweep(musicNode, t + 0.19, 0.2, 62, 40, 0.32 * g, 'sine');
+}
+function playMusicStep(tr, i, t, sd, outFor, trans) {
   for (const ev of tr.steps[i]) {
-    if (ev.drum) { mDrum(bus, t, ev.drum, ev.gain); continue; }
-    const v = ev.v, dur = ev.len * sd * 0.92;
-    mVoice(bus, t, ev.midi, dur, v.wave, v.gain, v.cut);
-    if (v.double) mVoice(bus, t, ev.midi + v.double.shift, dur, v.double.wave, v.double.gain, v.double.cut);
+    const out = outFor(ev.layer || ev.v.layer); if (!out) continue;
+    if (ev.drum) { mDrum(out, t, ev.drum, ev.gain, ev.pc, trans); continue; }
+    const v = ev.v; (INST[v.inst] || INST.strings)(out, t, mf(ev.midi + trans), ev.len * sd * 0.95, v.gain);
   }
 }
 function musicWanted() {
   if (state === 'over') return null; // derrota: silencio
-  if (SIEGE.on && (state === 'play' || state === 'pause' || state === 'tutorial' || state === 'siegeUp')) return SIEGE.phase === 'wave' ? 'fight' : 'calm';
-  if (!(state === 'play' || state === 'pause' || state === 'tutorial') || !room || room.cleared) return 'calm';
+  const inGame = state === 'play' || state === 'pause' || state === 'tutorial' || state === 'siegeUp';
+  if (!inGame) return 'menu'; // menús: la sección central de la danza; el tema principal empieza al jugar
+  if (SIEGE.on) return SIEGE.phase === 'wave' ? 'fight' : 'calm';
+  if (!room || room.cleared) return 'calm';
   return room.type === 'boss' ? 'boss' : 'fight'; // mientras la sala no esté despejada (también entre oleadas)
 }
 function musicSwitch(mode) {
   const t = actx.currentTime;
-  if (MUS.bus) { // la pista anterior se funde y se suelta
-    const old = MUS.bus; old.gain.cancelScheduledValues(t); old.gain.setValueAtTime(old.gain.value, t); old.gain.linearRampToValueAtTime(0, t + 0.6);
-    setTimeout(() => old.disconnect(), 1200);
+  if (MUS.bus) { // la pista anterior se funde (la cola de reverberación sigue sonando)
+    const old = MUS.bus; old.gain.cancelScheduledValues(t); old.gain.setValueAtTime(old.gain.value, t); old.gain.linearRampToValueAtTime(0, t + 0.8);
+    setTimeout(() => old.disconnect(), 1400);
   }
-  MUS.mode = mode; MUS.bus = null; MUS.track = null;
+  MUS.mode = mode; MUS.bus = null; MUS.track = null; MUS.layers = {}; MUS.lv = {};
+  MUS.tempo = 1; MUS.trans = MUS.transWant = 0;
   if (!mode) return;
-  MUS.track = MUSIC[mode]; MUS.bus = actx.createGain(); MUS.bus.connect(musicNode);
-  MUS.bus.gain.setValueAtTime(0, t); MUS.bus.gain.linearRampToValueAtTime(MUSIC_VOL * MUS.duck, t + MUS.track.fadeIn);
+  const tr = MUS.track = MUSIC[mode];
+  MUS.bus = actx.createGain(); MUS.bus.connect(MUS.filter);
+  const send = actx.createGain(); send.gain.value = tr.verb; MUS.bus.connect(send); send.connect(MUS.verb);
+  for (const n of tr.layers) { const g = actx.createGain(); g.gain.value = n === 'base' ? 1 : 0; g.connect(MUS.bus); MUS.layers[n] = g; MUS.lv[n] = g.gain.value; }
+  MUS.bus.gain.setValueAtTime(0, t); MUS.bus.gain.linearRampToValueAtTime(MUSIC_VOL * MUS.duck, t + tr.fadeIn);
   MUS.step = 0; MUS.next = t + 0.08;
 }
-// Se llama en cada fotograma: elige pista y programa las notas que tocan en los próximos 0,2 s
+// Lee la partida: poca vida, intensidad (enemigos vivos) y vida del guardián, suavizados
+function musicDyn(dt) {
+  const D = MUS.dyn, inGame = state === 'play' || state === 'pause' || state === 'tutorial' || state === 'siegeUp';
+  let low = 1, live = 0, boss = null;
+  if (inGame) {
+    for (const p of players) if (!p.down && p.maxHp) low = Math.min(low, p.hp / p.maxHp);
+    for (const e of enemies) if (!e.dead) { live++; if (e.tier === 4) boss = e; }
+  }
+  const danger = Math.min(1, Math.max(0, (0.35 - low) / 0.2)), inten = Math.min(1, live / 6), k = Math.min(1, dt * 1.5);
+  D.danger += (danger - D.danger) * k; D.inten += (inten - D.inten) * k;
+  D.bossFrac = boss ? boss.hp / boss.maxHp : 1;
+}
+// Mezclador en tiempo real: abre y cierra capas, filtro, tempo y tono
+function musicMix(t) {
+  const D = MUS.dyn, mode = MUS.mode, sm = x => Math.min(1, Math.max(0, x));
+  const want = { drive: 1, peak: 0 }; let tempo = 1; MUS.transWant = 0;
+  if (mode === 'fight') { want.drive = 0.4 + 0.6 * D.inten; want.peak = sm((D.inten - 0.45) / 0.4); tempo = 1 + 0.04 * D.inten + 0.05 * D.danger; }
+  else if (mode === 'boss') {
+    const ph = D.bossFrac; want.peak = ph < 0.5 ? 1 : 0.2; tempo = 1 + 0.05 * D.danger;
+    if (ph < 0.25) { MUS.transWant = 1; tempo += 0.07; } // fase final: medio tono arriba y más deprisa
+  }
+  for (const n in MUS.layers) {
+    if (n === 'base') continue;
+    const v = want[n] !== undefined ? want[n] : 1;
+    if (Math.abs(v - MUS.lv[n]) > 0.02) { MUS.lv[n] = v; MUS.layers[n].gain.setTargetAtTime(v, t, 0.6); }
+  }
+  MUS.tempo += (tempo - MUS.tempo) * 0.02;
+  const cut = 18000 * Math.pow(0.11, D.danger); // con poca vida todo suena apagado, como de lejos
+  if (Math.abs(cut - MUS.cut) / MUS.cut > 0.03) { MUS.cut = cut; MUS.filter.frequency.setTargetAtTime(cut, t, 0.3); }
+}
+// Se llama en cada fotograma: elige pista, mezcla y programa las notas de los próximos 0,2 s
 function musicUpdate() {
   if (!actx) return;
   if (!MUSIC) { MUSIC = {}; for (const k in MUSIC_DEF) MUSIC[k] = compileMusic(MUSIC_DEF[k]); }
-  const t = actx.currentTime, want = !MUS.on || t < MUS.fanUntil ? null : musicWanted();
+  musicGraph();
+  const t = actx.currentTime, dt = Math.min(0.25, t - MUS.last); MUS.last = t;
+  musicDyn(dt);
+  const want = !MUS.on || t < MUS.fanUntil ? null : musicWanted();
   if (want !== MUS.mode) musicSwitch(want);
   const duck = state === 'pause' ? 0.4 : 1; // en pausa, más baja
   if (MUS.bus && duck !== MUS.duck) { MUS.duck = duck; MUS.bus.gain.setTargetAtTime(MUSIC_VOL * duck, t, 0.15); }
   const tr = MUS.track; if (!tr) return;
-  const sd = 60 / tr.bpm / 4;
+  musicMix(t);
   if (MUS.next < t) MUS.next = t + 0.03; // tras un parón (pestaña oculta), no recuperar notas atrasadas
+  const outFor = n => MUS.layers[n] || MUS.layers.base;
   while (MUS.next < t + 0.2) {
-    if (!muted) playMusicStep(tr, MUS.step, MUS.next, sd, MUS.bus);
-    MUS.step = (MUS.step + 1) % tr.len; MUS.next += sd;
+    const sd = 60 / (tr.bpm * MUS.tempo) / 4;
+    if (MUS.step % 16 === 0) MUS.trans = MUS.transWant; // el cambio de tono entra al empezar compás
+    if (!muted) {
+      playMusicStep(tr, MUS.step, MUS.next, sd, outFor, MUS.trans);
+      const beat = tr.bpm < 90 ? 4 : 8; // latido sincronizado con el pulso
+      if (MUS.dyn.danger > 0.05 && MUS.step % beat === 0) mHeart(MUS.next, 0.4 + 0.6 * MUS.dyn.danger);
+    }
+    MUS.step++; if (MUS.step >= tr.len) MUS.step = tr.loopStart; MUS.next += sd;
   }
 }
-// Fanfarria: corta la pista de fondo, suena una vez y después entra la música tranquila
+// Fanfarria: corta la pista de fondo, suena una vez y después entra la de exploración
 function musicFanfare(kind) {
   if (!actx || !MUS.on) return;
-  musicUpdate(); // asegura las pistas compiladas
+  musicUpdate(); // asegura las pistas compiladas y la cadena
   const tr = MUSIC[kind === 'boss' ? 'boss_win' : 'room'], t = actx.currentTime + 0.05, sd = 60 / tr.bpm / 4;
   MUS.fanUntil = t + tr.len * sd + (kind === 'boss' ? 0.4 : 0.1);
   musicSwitch(null);
   if (muted) return;
-  const bus = actx.createGain(); bus.gain.value = MUSIC_VOL * 1.15; bus.connect(musicNode);
-  for (let i = 0; i < tr.len; i++) playMusicStep(tr, i, t + i * sd, sd, bus);
-  setTimeout(() => bus.disconnect(), (tr.len * sd + 2) * 1000);
+  const bus = actx.createGain(), send = actx.createGain(); bus.gain.value = MUSIC_VOL * 1.1; send.gain.value = tr.verb;
+  bus.connect(MUS.filter); bus.connect(send); send.connect(MUS.verb);
+  for (let i = 0; i < tr.len; i++) playMusicStep(tr, i, t + i * sd, sd, () => bus, 0);
+  setTimeout(() => bus.disconnect(), (tr.len * sd + 4) * 1000);
 }
 let countSel = 2, want = 2, slots = [], startT = -1;
 let pauseSel = 0, showGuide = false, overSel = 0;
