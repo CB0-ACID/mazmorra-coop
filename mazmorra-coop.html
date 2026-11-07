@@ -295,7 +295,8 @@ const AB = {
   sticky:    { d0: 90, d1: 300, chargeTime: 0.8, fly: 0.42, arc: 80, max: 3, attachR: 20, // carga pegajosa: mantener aleja la mira; se pega a enemigo, aliado o suelo
                ammo: 3, reload: 2.5,                                   // cargador propio: 3 cargas; se repone 1 cada 2,5 s
                r: 55, dmg: 2, sta: 0.35, stackR: 0.25,                 // al detonar: daño y estamina (× ABILITY_MUL); cada carga extra en el mismo enemigo suma daño y +25 % de radio
-               allyR: 85, allyMul: 1.5 },                              // bomba humana: pegada a un compañero, estalla a su alrededor, lanza a todos y a él no le hace nada
+               // [sustituido] allyR: 85, allyMul: 1.5 },
+               allyR: 85, allyMul: 1.9 },                              // bomba humana: pegada a un compañero, estalla a su alrededor, lanza a todos y a él no le hace nada (×1,9 de daño para premiar el combo)
   doll:      { hop: 0.3, rest: 0.07, step: 46, h: 20, life: 7, max: 2, seek: 420, touch: 8, // muñeco bomba: salta hacia el enemigo fijado y estalla al tocarlo
                r: 58, dmg: 2.2, sta: 2.2 },                             // explosión (× ABILITY_MUL): daña y lanza por los aires
   recoil:    { reach: 34, r: 58, dmg: 1.6, sta: 0.3, kb: 620, push: 700, inv: 0.25 }, // escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás
