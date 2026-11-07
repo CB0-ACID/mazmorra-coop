@@ -250,6 +250,7 @@ const AB = {
   shield:    { r: 95, time: 3.5 },
   pillar:    { dist: 180, r: 62, delay: 0.35, dmg: 2 },
   taunt:     { r: 280, time: 4 },
+  shieldThrow: { speed: 640, range: 360, r: 16, dmg: 1.6, sta: 1.4, kb: 320, bounceR: 230, bounces: 2, homing: 9, returnSpeed: 720, maxTime: 4, cd: 4 }, // Lanzar escudo (Ceniza, con el escudo bajado): recto, rebota en 2 y vuelve
   // vine:   { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 300, tick: 0.25, tickDmg: 0.6 }, // valores anteriores
   vine:      { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 420, tick: 0.25, tickDmg: 0.9,
                tetherHeal: 1, relaunch: 1.5 }, // Liana giratoria (Musgo). tetherHeal: vida por tic a Musgo y al aliado unidos; relaunch: s antes de volver a lanzar al mismo enemigo
@@ -416,7 +417,7 @@ const ROLES = {
 };
 const CHARS = [
   { name: 'Ceniza',   color: '#a9a2b4', mark: 'bars',    family: 'grande', role: 'Tanque · Bastión', meleeKit: SHIELD_KIT, meleeStyle: 'shield',
-    priType: 'raiseShield', priCd: 0.3, secType: 'taunt', secCd: 12, chargedMelee: 'seismic',
+    priType: 'raiseShield', priCd: 0.3, secType: 'taunt', secCd: 12, secAlt: 'shieldThrow', chargedMelee: 'seismic', // habilidad 2: Provocación con el escudo alzado; Lanzar escudo con él bajado
     moveType: 'stride', moveSpeed: 320, moveTime: 0.12, moveCd: 0.9 }, // el bloqueo pasa al escudo en alto; zancada corta (≈38 px)
   { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'grande', role: 'Tanque · Mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
     priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
@@ -1165,7 +1166,7 @@ function enterRoom(r, dir) {
   players.forEach((p, i) => {
     const off = (i - (n - 1) / 2) * 30;
     if (entry === 'left' || entry === 'right') { p.x = bx; p.y = by + off; } else { p.x = bx + off; p.y = by; }
-    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.jump = null; p.flip = null; p.flipAng = 0; p.leap = null; p.dragonRush = null; p.reapDash = null; p.shieldCharge = null; p.shieldOn = false; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
+    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.jump = null; p.flip = null; p.flipAng = 0; p.leap = null; p.dragonRush = null; p.reapDash = null; p.shieldCharge = null; p.shieldOn = false; p.shieldOut = null; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
   });
   if (!r.cleared) { if (!r.waves) r.waves = makeEncounter(r); r.wave = 0; spawnWave(); }
   if (r.type === 'treasure' && !r.looted) {
@@ -1229,7 +1230,7 @@ function roomCleared() {
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
   floor = genFloor(seed, 1);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; for (const kk in p.prev) p.prev[kk] = true; }
+  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
@@ -1881,6 +1882,15 @@ function updatePlayer(p, dt) {
   // habilidades: al pulsar se ve la previsualización, al soltar se lanza
   // con la torreta desplegada, volver a pulsar su botón la guarda al instante
   updateShieldWall(p, qP, dt); // escudo en alto: cada pulsación de la habilidad lo alza o lo baja
+  if (c.secAlt) { // la habilidad 2 cambia con el escudo: cada versión guarda su propia recarga
+    p.altCd = (p.altCd || 0) - dt;
+    const st = abilityType(p, 'sec');
+    if (p.secMode && p.secMode !== st) {
+      [p.secCd, p.altCd] = [p.altCd, p.secCd]; [p.secCdMax, p.altCdMax] = [p.altCdMax, p.secCdMax];
+      if (p.cast === 'sec') p.cast = null; // si cambia mientras se mantiene, se cancela
+    }
+    p.secMode = st;
+  }
   if (qP && c.priType === 'turret' && myTurret(p)) recallTurret(p);
   else if (eP && c.secType === 'turret' && myTurret(p)) recallTurret(p);
   else if (!p.cast) {
@@ -2017,7 +2027,11 @@ function testLaunch(p) {
   if (tryLaunch(e, true)) { p.lockOn = true; p.target = e; }
   else floatText(e.x, e.y - 40, 'No se puede lanzar', '#ff8f8f');
 }
-function abilityType(p, slot) { return slot === 'pri' ? p.ch.priType : p.ch.secType; }
+function abilityType(p, slot) {
+  if (slot === 'pri') return p.ch.priType;
+  if (p.ch.secAlt && !p.shieldUp) return p.ch.secAlt; // Ceniza: con el escudo bajado, la habilidad 2 lanza el escudo
+  return p.ch.secType;
+}
 // Algunas habilidades necesitan un objetivo: si no lo hay, aparecen deshabilitadas
 function abilityReady(p, slot) {
   const t = abilityType(p, slot);
@@ -2026,7 +2040,8 @@ function abilityReady(p, slot) {
   if (t === 'ricochet') return !!ricochetTarget(p)[0];
   if (t === 'suspend') return liveTargets().some(e => e.airborne);
   if (t === 'frostburst') return !!frostTarget(p); // necesita a alguien a tiro
-  if (t === 'raiseShield') return !p.shieldBroken; // roto: hay que esperar a que se recupere
+  if (t === 'raiseShield') return !p.shieldBroken && !p.shieldOut; // roto o lanzado: hay que esperar
+  if (t === 'shieldThrow') return !p.shieldBroken && !p.shieldOut; // no se puede lanzar roto ni dos a la vez
   if (t === 'dragon') return (p.dragonCharges || 0) > 0; // sin cargas no se puede usar
   if (t === 'reaper') return !!reaperTarget(p); // necesita un enemigo a tiro
   return true;
@@ -2205,16 +2220,17 @@ function updateSpecial(p, dt) {
 
 const ABILITIES = {
   beam: castBeam, area: castArea, rush: startRush, drop: startDrop, ricochet: startRicochet,
-  shield: castShield, pillar: castPillar, taunt: castTaunt, roots: castRoots, vine: castVine, grenade: castGrenade, frostburst: castFrostburst, frostMode: castFrostMode, pull: castPull, blink: castBlink, suspend: castSuspend,
+  shield: castShield, pillar: castPillar, taunt: castTaunt, shieldThrow: castShieldThrow, roots: castRoots, vine: castVine, grenade: castGrenade, frostburst: castFrostburst, frostMode: castFrostMode, pull: castPull, blink: castBlink, suspend: castSuspend,
   volley: castVolley, overdrive: castOverdrive, turret: castTurret, overcharge: castOvercharge,
   reaper: castReaper, dragon: castDragon
 };
 function useAbility(p, slot) {
   if (!abilityReady(p, slot)) return;
   const fn = ABILITIES[abilityType(p, slot)];
+  const t0 = abilityType(p, slot);
   if (!fn || fn(p) === false) return;
   p.idleT = 0; // usar habilidades también retrasa la recarga automática
-  setCd(p, slot, slot === 'pri' ? p.ch.priCd : p.ch.secCd);
+  setCd(p, slot, slot === 'pri' ? p.ch.priCd : (t0 === 'shieldThrow' ? AB.shieldThrow.cd : p.ch.secCd));
 }
 function lockNearestOf(p, list) {
   if (!list.length) return;
@@ -2373,9 +2389,10 @@ function updateShieldWall(p, qP, dt) {
   if (c.priType !== 'raiseShield') return;
   const W = AB.wall;
   if (p.shieldHp == null) p.shieldHp = W.max;
-  if (qP && !p.shieldBroken) p.shieldOn = !p.shieldOn; // roto no se puede alzar
-  if (p.shieldBroken) p.shieldOn = false;
-  const want = (!!p.shieldOn || !!p.shieldCharge) && !p.shieldBroken && !p.rush && !p.drop && !p.leap;
+  if (qP && p.shieldOut) floatText(p.x, p.y - 46 * c.size, 'Escudo en el aire', '#c9c2d6'); // lanzado: hay que esperar a que vuelva
+  else if (qP && !p.shieldBroken) p.shieldOn = !p.shieldOn; // roto no se puede alzar
+  if (p.shieldBroken || p.shieldOut) p.shieldOn = false;
+  const want = (!!p.shieldOn || !!p.shieldCharge) && !p.shieldBroken && !p.shieldOut && !p.rush && !p.drop && !p.leap;
   if (want && !p.shieldUp) { p.shieldUp = true; p.blockT = 0; p.perfectUsed = false; p.slash = null; p.mHold = null; p.mCharging = false; SFX.hit(false); }
   else if (!want && p.shieldUp) { p.shieldUp = false; p.shieldRegenT = W.regenDelay; }
   if (p.shieldUp) { p.blockT = (p.blockT || 0) + dt; wearShield(p, W.drain * dt); }
@@ -2417,6 +2434,83 @@ function castTaunt(p) {
   for (const e of liveTargets()) if (Math.hypot(e.x - p.x, e.y - p.y) < AB.taunt.r) { e.tauntBy = p; e.tauntT = AB.taunt.time; }
   effects.push({ type: 'ring', x: p.x, y: p.y, r: AB.taunt.r, t: 0, dur: 0.45, color: '#ff6b6b' });
   floatText(p.x, p.y - 46 * p.ch.size, 'Provocación', '#ff8f8f'); shake = Math.max(shake, 4);
+}
+// Lanzar escudo (Ceniza, con el escudo bajado): vuela en línea recta; al impactar rebota hacia el enemigo más cercano
+// (hasta 2 rebotes) y después vuelve solo. Mientras está en el aire no se puede alzar el escudo
+function castShieldThrow(p) {
+  const S = AB.shieldThrow;
+  p.shieldOut = { x: p.x + p.ax * (p.r + 8), y: p.y + p.ay * (p.r + 8), dx: p.ax, dy: p.ay, phase: 'out', dist: 0, left: S.bounces, to: null, hit: new Set(), t: 0, spin: 0 };
+  p.slash = null; p.mHold = null; p.mCharging = false;
+  floatText(p.x, p.y - 46 * p.ch.size, 'Lanzar escudo', p.slotColor); SFX.swing(true);
+}
+function shieldThrowHit(p, S, e) {
+  const T0 = AB.shieldThrow, dmg = T0.dmg * ABILITY_MUL;
+  S.hit.add(e);
+  damageEnemy(e, S.x - S.dx * 12, S.y - S.dy * 12, dmg, dmg * T0.sta, T0.kb, true); // cuenta como ataque a distancia (le da al murciélago)
+  effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 10, t: 0, dur: 0.2, color: '#dff3ff' });
+  burst(e.x, upY(e.y, 12 + (e.z || 0)), '#dff3ff', 10); SFX.hit(true); hitstop = Math.max(hitstop, 0.04); shake = Math.max(shake, 4);
+  // rebote: al más cercano que no haya golpeado y esté a tiro (sin muro en medio)
+  let next = null, bd = T0.bounceR;
+  if (S.left > 0) for (const o of liveTargets()) {
+    if (S.hit.has(o)) continue;
+    const dx = o.x - S.x, dy = o.y - S.y, d = Math.hypot(dx, dy) || 1;
+    if (d < bd && beamLength(S.x, S.y, dx / d, dy / d, d) >= d - o.r - 6) { bd = d; next = o; }
+  }
+  if (next) { S.left--; S.phase = 'bounce'; S.to = next; }
+  else { S.phase = 'return'; S.to = null; }
+}
+function updateShieldThrows(dt) {
+  const T0 = AB.shieldThrow;
+  for (const p of players) {
+    const S = p.shieldOut;
+    if (!S) continue;
+    S.t += dt; S.spin += dt * 22;
+    if (S.t > T0.maxTime) { p.shieldOut = null; continue; } // por seguridad: si no vuelve, aparece en la mano
+    if (S.phase === 'bounce') { // hacia el siguiente enemigo, corrigiendo el rumbo
+      const e = S.to;
+      if (!e || e.dead) { S.phase = 'return'; S.to = null; }
+      else {
+        const dx = e.x - S.x, dy = e.y - S.y, d = Math.hypot(dx, dy) || 1;
+        const k = Math.min(1, T0.homing * dt); S.dx += (dx / d - S.dx) * k; S.dy += (dy / d - S.dy) * k;
+        const m = Math.hypot(S.dx, S.dy) || 1; S.dx /= m; S.dy /= m;
+      }
+    }
+    if (S.phase === 'return') { // vuelve a Ceniza atravesando lo que haya en medio
+      const dx = p.x - S.x, dy = p.y - S.y, d = Math.hypot(dx, dy) || 1, step = T0.returnSpeed * dt;
+      if (d < p.r + 12 || d <= step) { p.shieldOut = null; floatText(p.x, p.y - 46 * p.ch.size, 'Escudo recuperado', p.slotColor); SFX.hit(false); continue; }
+      S.dx = dx / d; S.dy = dy / d; S.x += S.dx * step; S.y += S.dy * step;
+      continue;
+    }
+    // ida o rebote: avanza en pasos cortos para no atravesar a nadie
+    const total = T0.speed * dt, n = Math.max(1, Math.ceil(total / 8)), st = total / n;
+    for (let i = 0; i < n && S.phase !== 'return'; i++) {
+      const nx = S.x + S.dx * st, ny = S.y + S.dy * st;
+      if (isSolid(Math.floor(nx / T), Math.floor(ny / T), false)) { S.phase = 'return'; burst(S.x, upY(S.y, 14), '#b7b1c6', 8); SFX.hit(false); break; } // choca con un muro y vuelve
+      S.x = nx; S.y = ny;
+      if (S.phase === 'out') { S.dist += st; if (S.dist >= T0.range) { S.phase = 'return'; break; } }
+      const prev = S.phase === 'bounce' ? S.to : null;
+      for (const e of liveTargets()) {
+        if (S.hit.has(e)) continue;
+        if (S.phase === 'bounce' && e !== S.to) continue; // en el rebote va a por su objetivo
+        if (Math.hypot(e.x - S.x, e.y - S.y) < e.r + T0.r) { shieldThrowHit(p, S, e); break; }
+      }
+      if (prev && S.to !== prev) break;
+    }
+  }
+}
+function drawThrownShield(p) {
+  const S = p.shieldOut, sz = p.ch.size, lift = 14 * sz;
+  const cx = S.x, cy = upY(S.y, lift);
+  ctx.save();
+  ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ellipse(S.x, S.y, 12 * sz, 5 * sz); ctx.globalAlpha = 1; // sombra
+  ctx.translate(cx, cy);
+  const rx = 13 * sz, ry = (6 + 5 * Math.abs(Math.sin(S.spin))) * sz; // gira de canto mientras vuela
+  ctx.globalAlpha = 0.3; ctx.fillStyle = '#dff3ff'; ellipse(0, 0, rx + 6, ry + 6); ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgb(205,211,227)'; ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = p.slotColor; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, 0, Math.max(1, rx - 3), Math.max(1, ry - 3), 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = p.ch.color; ellipse(0, 0, rx * 0.28, ry * 0.28);
+  ctx.restore();
 }
 // Raíces (Musgo): brotan en una zona a distancia e inmovilizan a los enemigos, quitándoles estamina
 // function rootsPoint(p) { const d = beamLength(p.x, p.y, p.ax, p.ay, AB.roots.dist); return [p.x + p.ax * d, p.y + p.ay * d]; } // versión anterior
@@ -3244,6 +3338,13 @@ function drawPreviews() {
     } else if (type === 'area') circle(p.x, p.y, c.secRadius);
     else if (type === 'shield') circle(p.x, p.y, AB.shield.r);
     else if (type === 'taunt') circle(p.x, p.y, AB.taunt.r);
+    else if (type === 'shieldThrow') { // trayectoria recta del escudo
+      const len = beamLength(p.x, p.y, p.ax, p.ay, AB.shieldThrow.range), w = AB.shieldThrow.r * 2;
+      ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.ay, p.ax));
+      ctx.globalAlpha = pulse; ctx.fillRect(0, -w / 2, len, w);
+      ctx.globalAlpha = 0.9; ctx.setLineDash([6, 5]); ctx.strokeRect(0, -w / 2, len, w); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(len + 10, 0); ctx.lineTo(len - 4, -9); ctx.lineTo(len - 4, 9); ctx.closePath(); ctx.fill();
+    }
     else if (type === 'vine') { // recorrido de la liana: una vuelta completa desde donde apuntas
       ctx.globalAlpha = 0.6; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.arc(p.x, p.y, AB.vine.len, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
       const a = Math.atan2(p.ay, p.ax); ctx.globalAlpha = 0.9; ctx.lineWidth = 4;
@@ -3653,6 +3754,10 @@ function drawAbilityIcon(type, cx, cy, s, col) {
       P('B', [[-0.75, -0.85], [0.75, -0.85], [0.75, 0.1], [0, 1], [-0.75, 0.1]]);
       P('D', [[0, -0.85], [0.75, -0.85], [0.75, 0.1], [0, 1]]);
       L('L', th, [[0, 0.45], [0, -0.25]]); P('L', [[0, -0.6], [-0.35, -0.15], [0.35, -0.15]]); break;
+    case 'shieldThrow': // escudo inclinado con estelas de velocidad
+      P('B', [[-0.35, -0.85], [0.95, -0.85], [0.95, 0.1], [0.3, 1], [-0.35, 0.1]]);
+      P('D', [[0.3, -0.85], [0.95, -0.85], [0.95, 0.1], [0.3, 1]]);
+      L('L', th, [[-1, -0.45], [-0.55, -0.45]]); L('L', th, [[-1, 0.05], [-0.6, 0.05]]); L('L', th, [[-0.95, 0.55], [-0.6, 0.55]]); break;
     case 'grenade': L('L', th, [[0.25, -0.35], [0.55, -0.8], [0.9, -0.7]]); C('B', -0.1, 0.2, 0.65); C('L', -0.3, 0, 0.2); C('W', 0.95, -0.72, 0.18); break;
     case 'taunt': C('B', -0.4, 0, 0.38); L('L', th, [[0.15, -0.55], [0.95, -0.85]]); L('L', th, [[0.2, 0], [1, 0]]); L('L', th, [[0.15, 0.55], [0.95, 0.85]]); C('W', -0.5, -0.1, 0.11); break;
     case 'roots': L('B', TH, [[0, -1], [0, 0.2]]); L('B', th, [[0, -0.35], [-0.5, -0.75]]);
@@ -4393,7 +4498,7 @@ function update(dt) {
   for (const e of enemies) if (e.state !== 'leap') collide(e, false);
   leash();
   updateHazards(dt);
-  updateChains(dt);
+  updateChains(dt); updateShieldThrows(dt);
   updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateStalacs(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
 
   for (const b of bullets) {
@@ -4606,6 +4711,7 @@ const ABILITY_TEXT = {
   // vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
   vine: ['Liana giratoria', 'Barre y lanza por los aires; con un aliado, os une y os cura'],
   taunt: ['Provocación', 'Atrae a los enemigos; su guardia cubre todo'],
+  shieldThrow: ['Lanzar escudo', 'Vuela recto, rebota en dos enemigos cercanos y vuelve'],
   grenade: ['Granada', 'En arco al fijado: explota y lo lanza'],
   frostburst: ['Estallido helado', 'Mantén para ampliar el área; congela a los que están dentro; en el aire, se rompe'],
   frostMode: ['Cambio de disparo', 'Cambia entre rayo, misiles de cristal y bola de nieve'],
@@ -4653,7 +4759,7 @@ function specialSlots(c) {
 // Requisitos de uso que conviene saber al elegir
 const ABILITY_NEEDS = {
   drop: 'Necesita un enemigo en el aire', suspend: 'Necesita enemigos en el aire', ricochet: 'Necesita un objetivo',
-  frostburst: 'Necesita un enemigo a tiro', dragon: 'Nivel 1 se recarga solo; 2 y 3, ejecutando', reaper: 'Necesita un enemigo cerca', raiseShield: 'Se desgasta; si se rompe, espera',
+  frostburst: 'Necesita un enemigo a tiro', dragon: 'Nivel 1 se recarga solo; 2 y 3, ejecutando', reaper: 'Necesita un enemigo cerca', raiseShield: 'Se desgasta; si se rompe, espera', shieldThrow: 'Sin escudo alzado; mientras vuela no puedes alzarlo',
   turret: 'Una torreta a la vez', grenade: 'Va al enemigo fijado'
 };
 const fmtS = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
@@ -4922,7 +5028,8 @@ function drawDetail(ch) {
   dLabel('Habilidades', rx, ry, cw); ry += 14;
   const p1 = ABILITY_TEXT[ch.priType] || ['', ''], s2 = ABILITY_TEXT[ch.secType] || ['', ''];
   ry += dItem(ch, ch.priType, 'Habilidad 1', p1[0], abilityBody(ch.priType, ch.priCd), rx, ry, cw, 3) + 4;
-  ry += dItem(ch, ch.secType, 'Habilidad 2', s2[0], abilityBody(ch.secType, ch.secCd), rx, ry, cw, 3) + 4;
+  ry += dItem(ch, ch.secType, ch.secAlt ? 'Habilidad 2 · escudo alzado' : 'Habilidad 2', s2[0], abilityBody(ch.secType, ch.secCd), rx, ry, cw, 3) + 4;
+  if (ch.secAlt) { const a2 = ABILITY_TEXT[ch.secAlt] || ['', '']; ry += dItem(ch, ch.secAlt, 'Habilidad 2 · escudo bajado', a2[0], abilityBody(ch.secAlt, AB.shieldThrow.cd), rx, ry, cw, 3) + 4; }
   dLabel('Movimiento', rx, ry + 6, cw); ry += 20;
   const mv = moveOf(ch);
   ry += dItem(ch, mv.icon, 'Movimiento', mv.name, mv.desc + '.', rx, ry, cw, 3) + 4;
@@ -5329,6 +5436,7 @@ function drawShieldWeapon(p) {
   rrect(-6 * sz, -9 * sz, 12 * sz, 18 * sz, 3); ctx.fill(); ctx.stroke(); // cabeza del martillo
   ctx.fillStyle = '#a9a3b8'; ctx.fillRect(-6 * sz + 2, -9 * sz + 2, 3, 18 * sz - 4);
   ctx.restore();
+  if (p.shieldOut) return; // escudo lanzado: solo lleva el martillo
   // escudo
   if (s && s.kind === 'bash') { const k = Math.min(1, s.t / s.dur); sAng = base; sDist = p.r + 12 + 22 * Math.sin(k * Math.PI); }
   if (p.shieldCharge) { sAng = base; sDist = p.r + 16; }
@@ -5987,7 +6095,7 @@ function drawHUD() {
     if (c.priType === 'raiseShield') bar(px[1], py + z + 4, z, 4, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
     if (c.priType === 'turret') bar(px[1], py + z + 4, z, 4, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
     const drag = c.secType === 'dragon';
-    drawPip(px[2], py, drag ? Math.max(p.secCd / (p.secCdMax || c.secCd), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || c.secCd), c.secType, p.color,
+    drawPip(px[2], py, drag ? Math.max(p.secCd / (p.secCdMax || c.secCd), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || c.secCd), abilityType(p, 'sec'), p.color,
       p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'), z, drag ? 0 : secsOf(p.secCd), fxOf('sec'));
     if (drag) for (let k = 0; k < AB.dragon.max; k++) { ctx.fillStyle = k < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; rrect(px[2] + k * 9, py + z + 4, 7, 5, 2); ctx.fill(); } // cargas
   }
@@ -6124,6 +6232,7 @@ function drawGame() {
   for (const b of bullets) list.push({ y: b.y, f: () => drawBullet(b) });
   for (const b of pBullets) list.push({ y: b.y, f: () => drawPBullet(b) });
   for (const t of turrets) list.push({ y: t.y, f: () => drawTurret(t) });
+  for (const p of players) if (p.shieldOut) list.push({ y: p.shieldOut.y, f: () => drawThrownShield(p) });
   list.sort((a, b) => a.y - b.y); // la clave de la vista en tres cuartos: se pinta de atrás hacia delante
   projectOn();
   try {
@@ -6248,7 +6357,7 @@ function updateTouchButtons() {
   setPips(dash, p.mCh || 0, c.moveCharges || 0, 0);
   setBtn(q, c.priType, p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
     p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
-  setBtn(e, c.secType, p.color, c.secType === 'dragon' ? Math.max(p.secCd / (p.secCdMax || c.secCd || 1), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
+  setBtn(e, abilityType(p, 'sec'), p.color, c.secType === 'dragon' ? Math.max(p.secCd / (p.secCdMax || c.secCd || 1), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
     p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0));
   setBtn(lock, 'lock', p.color, 0, p.down, !!p.lockOn);
   for (const [b, slot, t] of [[q, 'pri', c.priType], [e, 'sec', c.secType]]) // cargas del Poder del dragón
@@ -6343,7 +6452,7 @@ function tutGeo() { const pw = Math.min(W - 24, 680), ph = Math.min(H - 24, 520)
 function tutTabRect(i) { const g = tutGeo(), tw = (g.pw - 36 - 2 * 8) / 3; return [g.px + 18 + i * (tw + 8), g.py + 62, tw, 30]; }
 function tutBtn(next) { const g = tutGeo(); return next ? [g.px + g.pw - 18 - 170, g.py + g.ph - 50, 170, 32] : [g.px + 18, g.py + g.ph - 50, 110, 32]; }
 // Animación de la caja: personaje a la izquierda, enemigo de prueba a la derecha que se marca al recibir el golpe
-const TUT_ANIM_OF = { beam: 'line', rush: 'line', area: 'ring', drop: 'ring', raiseShield: 'pulse', taunt: 'pulse', vine: 'ring', roots: 'ring',
+const TUT_ANIM_OF = { beam: 'line', rush: 'line', area: 'ring', drop: 'ring', raiseShield: 'pulse', taunt: 'pulse', shieldThrow: 'proj', vine: 'ring', roots: 'ring',
   frostburst: 'proj', frostMode: 'pulse', volley: 'line', overdrive: 'pulse', grenade: 'proj', ricochet: 'proj', turret: 'pulse', overcharge: 'pulse',
   reaper: 'line', dragon: 'pulse' };
 const TUT_MOVE_ANIM = { dash: 'line', stride: 'line', teleport: 'line', jump: 'proj', flip: 'proj', block: 'pulse' };
