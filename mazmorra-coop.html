@@ -294,6 +294,8 @@ const AB = {
                ammo: 3, reload: 2.5,                                   // cargador propio: 3 cargas; se repone 1 cada 2,5 s
                r: 55, dmg: 2, sta: 0.35, stackR: 0.25,                 // al detonar: daño y estamina (× ABILITY_MUL); cada carga extra en el mismo enemigo suma daño y +25 % de radio
                allyR: 85, allyMul: 1.5 },                              // bomba humana: pegada a un compañero, estalla a su alrededor, lanza a todos y a él no le hace nada
+  doll:      { hop: 0.3, rest: 0.07, step: 46, h: 20, life: 7, max: 2, seek: 420, touch: 8, // muñeco bomba: salta hacia el enemigo fijado y estalla al tocarlo
+               r: 58, dmg: 2.2, sta: 2.2 },                             // explosión (× ABILITY_MUL): daña y lanza por los aires
   recoil:    { reach: 34, r: 58, dmg: 1.6, sta: 0.3, kb: 620, push: 700, inv: 0.25 }, // escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás
   detonator: { cd: 0.6 },
   mortar:    { cd: 9, range: 360, near: 240, r: 85, n: 6, delay0: 0.35, step: 0.22, shellR: 42, dmg: 1.2, sta: 0.12, fall: 0.3 }, // Lluvia de mortero
@@ -468,8 +470,8 @@ const CHARS = [
   // { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual',
   //   secAlt: 'detonate', secAltBy: 'heat', secAltLabels: ['con poco calor', 'al rojo'], // habilidad 2: Purga; Al rojo y con chamuscados en la sala, Detonar
   //   scorches: true, crossTrigger: true, moveType: 'roll' }, // dos pistolitas; Al rojo chamusca; disparar al rodar = Gatillo cruzado
-  { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Demoledora', shotMode: 'launcher', shotStyle: 'launcher', shotCd: 0.4, stickyAmmo: AB.sticky.ammo, // [antes] shotCd: 0.3, ammo: 4
-    priType: 'detonator', priCd: AB.detonator.cd, secType: 'mortar', secCd: AB.mortar.cd, recoilShot: true }, // lanzagranadas de tambor; cargado, carga pegajosa; tras rodar, escopetazo
+  { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Demoledora', shotMode: 'launcher', shotStyle: 'launcher', shotCd: 0.25, stickyAmmo: AB.sticky.ammo, // [antes] shotCd: 0.3, ammo: 4
+    priType: 'detonator', priCd: AB.detonator.cd, secType: 'mortar', secCd: AB.mortar.cd, dollShot: true }, // [antes] recoilShot: true (Escopetazo) // lanzagranadas de tambor; cargado, carga pegajosa; tras rodar, escopetazo
   { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'uppercut', role: 'Brawler · Ejecutor',
     meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'flurry',
     priType: 'reaper', priCd: 5, secType: 'dragon', secCd: 1,
@@ -740,7 +742,7 @@ let state = 'count';
 let floor, room, pal = PALETTES[0];
 let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [], missiles = [], dragonFx = [], stalacs = [];
 let embers = []; // brasas de la Rodada de Coral
-let cBombs = [], stickies = [], shells = []; // Coral: granadas en vuelo, cargas pegajosas y proyectiles de mortero
+let cBombs = [], stickies = [], shells = [], dolls = []; // Coral: granadas en vuelo, cargas pegajosas y proyectiles de mortero
 let overT = 0, time = 0, fade = 0, shake = 0, banner = null, seed = 0, hitstop = 0, flashT = 0;
 let camKX = 0, camKY = 0; // empujón de cámara en la dirección del golpe
 const BUFFER = 0.25;      // búfer de entrada: una pulsación se recuerda 0,25 s (cubre toda la recuperación del golpe)
@@ -1283,7 +1285,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
   useRoom(r);
-  room = r; r.visited = true; portalT = 0; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; embers = []; cBombs = []; stickies = []; shells = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
+  room = r; r.visited = true; portalT = 0; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; embers = []; cBombs = []; stickies = []; shells = []; dolls = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
   const entry = dir ? OPP[dir] : null;
@@ -2910,6 +2912,10 @@ function updateLauncher(p, inp, aP, dt) {
     p.postMoveT = 0; p.postMoveUsed = p.moveT > 0; p.shotHold = true; p.charging = false; p.shotCd = c.shotCd;
     recoilBlast(p); return;
   }
+  if (c.dollShot && aP && (p.moveT > 0 || p.postMoveT > 0) && !p.shotHold) { // muñeco bomba tras esquivar
+    p.postMoveT = 0; p.postMoveUsed = p.moveT > 0; p.shotHold = true; p.charging = false; p.shotCd = c.shotCd;
+    summonDoll(p); return;
+  }
   if (inp.s && !p.charging && !p.shotHold && p.shotCd <= 0 && p.moveT <= 0) { p.charging = true; p.chargeT = 0; }
   if (!p.charging) return;
   if (p.moveT > 0) { p.charging = false; p.stickyAim = null; return; }
@@ -3016,7 +3022,76 @@ function castDetonator(p) {
   stickies = stickies.filter(k => k.owner !== p);
   if (!p.down) lockNearestOf(p, launched.filter(e => !e.dead && e.airborne));
 }
-// Escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás
+// Muñeco bomba (tras esquivar): un muñequito con un explosivo a la espalda que ficha a un enemigo,
+// se le acerca a saltitos y estalla al tocarlo (o cuando un enemigo lo toca): daña y lanza por los aires
+function dollTarget(p, x, y) {
+  const D = AB.doll, tg = aimTgt(p);
+  if (tg && !tg.flying && Math.hypot(tg.x - x, tg.y - y) <= D.seek) return tg;
+  let best = null, bd = D.seek;
+  for (const e of liveTargets()) { if (e.flying) continue; const d = Math.hypot(e.x - x, e.y - y); if (d < bd) { bd = d; best = e; } }
+  return best;
+}
+function summonDoll(p) {
+  const D = AB.doll, mine = dolls.filter(d => d.owner === p);
+  if (mine.length >= D.max) { dollBoom(mine[0]); dolls = dolls.filter(d => !d.done); } // ya hay dos: el más antiguo estalla donde esté
+  const x = p.x + p.ax * 16, y = p.y + p.ay * 16;
+  dolls.push({ owner: p, x, y, z: 0, t: 0, hopT: D.rest, x0: x, y0: y, x1: x, y1: y, tg: dollTarget(p, x, y), face: p.ax >= 0 ? 1 : -1 });
+  effects.push({ type: 'ring', x, y, r: 18, t: 0, dur: 0.25, color: p.color }); burst(x, y - 8, '#ffd54a', 8);
+  floatText(p.x, p.y - 46 * p.ch.size, 'Muñeco bomba', p.slotColor); SFX.reload(true);
+}
+function dollBoom(d) {
+  if (d.done) return; d.done = true;
+  const D = AB.doll, dmg = D.dmg * ABILITY_MUL, hit = coralBlast(d.x, d.y, D.r, dmg, D.sta * ABILITY_MUL, 260, { launchAll: true, juggle: 0.8, color: '#ffd54a' });
+  floatText(d.x, d.y - 40, '¡Bum!', '#ffd54a'); hitstop = Math.max(hitstop, 0.05);
+  if (!d.owner.down) lockNearestOf(d.owner, hit.filter(e => !e.dead && e.airborne));
+}
+function updateDolls(dt) {
+  const D = AB.doll;
+  for (const d of dolls) {
+    if (d.done) continue;
+    d.t += dt;
+    if (!d.tg || d.tg.dead || !enemies.includes(d.tg)) d.tg = dollTarget(d.owner, d.x, d.y); // su objetivo murió: busca otro
+    if (d.t >= D.life) { dollBoom(d); continue; }
+    // estalla al tocar a cualquier enemigo (o al llegar bajo el que está en el aire)
+    if (liveTargets().some(e => !e.flying && Math.hypot(e.x - d.x, e.y - d.y) < e.r + D.touch && (!e.airborne || e === d.tg))) { dollBoom(d); continue; }
+    d.hopT -= dt;
+    if (d.hopT > 0 && d.z <= 0) continue; // descansa entre saltos
+    if (d.z <= 0 && d.hopT <= 0 && !d.hopping) { // nuevo salto hacia el objetivo
+      const tx = d.tg ? d.tg.x : d.x + d.face * D.step, ty = d.tg ? d.tg.y : d.y;
+      const dx = tx - d.x, dy = ty - d.y, dist = Math.hypot(dx, dy) || 1, st = Math.min(D.step, dist);
+      const len = beamLength(d.x, d.y, dx / dist, dy / dist, st);
+      d.x0 = d.x; d.y0 = d.y; d.x1 = d.x + dx / dist * len; d.y1 = d.y + dy / dist * len; d.hk = 0; d.hopping = true;
+      if (Math.abs(dx) > 2) d.face = dx > 0 ? 1 : -1;
+    }
+    if (d.hopping) {
+      d.hk = Math.min(1, d.hk + dt / D.hop);
+      d.x = d.x0 + (d.x1 - d.x0) * d.hk; d.y = d.y0 + (d.y1 - d.y0) * d.hk; d.z = Math.sin(d.hk * Math.PI) * D.h;
+      if (d.hk >= 1) { d.hopping = false; d.z = 0; d.hopT = D.rest; d.squash = 1; burst(d.x, d.y - 2, '#9a93a8', 2); }
+    }
+    d.squash = Math.max(0, (d.squash || 0) - dt * 8);
+  }
+  dolls = dolls.filter(d => !d.done);
+}
+function drawDolls() {
+  for (const d of dolls) {
+    const sq = d.squash || 0, z = d.z, x = d.x, y = d.y - z, f = d.face;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(d.x, d.y, 9 * (1 - z / 60), 3.5 * (1 - z / 60));
+    ctx.save(); ctx.translate(x, y); ctx.scale(1 + sq * 0.25, 1 - sq * 0.25);
+    ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2;
+    // explosivo a la espalda: cartucho rojo con mecha encendida
+    ctx.fillStyle = '#d23a3a'; ctx.beginPath(); ctx.rect(-f * 9 - 3, -19, 6, 12); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#3a2f2a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-f * 9, -19); ctx.quadraticCurveTo(-f * 12, -25, -f * 9, -27); ctx.stroke();
+    ctx.fillStyle = Math.random() < 0.5 ? '#ffd54a' : '#ff8a3d'; ctx.beginPath(); ctx.arc(-f * 9, -27, 2.2, 0, Math.PI * 2); ctx.fill();
+    // cuerpo de muñeco: piernas, tronco y cabeza grande
+    ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-3, -4); ctx.lineTo(-4, 0); ctx.moveTo(3, -4); ctx.lineTo(4, 0); ctx.stroke();
+    ctx.fillStyle = '#f2e4c9'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, -9, 6, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#f2e4c9'; ctx.beginPath(); ctx.arc(f * 1, -19, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ef5da8'; ctx.beginPath(); ctx.arc(f * 1, -23, 7, Math.PI, 0); ctx.fill(); // gorrito rosa
+    ctx.fillStyle = '#16121e'; ctx.fillRect(f * 3 - 1, -20, 2, 3); ctx.fillRect(f * 6 - 1, -20, 2, 3); // ojos
+    ctx.restore();
+  }
+}
+// Escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás (sin uso desde el muñeco bomba)
 function recoilBlast(p) {
   const R = AB.recoil, x = p.x + p.ax * R.reach, y = p.y + p.ay * R.reach;
   for (const e of liveTargets()) {
@@ -3057,6 +3132,11 @@ function updateShells(dt) {
 }
 // Dibujo: en el suelo, la mira de la carga y los avisos del mortero
 function drawCoralFloor() {
+  for (const d of dolls) if (d.tg && !d.tg.dead) { // el muñeco marca a quién va
+    ctx.save(); ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 2; ctx.globalAlpha = 0.5 + 0.3 * Math.sin(time * 12);
+    ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.tg.x, d.tg.y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.arc(d.tg.x, d.tg.y, d.tg.r + 8, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   for (const p of players) {
     if (p.down || !p.charging || p.ch.shotMode !== 'launcher' || p.chargeT <= AB.bomb.tapMax) continue;
     const [x, y] = stickyPoint(p), lv = stickyLv(p);
@@ -4522,6 +4602,10 @@ function drawAbilityIcon(type, cx, cy, s, col) {
       C('B', 0, 0.1, 0.62); C('D', 0, 0.1, 0.62, { fill: false, w: th });
       C('W', 0, -0.15, 0.2); L('L', th, [[-0.45, 0.65], [-0.55, 0.95]]); L('L', th, [[0.45, 0.65], [0.55, 0.95]]);
       L('L', th, [[-0.85, -0.75], [-0.55, -0.5]]); L('L', th, [[0.85, -0.75], [0.55, -0.5]]); L('L', th, [[0, -1], [0, -0.7]]); break;
+    case 'doll': // muñeco bomba: cabeza, cuerpo y cartucho con mecha
+      C('L', 0.15, -0.35, 0.42); P('B', [[-0.25, -0.62], [0.55, -0.62], [0.15, -1]]); C('W', 0.3, -0.38, 0.08);
+      C('L', 0.1, 0.35, 0.32); L('L', th, [[-0.05, 0.62], [-0.15, 0.95]]); L('L', th, [[0.25, 0.62], [0.35, 0.95]]);
+      R('D', -0.75, -0.2, 0.36, 0.7); L('B', th, [[-0.57, -0.2], [-0.75, -0.55]]); C('W', -0.78, -0.62, 0.12); break;
     case 'recoil': // escopetazo: fogonazo delante y flecha hacia atrás
       P('L', [[1, 0], [0.35, -0.6], [0.45, -0.15], [0.05, -0.3], [0.2, 0], [0.05, 0.3], [0.45, 0.15], [0.35, 0.6]]);
       L('B', TH, [[-0.1, 0], [-0.75, 0]]); P('B', [[-1, 0], [-0.6, -0.38], [-0.6, 0.38]]); break;
@@ -5245,7 +5329,7 @@ function update(dt) {
   updateChains(dt); updateShieldThrows(dt); updateShieldFlung(dt);
   updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateStalacs(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
   updateScorch(dt); updateEmbers(dt); // Coral: chamuscado y brasas
-  updateCBombs(dt); updateStickies(); updateShells(dt); // Coral: granadas, cargas pegajosas y mortero
+  updateCBombs(dt); updateStickies(); updateShells(dt); updateDolls(dt); // Coral: granadas, cargas pegajosas y mortero
 
   for (const b of bullets) {
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
@@ -5496,6 +5580,7 @@ function specialSlots(c) {
   });
   const out = [];
   if (c.shotStyle === 'revolver') out.push({ icon: 'fanFire', kind: 'Tras moverte', name: 'Vaciar el tambor', body: 'Bravata: recarga y, con el tambor recargado, hace ×1,5 de daño.' });
+  if (c.dollShot) out.push({ icon: 'doll', kind: 'Tras moverte', name: 'Muñeco bomba', body: 'Ficha a un enemigo, va a saltitos hacia él y estalla al tocarlo: daña y lanza por los aires. Máx. 2.' });
   if (c.recoilShot) out.push({ icon: 'recoil', kind: 'Tras moverte', name: 'Escopetazo', body: 'Explosión a bocajarro que empuja mucho y te impulsa hacia atrás. No gasta granadas.' });
   if (c.crossTrigger) out.push({ icon: 'volley', kind: 'Tras moverte', name: 'Gatillo cruzado', body: 'Las dos pistolas a la vez, ×2 de daño cada una y sin calentar.' });
   if (c.postMoveMissile) out.push({ icon: 'missile', kind: 'Tras moverte', name: 'Misil teledirigido', body: 'Un misil que sigue al objetivo.' });
@@ -5514,7 +5599,7 @@ function shotText(c) {
   if (!c.canShoot) return 'Sin disparo';
   if (c.shotMode === 'auto') return c.postMoveMissile ? 'Continuo; tras moverte, misil teledirigido (y otro de la torreta)' : 'Instantáneo y continuo, sin carga';
   if (c.shotMode === 'heat') return 'Ráfaga instantánea que se sobrecalienta';
-  if (c.shotMode === 'launcher') return 'Granadas en arco que rebotan y estallan al tocar, sin cargador';
+  if (c.shotMode === 'launcher') return 'Granadas en arco que rebotan y estallan al tocar; tras esquivar, muñeco bomba';
   if (c.shotType === 'hitscan') return 'Instantáneo, cargable';
   return c.shotSpeed < 300 ? 'Proyectil lento, cargable' : 'Proyectil, cargable';
 }
@@ -7056,7 +7141,7 @@ let projSaved = null;
 function projectOn() {
   projSaved = []; const seen = new Set();
   const thrown = players.map(p => p.shieldOut).filter(Boolean); // escudos lanzados de Ceniza
-  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles, stalacs, thrown, cBombs, stickies, shells]) for (const o of L) {
+  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles, stalacs, thrown, cBombs, stickies, shells, dolls]) for (const o of L) {
     if (seen.has(o)) continue; seen.add(o);
     for (const k of PROJ_KEYS) { const v = o[k]; if (typeof v === 'number') { projSaved.push(o, k, v); o[k] = v * K; } }
   }
@@ -7125,7 +7210,7 @@ function drawGame() {
     for (const it of list) it.f();
     for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
-    drawArcOrbs('air'); drawGrenades(); drawCoralAir(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts();
+    drawArcOrbs('air'); drawGrenades(); drawCoralAir(); drawDolls(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts();
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
@@ -7212,7 +7297,7 @@ function attackContext(p) {
     return { icon: base, lv: null };
   }
   if (c.shotMode === 'launcher') { // Coral: carga pegajosa al mantener; escopetazo tras rodar
-    if (post) return { icon: 'recoil', lv: null, alt: true };
+    if (post) return { icon: c.dollShot ? 'doll' : 'recoil', lv: null, alt: true };
     if (p.charging && p.chargeT > AB.bomb.tapMax) return { icon: 'sticky', lv: stickyLv(p) };
     return { icon: 'launcher', lv: null };
   }
