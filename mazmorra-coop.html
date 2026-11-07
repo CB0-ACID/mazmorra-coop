@@ -314,6 +314,11 @@ const AB = {
   igniteExec: { r: 90, dmg: 1, add: 2 },          // Remate ígneo: ejecutar a un chamuscado salpica fuego y chamusca alrededor
   turret:    { time: 10, rate: 0.3, range: 330, dmg: 1.2, hp: 8, regen: 0.5, destroyedCd: 20 }, // vida propia; se regenera guardada
   missile:   { speed: 300, maxSpeed: 560, accel: 700, turn: 6, life: 2.4, dmg: 2, r: 42, kb: 220 }, // Misil teledirigido (Ciruela y su torreta, tras moverse)
+  // Gatling de Ciruela: los cañones ganan velocidad mientras mantienes el disparo y se calientan con cada bala
+  gatling: { cd0: 0.3, cdMin: 0.11, spinUp: 1.5, spinDown: 0.9, // cadencia de 0,3 s (parada) a 0,11 s (a tope, ~2,7×) en 1,5 s; al soltar pierde el giro en 0,9 s
+             cdFloor: 0.07,                                   // cadencia máxima con Sobrecarga (no baja de aquí)
+             heatPerShot: 0.032, cool: 0.5, coolDelay: 0.3,   // a tope se sobrecalienta tras unos 4 s de fuego seguido; enfría 0,5/s tras 0,3 s sin disparar
+             overheatTime: 1.6, overchargeHeat: 0.25 },       // bloqueada 1,6 s al sobrecalentarse · con Sobrecarga cada bala calienta 4 veces menos
   overcharge: { time: 5, mul: 0.5, healR: 130, healEvery: 1, healPct: 0.04 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta; la torreta cura un 4 % de la vida máxima por segundo a los aliados cercanos
   reaper:    { range: 300, speed: 1300, maxT: 0.4, len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: salta al ejecutable más cercano (o al más cercano) y golpea en cono
   dragon: {  // Poder del dragón: el nivel 1 se recarga solo; las cargas 2 y 3 se ganan con ejecuciones propias o de aliados cercanos
@@ -492,7 +497,7 @@ const CHARS = [
     secType: 'ricochet', secCd: 4, ricDmg: 3 },  // disparo rebotante (cargable)
   { name: 'Ciruela',  color: '#c07af0', mark: 'cross',   family: 'tirador', role: 'Tirador · Torreta',
     priType: 'turret', secType: 'overcharge', priCd: 1, secCd: 10,
-    shotMode: 'auto', shotCd: 0.3, shot: 1.5, shotStagger: 0.18, shotStyle: 'gatling', postMoveMissile: true } // gatling: disparo continuo, sin carga
+    shotMode: 'auto', shotCd: 0.3, shot: 1.5, shotStagger: 0.18, shotStyle: 'gatling', postMoveMissile: true, gatling: true } // gatling: coge velocidad al mantener y se sobrecalienta (AB.gatling)
 ].map(c => Object.assign({}, BASE_STATS, ROLES[c.family], c));
 // Estimación de diseño, de 1 a 5, a partir de golpes, habilidades y estados de cada personaje.
 // dmg: daño sostenido · tec: técnica (estados, lanzar por los aires, atraer, inmovilizar) · sup: soporte (defensa, curación, apoyo a aliados)
@@ -1089,7 +1094,8 @@ function npcInput(p) {
     if (!c.canShoot) fire = (ph % 0.28) < 0.05;                                   // cuerpo a cuerpo: golpes sueltos
     else if (c.shotMode === 'launcher') fire = (ph % 0.5) < 0.08;                // granadas sueltas (pulsaciones cortas)
     else if (c.shotMode === 'heat') { if (p.heat > 0.75) p.npcCool = true; if (p.heat < 0.3) p.npcCool = false; fire = !p.npcCool && !(p.overheat > 0); } // no se sobrecalienta
-    else if (c.shotMode === 'auto') fire = true;                                  // gatling: fuego continuo
+    // else if (c.shotMode === 'auto') fire = true;                               // gatling: fuego continuo (antes, sin calor)
+    else if (c.shotMode === 'auto') { if (c.gatling) { if (p.heat > 0.8) p.npcCool = true; if (p.heat < 0.25) p.npcCool = false; fire = !p.npcCool && !(p.overheat > 0); } else fire = true; } // gatling: deja enfriar antes de sobrecalentarse
     else if (c.shotMode === 'frost') fire = (ph % 1.2) < 1.0;                     // ondas y, al soltar, bola de nieve
     else fire = (ph % (tgt.airborne ? 0.55 : 0.4)) < (tgt.airborne ? 0.42 : 0.28); // carga breve y suelta (más cargado contra aéreos)
     out.s = fire;
@@ -1583,7 +1589,7 @@ function roomCleared() {
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
   floor = genFloor(seed, devStartDepth);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; p.hotMode = false; p.crossReady = false; p.crossCd = 0; p.emberT = 0; p.loadT = 0; p.sAmmo = p.ch.stickyAmmo || 0; p.sLoadT = 0; for (const kk in p.prev) p.prev[kk] = true; }
+  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.spin = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; p.hotMode = false; p.crossReady = false; p.crossCd = 0; p.emberT = 0; p.loadT = 0; p.sAmmo = p.ch.stickyAmmo || 0; p.sLoadT = 0; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
@@ -1965,7 +1971,7 @@ function updatePlayer(p, dt) {
     } else p.dragonRegenT = 0;
   }
   p.shieldT = (p.shieldT || 0) - dt; p.tauntT = (p.tauntT || 0) - dt; p.recoilT = (p.recoilT || 0) - dt; p.bubbleT = (p.bubbleT || 0) - dt; p.overdriveT = (p.overdriveT || 0) - dt; p.overchargeT = (p.overchargeT || 0) - dt;
-  p.gatSpin = (p.gatSpin || 0) + dt * (c.shotStyle === 'gatling' && inp.s ? 38 : 3); // los cañones giran al disparar
+  p.gatSpin = (p.gatSpin || 0) + dt * (c.gatling ? 3 + 52 * (p.spin || 0) : (c.shotStyle === 'gatling' && inp.s ? 38 : 3)); // los cañones giran al disparar (la gatling, según lo que haya cogido de giro)
   p.castT = p.cast ? (p.castT || 0) + dt : 0;
   { const wt = WEIGHT[c.weight] || WEIGHT.medium; p.sqv = (p.sqv || 0) + (-320 * (p.sq || 0) - wt.damping * (p.sqv || 0)) * dt; p.sq = Math.max(-0.35, Math.min(0.35, (p.sq || 0) + p.sqv * dt)); } // tiempo con la habilidad pulsada (nivel del Poder del dragón)
   if (p.hurtFx > 0) p.hurtFx -= dt; if (p.healFx > 0) p.healFx -= dt;
@@ -2196,7 +2202,9 @@ function updatePlayer(p, dt) {
       if (t) fireMissile(p, t.x, t.y, 20 + (t.z || 0), t.ang, missileTarget(null, t.x, t.y));
       floatText(p.x, p.y - 46 * c.size, 'Misil', p.slotColor);
     }
-    if (inp.s && p.shotCd <= 0 && p.moveT <= 0 && !p.shotHold) { p.shotCd = c.shotCd * (p.overchargeT > 0 ? AB.overcharge.mul : 1); fireShot(p, c.shot, 0); }
+    // if (inp.s && p.shotCd <= 0 && p.moveT <= 0 && !p.shotHold) { p.shotCd = c.shotCd * (p.overchargeT > 0 ? AB.overcharge.mul : 1); fireShot(p, c.shot, 0); } // antes: cadencia fija
+    if (c.gatling) gatlingFire(p, inp, dt);
+    else if (inp.s && p.shotCd <= 0 && p.moveT <= 0 && !p.shotHold) { p.shotCd = c.shotCd * (p.overchargeT > 0 ? AB.overcharge.mul : 1); fireShot(p, c.shot, 0); }
   } else {
     const mag = c.ammo > 0; // con tambor (Marea): cada bala gasta munición y al vaciarse recarga
     if (mag && p.reloadT > 0) {
@@ -3639,6 +3647,26 @@ function castOverdrive(p) { // Purga: suelta todo el calor en una onda alrededor
 }
 function setCd(p, slot, v) { if (slot === 'pri') { p.priCd = v; p.priCdMax = v; } else { p.secCd = v; p.secCdMax = v; } }
 // Torreta (Ciruela): dura un tiempo y tiene vida propia; se guarda volviendo a pulsar y se repara guardada
+// Gatling (Ciruela): al mantener el disparo los cañones cogen giro (p.spin de 0 a 1) y la cadencia sube de cd0 a cdMin.
+// Cada bala suma calor; al llegar al máximo se sobrecalienta: no dispara durante overheatTime y pierde el giro.
+// La Sobrecarga multiplica la cadencia y hace que cada bala caliente mucho menos
+function gatlingFire(p, inp, dt) {
+  const G = AB.gatling, c = p.ch, oc = p.overchargeT > 0;
+  if (p.overheat > 0) { // sobrecalentada: bloqueada mientras se vacía la barra
+    p.overheat -= dt; p.heat = Math.max(0, p.overheat / G.overheatTime); p.spin = Math.max(0, (p.spin || 0) - dt / G.spinDown);
+    if (p.overheat <= 0) { p.overheat = 0; p.heat = 0; }
+    return;
+  }
+  const firing = inp.s && p.moveT <= 0 && !p.shotHold;
+  p.spin = firing ? Math.min(1, (p.spin || 0) + dt / G.spinUp) : Math.max(0, (p.spin || 0) - dt / G.spinDown);
+  if (firing && p.shotCd <= 0) {
+    const cd = G.cd0 + (G.cdMin - G.cd0) * p.spin;
+    p.shotCd = oc ? Math.max(G.cdFloor, cd * AB.overcharge.mul) : cd;
+    fireShot(p, c.shot, 0);
+    p.heat = (p.heat || 0) + G.heatPerShot * (oc ? G.overchargeHeat : 1); p.heatDelay = G.coolDelay;
+    if (p.heat >= 1) { p.heat = 1; p.overheat = G.overheatTime; floatText(p.x, p.y - 46 * c.size, 'Sobrecalentada', '#ff8f6b'); burst(p.x + p.ax * 26, p.y - 14 + p.ay * 20, '#8a8494', 12); }
+  } else if (!firing) { p.heatDelay = (p.heatDelay || 0) - dt; if (p.heatDelay <= 0) p.heat = Math.max(0, (p.heat || 0) - G.cool * dt); }
+}
 function myTurret(p) { return turrets.find(t => t.owner === p && !t.gone); }
 function castTurret(p) {
   let x = p.x + p.ax * 34, y = p.y + p.ay * 34;
@@ -5885,7 +5913,7 @@ const ABILITY_TEXT = {
   detonator: ['Detonador', 'Estallan tus cargas: lanzan a quien las lleve; en un compañero, bomba humana'],
   mortar: ['Lluvia de mortero', 'Mantén para apuntar: caen 6 granadas sobre la zona'],
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla. Cualquiera puede cargarla a la espalda'],
-  overcharge: ['Sobrecarga', 'Más cadencia; la torreta cura a los aliados cerca'],
+  overcharge: ['Sobrecarga', 'Más cadencia y apenas calienta; la torreta cura a los aliados cerca'],
   raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; se gasta'],
   // vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
   vine: ['Liana giratoria', 'Barre y lanza por los aires; con un aliado, os une y os cura'],
@@ -5914,7 +5942,8 @@ function chargedSlot(c, p) {
   if (c.shotMode === 'frost') { const m = FROST_MODE[p ? frostModeOf(p) : 0]; return { icon: m.icon, title: 'Disparo: ' + m.name, desc: m.desc }; }
   if (c.shotMode === 'heat') return { icon: 'heat', title: 'Fuego continuo: Ráfaga', desc: 'Sin carga; si no paras, se sobrecalienta' };
   if (c.shotMode === 'launcher') return { icon: 'sticky', title: 'Disparo cargado: Carga pegajosa', desc: 'Cargador de 3. Se pega a enemigo, compañero o suelo; estalla con el Detonador' };
-  if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: 'Sin carga ni calentamiento' };
+  // if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: 'Sin carga ni calentamiento' };
+  if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: c.gatling ? 'Coge velocidad al mantenerlo; se sobrecalienta' : 'Sin carga ni calentamiento' };
   return { icon: 'chargedShot', title: 'Disparo cargado: Tiro perforante', desc: 'Mantén y suelta: hasta ×' + c.chargeMaxMul + ' de daño y atraviesa' };
 }
 // Golpes especiales: salen solos según cómo atacas (tras moverte, avanzando hacia el fijado o retrocediendo)
@@ -5950,7 +5979,7 @@ function shotText(c) {
   if (c.shotMode === 'frost') return 'Ondas continuas; cargando, bola de nieve';
   if (c.shotStyle === 'revolver') return 'Revólver de 6 balas; cargado vacía el tambor; tras moverte, Bravata';
   if (!c.canShoot) return 'Sin disparo';
-  if (c.shotMode === 'auto') return c.postMoveMissile ? 'Continuo; tras moverte, misil teledirigido (y otro de la torreta)' : 'Instantáneo y continuo, sin carga';
+  if (c.shotMode === 'auto') return c.postMoveMissile ? 'Continuo, cada vez más rápido y con calor; tras moverte, misil teledirigido (y otro de la torreta)' : 'Instantáneo y continuo, sin carga';
   if (c.shotMode === 'heat') return 'Ráfaga instantánea que se sobrecalienta';
   if (c.shotMode === 'launcher') return 'Granadas en arco que rebotan y estallan al tocar; tras esquivar, muñeco bomba';
   if (c.shotType === 'hitscan') return 'Instantáneo, cargable';
@@ -6823,7 +6852,10 @@ function drawRangedWeapon(p) {
       const ox = -uy * off, oy = ux * off * 0.8;
       ctx.strokeStyle = '#16121e'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(gx + ux * 8 + ox, gy + uy * 6 + oy); ctx.lineTo(gx + ux * L + ox, gy + uy * L * 0.8 + oy); ctx.stroke();
       ctx.strokeStyle = shade; ctx.lineWidth = 2; ctx.stroke();
+      const hot = c.gatling ? Math.max(0, ((p.heat || 0) - 0.4) / 0.6) : 0; // con calor, los cañones se ponen al rojo
+      if (hot > 0) { ctx.globalAlpha = Math.min(1, hot) * (p.overheat > 0 ? 0.6 + 0.4 * Math.sin(time * 20) : 0.9); ctx.strokeStyle = '#ff5a2a'; ctx.stroke(); ctx.globalAlpha = 1; }
     }
+    if (c.gatling && p.overheat > 0 && Math.random() < 0.3) particles.push({ x: p.x + ux * 30, y: p.y + uy * 22, vx: (Math.random() - 0.5) * 16, vy: -30, life: 0.5, max: 0.5, color: '#8a8494', s: 3 }); // humo
     ctx.fillStyle = c.color; ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(gx - ux * 3, gy - uy * 2, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); // tambor
   } else if (st === 'book') {
     const [bx, by] = bookPos(p), glow = p.beaming ? 1 : 0.35;
@@ -7362,6 +7394,13 @@ function drawShotState(p) {
         ctx.beginPath(); ctx.arc(x0 + i * gap, y, bv ? 2.2 : 1.8, 0, Math.PI * 2); ctx.fill();
       }
     }
+  }
+  if (c.gatling && (p.heat > 0 || p.spin > 0)) { // gatling: calor (barra) y giro (línea fina debajo)
+    const w = 30, x = p.x - w / 2, y = p.y + 9;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(x - 1, y - 1, w + 2, 8);
+    ctx.fillStyle = p.overheat > 0 ? (Math.floor(time * 12) % 2 ? '#ff3b3b' : '#ff8f6b') : (p.heat > 0.7 ? '#ff7a3d' : '#f5c542');
+    ctx.fillRect(x, y, w * p.heat, 4);
+    ctx.fillStyle = p.overchargeT > 0 ? '#ffe066' : '#c9b8ff'; ctx.fillRect(x, y + 5, w * (p.spin || 0), 1.5);
   }
   if (c.shotMode === 'heat' && p.heat > 0) {
     const w = 30, x = p.x - w / 2, y = p.y + 9;
