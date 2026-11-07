@@ -251,7 +251,7 @@ const AB = {
                chargeTime: 1.2, chargeDist0: 100, chargeDist1: 240, chargeSpeed: 520, chargeDmg: 0.5, chargeKb: 680 }, // Escudo en alto (Ceniza) y su embestida cargada
   grenade:   { range: 320, r: 55, dmg: 1, fly: 0.55 },
   ricochet:  { chargeTime: 1, maxMul: 2, groundHops: 2, firstMul: 1.6 }, // el primer objetivo siempre recibe ×1,6 // Disparo rebotante (Marea): mantener carga hasta ×2 de daño; en el suelo salta a dos más
-  frostburst: { range: 360, r: 50, dmg: 1, time: 2.5 }, // Estallido helado (Escarcha): congela; en el aire, se rompe
+  frostburst: { range: 360, r: 50, dmg: 1, time: 2.5, chargeTime: 1.2, maxMul: 1.6 }, // Estallido helado (Escarcha): congela; en el aire, se rompe
   roots:     { dist: 160, r: 80, delay: 0.3, time: 2.5, sta: 0.3 }, // Raíces (Musgo): inmovilizan
   pull:      { r: 190, sta: 0.2 },
   blink:     { dist: 180, width: 34, sta: 0.3, dmg: 1 },
@@ -300,7 +300,8 @@ const JUMP = {
 // Doble salto de Escarcha: cada pulsación del botón de movimiento salta con una voltereta (dos saltos hasta aterrizar)
 const FLIP = { h1: 50, h2: 40, g: 900, speed: 230, drag: 1.0, spin: 0.42, maxT: 1.6 }; // maxT: ningún salto dura más de esto // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
 // Estalactita de hielo: cae sobre donde estás y explota con daño de área (no te hace daño a ti ni a tus aliados)
-const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 20 }; // congelados por el Estallido: tier 1-2 mueren; tier 3-4 reciben daño extra
+const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 10 };
+const SNOW_FROZEN_DMG = 10; // bono de daño de la bola de nieve contra tier 3-4 y jefes congelados // congelados por el Estallido: tier 1-2 mueren; tier 3-4 reciben daño extra
 // Disparo básico de Escarcha: la habilidad secundaria cambia entre estos tres modos
 const FROST_MODE = [
   { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo; cada tic quita más estamina, hasta el doble. Si aturde, congela' },
@@ -2769,19 +2770,21 @@ function frostTarget(p) {
   const n = nearestTarget(p);
   return n && Math.hypot(n.x - p.x, n.y - p.y) <= AB.frostburst.range ? n : null;
 }
+function frostburstR(p) { return AB.frostburst.r * (1 + (AB.frostburst.maxMul - 1) * Math.min(1, (p.castT || 0) / AB.frostburst.chargeTime)); }
 function castFrostburst(p) {
   const tg = frostTarget(p);
   if (!tg) return false;
+  const R = frostburstR(p);
   const dmg = AB.frostburst.dmg * ABILITY_MUL;
   for (const e of liveTargets()) {
-    if (Math.hypot(e.x - tg.x, e.y - tg.y) > AB.frostburst.r + e.r) continue;
+    if (Math.hypot(e.x - tg.x, e.y - tg.y) > R + e.r) continue;
     damageEnemy(e, tg.x, tg.y, dmg, dmg, 0);
     if (e.dead) continue;
     freezeEnemy(e, true);
   }
   p.lockOn = true; p.target = tg;
-  effects.push({ type: 'ring', x: tg.x, y: tg.y, r: AB.frostburst.r, t: 0, dur: 0.35, color: '#bfeaf5' });
-  effects.push({ type: 'ring', x: tg.x, y: tg.y, r: AB.frostburst.r * 0.5, t: 0, dur: 0.25, color: '#ffffff' });
+  effects.push({ type: 'ring', x: tg.x, y: tg.y, r: R, t: 0, dur: 0.35, color: '#bfeaf5' });
+  effects.push({ type: 'ring', x: tg.x, y: tg.y, r: R * 0.5, t: 0, dur: 0.25, color: '#ffffff' });
   burst(tg.x, tg.y - 14 - (tg.z || 0), '#bfeaf5', 24); shake = Math.max(shake, 4); SFX.exec();
 }
 // Un enemigo congelado en el aire se hace añicos y muere
@@ -2825,7 +2828,9 @@ function updateFrostShot(p, inp, dt) {
 // Un misil de un mismo disparo: daño de vida y estamina; con dos impactos ralentiza; con los tres congela
 // Congelar: mismas reglas para el Estallido helado (fromBurst) y para los misiles
 function freezeEnemy(e, fromBurst, time) {
-  e.frozenT = e.type === 'boss' ? 1 : (time || AB.frostburst.time); e.frozenAir = !!e.airborne; e.frozenBurst = !!fromBurst; e.kbx = e.kby = 0;
+  const was = e.frozenT > 0, t = e.type === 'boss' ? 1 : (time || AB.frostburst.time);
+  if (was) { e.frozenT = Math.max(e.frozenT, t); e.frozenBurst = e.frozenBurst || !!fromBurst; return; } // ya congelado: solo amplía el tiempo
+  e.frozenT = t; e.frozenBurst = !!fromBurst; e.frozenAir = !!e.airborne; e.kbx = e.kby = 0;
   if (e.frozenAir) floatText(e.x, upY(e.y, 50 + e.z), 'Congelado', '#bfeaf5');
 }
 // Lo que se ve mientras cargas: cristales alrededor del libro (misiles) y círculo de invocación (bola de nieve)
@@ -3150,7 +3155,7 @@ function drawPreviews() {
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + Math.cos(a) * AB.vine.len, p.y + Math.sin(a) * AB.vine.len); ctx.stroke();
       ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, AB.vine.len * 0.6, a, a + 1.2); ctx.stroke(); // sentido del giro
     }
-    else if (type === 'frostburst') { const tg = frostTarget(p); if (tg) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(tg.x, tg.y); ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); circle(tg.x, tg.y, AB.frostburst.r); } }
+    else if (type === 'frostburst') { const tg = frostTarget(p); if (tg) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(tg.x, tg.y); ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); circle(tg.x, tg.y, frostburstR(p)); } }
     else if (type === 'grenade') { // arco de la granada y radio de la explosión
       const [x, y] = grenadePoint(p)[0];
       ctx.globalAlpha = 0.85; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
@@ -3797,6 +3802,7 @@ function launchable(e, force) {
 // force: lanza aunque tenga más de la mitad de estamina (habilidad de área)
 function tryLaunch(e, force) {
   if (!launchable(e, force)) return false;
+  if (e.frozenT > 0 && e.type !== 'boss') { e.hp = 0; killEnemy(e, true); return false; } // congelado en el suelo y lanzado por los aires: se rompe
   e.airborne = true; e.z = 1; e.vz = LAUNCH_VZ; e.kbx *= 0.2; e.kby *= 0.2; e.state = 'walk';
   floatText(e.x, e.y - 40, '¡Al aire!', '#ffffff'); burst(e.x, e.y, '#d8cfe6', 10); SFX.launch();
   return true;
@@ -4223,7 +4229,12 @@ function update(dt) {
       if (e.dead || e.spawnT > 0) continue;
       if (b.aim && !e.airborne && b.h > 40) continue; // ya va por encima de los enemigos del suelo
       if (Math.hypot(e.x - b.x, e.y - b.y) < e.r + b.r) {
-        if (b.snow && e.frozenT > 0 && e.type !== 'boss') { if (b.hit.has(e)) continue; b.hit.add(e); e.hp = 0; killEnemy(e, true); continue; } // la bola de nieve destroza a los congelados
+        if (b.snow && e.frozenT > 0) { // bola de nieve contra congelado: tier 1-2 se rompen; tier 3-4 y jefes reciben daño extra
+          if (b.hit.has(e)) continue; b.hit.add(e);
+          if (e.type !== 'boss' && e.tier <= 2) { e.hp = 0; killEnemy(e, true); }
+          else shotHit(b.owner, e, b.dmg + SNOW_FROZEN_DMG, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
+          continue;
+        }
         if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); }
         else { shotHit(b.owner, e, b.dmg, 110, b.x - b.vx * 0.05, b.y - b.vy * 0.05); b.life = 0; break; }
       }
@@ -4383,7 +4394,7 @@ const ABILITY_TEXT = {
   vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
   taunt: ['Provocación', 'Atrae a los enemigos; su guardia cubre todo'],
   grenade: ['Granada', 'En arco al fijado: explota y lo lanza'],
-  frostburst: ['Estallido helado', 'Congela al fijado; en el aire, se rompe'],
+  frostburst: ['Estallido helado', 'Mantén para ampliar el área; congela a los que están dentro; en el aire, se rompe'],
   frostMode: ['Cambio de disparo', 'Cambia entre rayo, misiles de cristal y bola de nieve'],
   roots: ['Raíces', 'Inmovilizan a los enemigos de una zona'],
   reaper: ['Puño ejecutor', 'Salta al ejecutable más cercano y lo ejecuta; si no hay, golpea al más cercano'],
