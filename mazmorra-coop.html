@@ -978,6 +978,7 @@ cvs.addEventListener('pointerdown', e => {
     for (let i = 0; i < OPT_TABS.length; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
     for (let r = 1; r <= optList().length + 2; r++) if (inside(optRowRect(r))) { OPT.row = r; activateOptRow(); return; }
   } else if (state === 'tutorial') {
+    TUT.input = e.pointerType === 'touch' ? 'touch' : (TUT.input === 'touch' ? 'kb' : TUT.input);
     const g = tutGeo();
     if (!inside([g.px, g.py, g.pw, g.ph])) { tutClose(); return; } // toque o clic fuera de la ventana: cierra
     for (let i = 0; i < TUT_TABS.length; i++) if (inside(tutTabRect(i))) { TUT.tab = i; TUT.at = 0; return; }
@@ -6421,8 +6422,11 @@ function drawOver() {
 // Se abre al empezar cada run: una vez por personaje del grupo, en orden, con el juego en pausa.
 // Pestañas: Golpes, Habilidades y Estrategia. Atacar pasa de pestaña (en la última, al siguiente personaje o a jugar);
 // Movimiento, Esc o un toque/clic fuera de la ventana lo cierran. Se desactiva en Opciones > General.
+// Las animaciones usan los mismos dibujos del juego (personaje, arma, golpes y efectos). El botón que se muestra
+// cambia según el dispositivo: tecla (teclado), botón de cara (mando) o botón táctil (móvil).
 const TUT_TABS = ['Golpes', 'Habilidades', 'Estrategia'];
-const TUT = { on: (() => { try { return localStorage.getItem('mz-tutorial') !== '0'; } catch (_) { return true; } })(), queue: [], idx: 0, tab: 0, at: 0, t: 0 };
+const TUT_PERIOD = 2.1; // cada animación se repite cada 2,1 s
+const TUT = { on: (() => { try { return localStorage.getItem('mz-tutorial') !== '0'; } catch (_) { return true; } })(), queue: [], idx: 0, tab: 0, at: 0, t: 0, input: 'kb', cache: {} };
 function setTutOn(v) { TUT.on = v; try { localStorage.setItem('mz-tutorial', v ? '1' : '0'); } catch (_) {} }
 function startTutorial() {
   if (!TUT.on) return;
@@ -6430,6 +6434,7 @@ function startTutorial() {
   for (const p of players) if (!seen.includes(p.ch)) seen.push(p.ch);
   if (!seen.length) return;
   TUT.queue = seen; TUT.idx = 0; TUT.tab = 0; TUT.at = 0; TUT.t = 0;
+  TUT.input = isTouch ? 'touch' : (pads.some(g => g && g.connected) ? 'pad' : 'kb');
   state = 'tutorial';
 }
 function tutAdvance() {
@@ -6441,6 +6446,9 @@ function tutAdvance() {
 function tutClose() { resume(); }
 function updateTutorial(dt) {
   TUT.at += dt; TUT.t += dt;
+  // Se muestra el botón del dispositivo que se está usando
+  if (DEVICES.some(d => d.startsWith('pad') && (readDevice(d).a || readDevice(d).d))) TUT.input = 'pad';
+  else if (keys.size) TUT.input = 'kb';
   if (pausePressed()) { tutClose(); return; } // Esc / Start también cierran
   if (TUT.t < 0.35) return; // margen: no consume el golpe que abrió la pantalla
   for (const dev of DEVICES) {
@@ -6451,56 +6459,80 @@ function updateTutorial(dt) {
   }
 }
 // Geometría de la ventana (la misma para dibujar y para los toques)
-function tutGeo() { const pw = Math.min(W - 24, 680), ph = Math.min(H - 24, 520); return { px: (W - pw) / 2, py: (H - ph) / 2, pw, ph }; }
+function tutGeo() { const pw = Math.min(W - 24, 680), ph = Math.min(H - 24, 560); return { px: (W - pw) / 2, py: (H - ph) / 2, pw, ph }; }
 function tutTabRect(i) { const g = tutGeo(), tw = (g.pw - 36 - 2 * 8) / 3; return [g.px + 18 + i * (tw + 8), g.py + 62, tw, 30]; }
-function tutBtn(next) { const g = tutGeo(); return next ? [g.px + g.pw - 18 - 170, g.py + g.ph - 50, 170, 32] : [g.px + 18, g.py + g.ph - 50, 110, 32]; }
-// Animación de la caja: personaje a la izquierda, enemigo de prueba a la derecha que se marca al recibir el golpe
-const TUT_ANIM_OF = { beam: 'line', rush: 'line', area: 'ring', drop: 'ring', raiseShield: 'pulse', taunt: 'pulse', shieldThrow: 'proj', vine: 'ring', roots: 'ring',
-  frostburst: 'proj', frostMode: 'pulse', volley: 'line', overdrive: 'pulse', grenade: 'proj', ricochet: 'proj', turret: 'pulse', overcharge: 'pulse',
-  reaper: 'line', dragon: 'pulse' };
-const TUT_MOVE_ANIM = { dash: 'line', stride: 'line', teleport: 'line', jump: 'proj', flip: 'proj', block: 'pulse' };
-const TUT_CHARGED_ANIM = { seismic: { shape: 'disc', r: 80 }, arcane: { shape: 'disc', r: 80, reach: 60 }, uppercut: { shape: 'thrust', len: 115, width: 56 }, starfall: { shape: 'disc', r: 55, reach: 80 } };
-const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas' };
-function tutAnim(s, x, y, w, h, col, k) {
+// Botón grande de «seguir» (abajo a la derecha) y de «cerrar» (abajo a la izquierda)
+function tutBtn(next) { const g = tutGeo(); return next ? [g.px + g.pw - 18 - 216, g.py + g.ph - 100, 216, 86] : [g.px + 18, g.py + g.ph - 52, 110, 32]; }
+function tutLabel(id) {
+  if (TUT.input === 'touch') return '';
+  const s = bindName(TUT.input === 'pad' ? 'pad' : 'kb1', id);
+  return s.split(' / ')[0];
+}
+// Botón dibujado según el dispositivo: tecla, botón de cara del mando o dedo sobre el botón táctil.
+// Devuelve el ancho que ocupa.
+const PAD_COL = { A: '#7ee08a', B: '#ff6b6b', X: '#7ab8ff', Y: '#ffd54a' };
+function tutPrompt(x, y, h, col) {
+  const kind = TUT.input;
+  ctx.save();
+  if (kind === 'pad') {
+    const r = h / 2, cx = x + r, cy = y + r, lab = tutLabel('atk'), fill = PAD_COL[lab] || col;
+    ctx.beginPath(); ctx.arc(cx, cy + 4, r - 2, 0, Math.PI * 2); ctx.fillStyle = '#0c0912'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r - 3, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = '#16121e'; ctx.font = '800 ' + Math.round(h * 0.44) + 'px ' + FONT;
+    ctx.fillText(lab, cx, cy + h * 0.16);
+    ctx.restore(); return h;
+  }
+  if (kind === 'touch') {
+    const r = h / 2, cx = x + r, cy = y + r, k = 0.5 + 0.5 * Math.sin(time * 5);
+    ctx.beginPath(); ctx.arc(cx, cy, r + 3 + k * 7, 0, Math.PI * 2); ctx.strokeStyle = col; ctx.globalAlpha = 0.45 - k * 0.3; ctx.lineWidth = 3; ctx.stroke();
+    ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(cx, cy, r - 3, 0, Math.PI * 2); ctx.fillStyle = col + '44'; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.22, 0, Math.PI * 2); ctx.fillStyle = '#f2eefa'; ctx.fill(); // el dedo
+    ctx.restore(); return h;
+  }
+  // teclado: tecla con su base
+  const lab = tutLabel('atk'), fh = h - 8;
+  ctx.font = '800 ' + Math.round(h * 0.3) + 'px ' + FONT;
+  const w = Math.max(h, ctx.measureText(lab).width + 30);
+  ctx.beginPath(); rrect(x, y + 8, w, fh, 10); ctx.fillStyle = '#0c0912'; ctx.fill();
+  rrect(x, y, w, fh, 10); ctx.fillStyle = '#3b3349'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.fillText(lab, x + w / 2, y + fh / 2 + h * 0.11);
+  ctx.restore(); return w;
+}
+// Animación de un golpe o habilidad, con los dibujos del juego. Cada ciclo reinicia el personaje, el golpe y los efectos.
+function tutStage(it, x, y, w, h, c, off) {
+  const sp = it.spec;
   rrect(x, y, w, h, 8); ctx.fillStyle = '#0f0c16'; ctx.fill();
   ctx.save(); ctx.beginPath(); ctx.rect(x + 1, y + 1, w - 2, h - 2); ctx.clip();
-  const cx = x + w * 0.2, cy = y + h / 2, ext = s.len || s.range || ((s.reach || 0) + (s.r || 0)) || 60;
-  const sc = Math.min(1, (w * 0.72) / ext), E = ext * sc, ex = cx + E * 0.72, ey = cy;
-  const g = Math.min(1, k * 1.5), fade = k < 0.6 ? 1 : Math.max(0, 1 - (k - 0.6) / 0.4);
-  const hit = k > 0.5 && k < 0.95;
-  ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.arc(ex, ey, 6, 0, Math.PI * 2); ctx.fillStyle = hit ? '#ffffff' : '#6d6480'; ctx.fill();
-  ctx.globalAlpha = fade; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 3;
-  switch (s.shape) {
-    case 'arc': { const a = s.arc || 1; ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, s.range * sc), -a / 2, -a / 2 + a * g); ctx.stroke(); break; }
-    case 'spin': case 'wave': ctx.beginPath(); ctx.arc(cx, cy, Math.max(2, (s.range || 40) * sc * g), 0, Math.PI * 2); ctx.stroke(); break;
-    case 'ring': ctx.beginPath(); ctx.arc(ex, ey, 6 + 22 * g, 0, Math.PI * 2); ctx.stroke(); break;
-    case 'pulse': ctx.beginPath(); ctx.arc(cx, cy, 12 + 24 * g, 0, Math.PI * 2); ctx.stroke(); break;
-    case 'thrust': case 'line': {
-      const L = (s.len || 110) * sc * g, hw = Math.max(2, (s.width || 6) * sc / 2);
-      ctx.globalAlpha = fade * 0.55; ctx.fillRect(cx, cy - hw, L, hw * 2);
-      ctx.globalAlpha = fade; ctx.strokeRect(cx, cy - hw, L, hw * 2); break;
-    }
-    case 'disc': {
-      const dx = (s.reach || 0) * sc, R = Math.max(3, (s.r || 30) * sc * g);
-      ctx.beginPath(); ctx.arc(cx + dx, cy, R, 0, Math.PI * 2); ctx.globalAlpha = fade * 0.35; ctx.fill();
-      ctx.globalAlpha = fade; ctx.stroke(); break;
-    }
-    default: { // 'shot' y 'proj': un proyectil que avanza hacia el enemigo
-      const px = cx + (ex - cx) * g, py = cy - (s.shape === 'proj' ? Math.sin(Math.PI * g) * 18 : 0);
-      ctx.globalAlpha = fade * 0.35; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
-      ctx.globalAlpha = fade; ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill(); break;
-    }
+  const T = TUT.at + off, cyc = Math.floor(T / TUT_PERIOD), el = T - cyc * TUT_PERIOD;
+  if (it.cyc !== cyc) {
+    it.cyc = cyc;
+    it.fx = sp.fx.map(f => Object.assign({}, f));
+    it.slash = sp.slash ? { def: sp.slash, t: 0, dur: sp.dur, ang: 0, hit: new Set() } : null;
   }
-  ctx.globalAlpha = 1;
-  ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#0f0c16'; ctx.stroke();
+  const sc = Math.min(1, (w * 0.84) / sp.ext);
+  ctx.translate(x + w * 0.16, y + h * 0.66); ctx.scale(sc, sc);
+  const k = Math.sin(Math.PI * Math.min(1, el / sp.dur));
+  const lunge = sp.lunge ? sp.lunge * k : 0, z = sp.jump ? 34 * k : 0;
+  if (!sp.noEnemy) { // enemigo de prueba: se pone blanco al recibir el golpe
+    const hit = el > sp.hitAt && el < sp.hitAt + 0.35;
+    ctx.beginPath(); ctx.arc(sp.ext * 0.7, -9, 8, 0, Math.PI * 2); ctx.fillStyle = hit ? '#ffffff' : '#6d6480'; ctx.fill();
+  }
+  const demo = { x: lunge, y: 0, z, r: 12 * c.size, ch: c, color: c.color, slotColor: '#b49bff', ax: 1, ay: 0, prev: {}, gatSpin: time * 3, beaming: false, shotHold: true, down: false, slash: null, ammo: c.ammo || 0 };
+  drawFigure(lunge, 0, c, c.size, z);
+  drawCharWeapon(demo);
+  if (it.slash && el < sp.dur) { it.slash.t = el; demo.slash = it.slash; drawSlash(demo); }
+  const saved = effects, vis = [];
+  for (const f of it.fx) { f.t = el - (f.d0 || 0); if (f.t >= 0 && f.t < f.dur) vis.push(f); }
+  effects = vis; drawEffects(); effects = saved;
   ctx.restore();
 }
 // Una tarjeta: animación a la izquierda, nombre, subtítulo y descripción
-function tutCard(it, x, y, w, h, c, k) {
+function tutCard(it, x, y, w, h, c, off) {
   rrect(x, y, w, h, 8); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
-  const sw = Math.min(112, Math.round(w * 0.4));
-  tutAnim(it.anim, x + 6, y + 6, sw, h - 12, c.color, k);
+  const sw = Math.min(150, Math.round(w * 0.42));
+  tutStage(it, x + 6, y + 6, sw, h - 12, c, off);
   const tx = x + sw + 16, tw = x + w - tx - 8;
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f2eefa'; fitText(it.name, tx, y + 20, tw, '700', 14);
@@ -6508,7 +6540,59 @@ function tutCard(it, x, y, w, h, c, k) {
   ctx.fillStyle = '#d8d0e6'; ctx.font = '400 12px ' + FONT;
   wrapText(it.desc, tx, y + 52, tw, 15, Math.max(1, Math.floor((h - 58) / 15)));
 }
-function tutK(i) { return Math.min(1, ((TUT.at + i * 0.3) % 1.8) / 1.4); }
+function tutK(i) { return i * 0.45; } // desfase entre tarjetas para que no se muevan a la vez
+// Especificaciones de animación: golpe cuerpo a cuerpo, disparo, habilidad y movimiento
+function tutSpecMelee(d, c) {
+  const lunge = d.lunge > 0 ? Math.min(d.lunge * 0.3, 70) : d.lunge < 0 ? d.lunge * 0.3 : 0;
+  const reach = Math.max(d.len || 0, d.range || 0, (d.reach || 0) + (d.r || 0), 30);
+  const ext = reach * 1.45 + Math.abs(lunge) + 10, hitAt = (d.dur || 0.3) * 0.6;
+  const fx = [{ type: 'ring', x: ext * 0.7, y: -9, r: 10, color: '#ffffff', d0: hitAt, dur: 0.22 }];
+  if (d.wave) fx.push({ type: 'arcWave', x: 0, y: 0, r: d.range, a0: 0, color: c.color, dur: 0.42 });
+  return { slash: d, dur: d.dur || 0.35, lunge, ext, hitAt, fx };
+}
+function tutSpecShot(c) {
+  return { ext: 150, dur: 0.25, hitAt: 0.16, noLunge: true, fx: [
+    { type: 'muzzle', x: 12, y: -16, ang: 0, color: '#ffd54a', s: 0.55, dur: 0.1 },
+    { type: 'tracer', x: 12, y: -16, ax: 1, ay: 0, len: 105, w: 3, z2: 0, color: c.color, d0: 0.03, dur: 0.2 },
+    { type: 'ring', x: 105, y: -9, r: 10, color: '#ffffff', d0: 0.16, dur: 0.22 }] };
+}
+function tutSpecAbility(type, c) {
+  const col = c.color, E = 150, far = 105, base = { ext: E, dur: 0.4, hitAt: 0.25, fx: [] };
+  const ring = (x, y, r, color, d0, dur) => ({ type: 'ring', x, y, r: Math.min(r, 110), color, d0: d0 || 0, dur: dur || 0.35 });
+  const tr = (len, w, color) => ({ type: 'tracer', x: 0, y: -8, ax: 1, ay: 0, len, w, z2: 0, color, d0: 0, dur: 0.22 });
+  switch (type) {
+    case 'raiseShield': return Object.assign(base, { noEnemy: true, fx: [ring(0, 0, AB.shield.r, col, 0, 0.4)] });
+    case 'shieldThrow': return Object.assign(base, { hitAt: 0.35, fx: [{ type: 'tracer', x: 0, y: -8, ax: 1, ay: 0, len: 140, w: 16, z2: 0, color: col, d0: 0, dur: 0.35 }, ring(far, -9, AB.shieldThrow.r, col, 0.3, 0.3)] });
+    case 'taunt': return Object.assign(base, { noEnemy: true, fx: [ring(0, 0, AB.taunt.r, '#ff6b6b', 0, 0.45)] });
+    case 'overdrive': return Object.assign(base, { fx: [ring(0, 0, AB.overdrive.r, '#ff8a3d', 0, 0.4)] });
+    case 'frostMode': return Object.assign(base, { noEnemy: true, fx: [ring(0, 0, 30, '#bfeaf5', 0, 0.3), ring(0, 0, 18, '#ffffff', 0.1, 0.25)] });
+    case 'overcharge': return Object.assign(base, { noEnemy: true, fx: [ring(0, 0, AB.overcharge.healR * 0.35, '#7ee08a', 0, 0.4)] });
+    case 'dragon': return Object.assign(base, { fx: [ring(0, 0, 26, '#ffe066', 0, 0.35), { type: 'dragon', x: 0, y: -8, ax: 1, ay: 0, len: 110, w: 40, color: col, d0: 0.05, dur: 0.35 }] });
+    case 'roots': return Object.assign(base, { fx: [ring(far, -9, AB.roots.r, col, 0, 0.4)] });
+    case 'frostburst': return Object.assign(base, { fx: [ring(far, -9, AB.frostburst.r, '#bfeaf5', 0, 0.35), ring(far, -9, AB.frostburst.r * 0.5, '#ffffff', 0.1, 0.25)] });
+    case 'grenade': return Object.assign(base, { fx: [ring(far, -9, AB.grenade.r, '#ffb347', 0, 0.3), ring(far, -9, AB.grenade.r * 0.5, '#ffffff', 0.05, 0.2)] });
+    case 'drop': return Object.assign(base, { fx: [ring(far, -9, c.dropRadius || 60, col, 0, 0.35)] });
+    case 'area': return Object.assign(base, { fx: [ring(far, -9, c.secRadius || 90, col, 0, 0.35)] });
+    case 'turret': return Object.assign(base, { noEnemy: true, fx: [ring(0, 0, 20, col, 0, 0.35)] });
+    case 'vine': return Object.assign(base, { fx: [{ type: 'vines', x: far, y: -9, r: 60, color: col, d0: 0, dur: 0.6 }] });
+    case 'volley': return Object.assign(base, { hitAt: 0.15, fx: [-0.25, 0, 0.25].map(a => ({ type: 'tracer', x: 0, y: -8, ax: Math.cos(a), ay: Math.sin(a), len: E * 0.85, w: 3, z2: 0, color: col, d0: 0, dur: 0.22 })) });
+    case 'ricochet': return Object.assign(base, { hitAt: 0.3, fx: [tr(E * 0.85, 3, col), ring(far, -9, 9, col, 0.3, 0.22)] });
+    case 'reaper': return Object.assign(base, { hitAt: 0.2, fx: [{ type: 'cone', x: 0, y: 0, ang: 0, r: 100, arc: AB.reaper.arc, color: col, d0: 0, dur: 0.3 }] });
+    case 'beam': case 'rush': return Object.assign(base, { hitAt: 0.15, fx: [{ type: 'beam', x: 0, y: -8, ax: 1, ay: 0, len: E * 0.9, w: c.priWidth || 20, color: col, d0: 0, dur: 0.3 }] });
+    default: return Object.assign(base, { fx: [ring(far, -9, 30, col, 0, 0.35)] });
+  }
+}
+function tutSpecMove(type, c) {
+  const col = c.color, base = { ext: 150, dur: 0.4, hitAt: 9, noEnemy: true, fx: [] };
+  const ring = (x, y, r, color, d0, dur) => ({ type: 'ring', x, y, r, color, d0: d0 || 0, dur: dur || 0.3 });
+  switch (type) {
+    case 'stride': return Object.assign(base, { fx: [{ type: 'tracer', x: 0, y: -8, ax: 1, ay: 0, len: 60, w: 8, z2: 0, color: col, d0: 0, dur: 0.2 }] });
+    case 'teleport': return Object.assign(base, { fx: [{ type: 'dragon', x: 0, y: -8, ax: 1, ay: 0, len: 110, w: 40, color: col, d0: 0, dur: 0.35 }, ring(0, 0, 14, col, 0.3, 0.3)] });
+    case 'jump': case 'flip': return Object.assign(base, { jump: true, fx: [ring(0, 0, 16, col, 0.4, 0.3)] });
+    case 'block': return Object.assign(base, { fx: [ring(0, 0, 22, '#bfeaf5', 0, 0.3)] });
+    default: return Object.assign(base, { fx: [{ type: 'ghost', x: 0, y: -14 * c.size, r: 12 * c.size, color: col, d0: 0, dur: 0.2 }, { type: 'tracer', x: 0, y: -8, ax: 1, ay: 0, len: 110, w: 10, z2: 0, color: col, d0: 0.02, dur: 0.2 }] });
+  }
+}
 // Golpes del personaje: cuerpo a cuerpo (su juego de golpes) o disparo y especiales si es tirador/ágil
 function tutMoveItems(c) {
   const out = [], K = c.meleeKit || {};
@@ -6518,13 +6602,13 @@ function tutMoveItems(c) {
     const order = [['normal', 'Ataque · combo'], ['normal2', 'Ataque · combo'], ['heavy', 'Golpe fuerte'], ['afterMove', 'Tras moverte'], ['toward', 'Avanzando'], ['away', 'Retrocediendo']];
     for (const [key, label] of order) {
       const d = K[key]; if (!d) continue;
-      out.push({ name: d.name, sub: c.finisher === key ? 'Remate del combo' : label, desc: dmgOf(d), anim: d });
+      out.push({ name: d.name, sub: c.finisher === key ? 'Remate del combo' : label, desc: dmgOf(d), spec: tutSpecMelee(d, c) });
     }
-    if (c.finisher === 'flurry' && K.flurry) out.push({ name: K.flurry.name, sub: 'Remate del combo', desc: 'Cinco puñetazos seguidos; no lanza.', anim: { shape: 'thrust', len: 60, width: 30 } });
-    if (c.chargedMelee && CHARGED_TEXT[c.chargedMelee]) { const t = CHARGED_TEXT[c.chargedMelee]; out.push({ name: t[0], sub: 'Mantener Atacar', desc: t[1] + '.', anim: TUT_CHARGED_ANIM[c.chargedMelee] }); }
+    if (c.finisher === 'flurry' && K.flurry) out.push({ name: K.flurry.name, sub: 'Remate del combo', desc: 'Cinco puñetazos seguidos; no lanza.', spec: tutSpecMelee({ shape: 'thrust', len: 60, width: 30, dur: 0.3 }, c) });
+    if (c.chargedMelee && CHARGED_TEXT[c.chargedMelee]) { const t = CHARGED_TEXT[c.chargedMelee]; out.push({ name: t[0], sub: 'Mantener Atacar', desc: t[1] + '.', spec: tutSpecMelee(Object.assign({ dur: 0.35 }, TUT_CHARGED_ANIM[c.chargedMelee]), c) }); }
   } else {
-    out.push({ name: TUT_SHOT_NAME[c.shotStyle] || 'Disparo', sub: 'Atacar', desc: shotText(c) + '.', anim: { shape: 'shot' } });
-    specialSlots(c).forEach(s => out.push({ name: s.name, sub: s.kind, desc: s.body, anim: { shape: 'shot', len: 110 } }));
+    out.push({ name: TUT_SHOT_NAME[c.shotStyle] || 'Disparo', sub: 'Atacar', desc: shotText(c) + '.', spec: tutSpecShot(c) });
+    specialSlots(c).forEach(s => out.push({ name: s.name, sub: s.kind, desc: s.body, spec: tutSpecShot(c) }));
   }
   return out;
 }
@@ -6533,23 +6617,32 @@ function tutAbilityItems(c) {
   const out = [];
   const slot = (type, n, cd) => {
     const t = ABILITY_TEXT[type] || [type, ''], need = ABILITY_NEEDS[type];
-    out.push({ name: t[0], sub: 'Habilidad ' + n + (cd ? ' · recarga ' + fmtS(cd) : ''), desc: t[1] + (need ? '. ' + need + '.' : '.'), anim: { shape: TUT_ANIM_OF[type] || 'pulse', len: 110, r: 30 } });
+    out.push({ name: t[0], sub: 'Habilidad ' + n + (cd ? ' · recarga ' + fmtS(cd) : ''), desc: t[1] + (need ? '. ' + need + '.' : '.'), spec: tutSpecAbility(type, c) });
   };
   slot(c.priType, 1, c.priCd); slot(c.secType, 2, c.secCd);
+  if (c.secAlt) slot(c.secAlt, 2, AB.shieldThrow.cd); // alternativa de la habilidad 2 (Ceniza, con el escudo bajado)
   const mv = MOVES[c.moveType] || MOVES.dash;
-  out.push({ name: mv.name, sub: 'Movimiento' + (c.moveCd ? ' · pausa ' + fmtS(c.moveCd) : ''), desc: mv.desc + '.', anim: { shape: TUT_MOVE_ANIM[c.moveType] || 'line', len: 110 } });
+  out.push({ name: mv.name, sub: 'Movimiento' + (c.moveCd ? ' · pausa ' + fmtS(c.moveCd) : ''), desc: mv.desc + '.', spec: tutSpecMove(c.moveType, c) });
   return out;
 }
+// Las listas se construyen una vez por personaje y pestaña: así cada animación conserva su ciclo
+function tutItems(c, tab) {
+  const key = c.name + '|' + tab;
+  if (!TUT.cache[key]) TUT.cache[key] = tab === 0 ? tutMoveItems(c) : tutAbilityItems(c);
+  return TUT.cache[key];
+}
 function tutTabMoves(c, x, y, w, h) {
-  const items = tutMoveItems(c), rows = Math.ceil(items.length / 2), cw = (w - 8) / 2, rh = Math.min(118, (h - (rows - 1) * 8) / rows);
+  const items = tutItems(c, 0), rows = Math.ceil(items.length / 2), cw = (w - 8) / 2, rh = Math.min(122, (h - (rows - 1) * 8) / rows);
   items.forEach((it, i) => tutCard(it, x + (i % 2) * (cw + 8), y + Math.floor(i / 2) * (rh + 8), cw, rh, c, tutK(i)));
 }
 function tutTabAbilities(c, x, y, w, h) {
-  const items = tutAbilityItems(c), rh = Math.min(118, (h - (items.length - 1) * 8) / items.length);
+  const items = tutItems(c, 1), rh = Math.min(122, (h - (items.length - 1) * 8) / items.length);
   items.forEach((it, i) => tutCard(it, x, y + i * (rh + 8), w, rh, c, tutK(i)));
 }
+const TUT_CHARGED_ANIM = { seismic: { shape: 'disc', r: 80 }, arcane: { shape: 'disc', r: 80, reach: 60 }, uppercut: { shape: 'thrust', len: 115, width: 56 }, starfall: { shape: 'disc', r: 55, reach: 80 } };
+const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas' };
 const TUT_STRAT = {
-  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2) atrae a los enemigos cercanos hacia ti; úsala para proteger a un compañero herido.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
+  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
   'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
   'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
   'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
@@ -6569,7 +6662,7 @@ function tutTabStrategy(c, x, y, w) {
 }
 function drawTutorial() {
   const c = TUT.queue[TUT.idx]; if (!c) return;
-  const g = tutGeo(), x0 = g.px + 18, cw = g.pw - 36, top = g.py + 104, chh = g.py + g.ph - 60 - top;
+  const g = tutGeo(), x0 = g.px + 18, cw = g.pw - 36, top = g.py + 104, chh = g.py + g.ph - 124 - top;
   ctx.save();
   ctx.fillStyle = 'rgba(6,4,10,0.72)'; ctx.fillRect(0, 0, W, H);
   rrect(g.px, g.py, g.pw, g.ph, 12); ctx.fillStyle = '#16121e'; ctx.fill();
@@ -6587,16 +6680,20 @@ function drawTutorial() {
   if (TUT.tab === 0) tutTabMoves(c, x0, top, cw, chh);
   else if (TUT.tab === 1) tutTabAbilities(c, x0, top, cw, chh);
   else tutTabStrategy(c, x0, top, cw);
+  // Botón grande de «seguir» con el dibujo del dispositivo
   const lastTab = TUT.tab === TUT_TABS.length - 1, lastChar = TUT.idx === TUT.queue.length - 1;
   const nextLabel = lastTab ? (lastChar ? 'Empezar' : 'Siguiente personaje') : 'Siguiente';
   const [bx, by, bw, bh] = tutBtn(true), [cx2, cy2, cw2, ch2] = tutBtn(false);
-  rrect(bx, by, bw, bh, 8); ctx.fillStyle = '#2f2640'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = c.color; ctx.stroke();
+  rrect(bx, by, bw, bh, 12); ctx.fillStyle = '#2f2640'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = c.color; ctx.stroke();
+  const used = tutPrompt(bx + 14, by + 8, bh - 16, c.color);
+  ctx.textAlign = 'left'; ctx.fillStyle = '#f2eefa'; ctx.font = '800 20px ' + FONT;
+  fitText(nextLabel, bx + 14 + used + 14, by + bh / 2 + 7, bw - used - 42, '800', 20);
   rrect(cx2, cy2, cw2, ch2, 8); ctx.fillStyle = '#16121e'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
-  ctx.textAlign = 'center'; ctx.font = '700 14px ' + FONT;
-  ctx.fillStyle = '#f2eefa'; ctx.fillText(nextLabel, bx + bw / 2, by + 21);
-  ctx.fillStyle = '#b9afc9'; ctx.font = '600 14px ' + FONT; ctx.fillText('Cerrar', cx2 + cw2 / 2, cy2 + 21);
-  ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT;
-  ctx.fillText('Atacar (' + bindName('kb1', 'atk') + '): siguiente · ' + bindName('kb1', 'dash') + ' o clic fuera: cerrar', g.px + g.pw / 2, g.py + g.ph - 6);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#b9afc9'; ctx.font = '600 14px ' + FONT; ctx.fillText('Cerrar', cx2 + cw2 / 2, cy2 + 21);
+  // Pista de cierre: movimiento o toque/clic fuera de la ventana
+  ctx.textAlign = 'left'; ctx.fillStyle = '#8f86a0';
+  const hint = TUT.input === 'touch' ? 'Toca fuera de la ventana para cerrar' : 'Movimiento (' + tutLabel('dash') + ') o clic fuera: cerrar';
+  fitText(hint, g.px + 18, g.py + g.ph - 62, g.pw - 270, '400', 11);
   ctx.restore();
 }
 
