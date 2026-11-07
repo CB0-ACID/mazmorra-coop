@@ -57,3 +57,20 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
 - Repositorio: https://github.com/CB0-ACID/mazmorra-coop (rama main).
 - Publicado con GitHub Pages en https://cb0-acid.github.io/mazmorra-coop/ (index.html enlaza al juego y al laboratorio).
 - Los cambios se piden en el chat de Claude; Claude edita los archivos, hace commit y push a main, y la web se actualiza en uno o dos minutos.
+
+## Modo Asedio (prototipo, desde noviembre de 2026)
+- Se elige en el menú principal con el botón **Modo** (arriba a la izquierda, opción 8): Mazmorra o Asedio. Después se eligen jugadores y personajes como siempre.
+- Objetivo: defender la fortaleza contra oleadas. Diseño completo en tres fases (murallas, puerta, torre); el prototipo tiene solo la **fase 1: murallas exteriores**, 5 oleadas (unos 5 minutos; la partida completa apunta a 15).
+- **Zonas separadas** (cada una es una sala propia, para no pintar más de una a la vez): Muralla oeste, Patio de armas y Muralla este. Se viaja entre ellas con las **piedras de paso** (todo el grupo a la vez). Las zonas fuera de la vista se simulan de forma sencilla: los enemigos avanzan en línea recta y golpean objetivos, y trampas y torres siguen disparando.
+- **Enemigos tipo minion de moba**: cada incursión entra por la brecha de una muralla, en la bifurcación se reparte entre los objetivos (al azar ponderado: prefieren los dañados y sin defensores) y, al destruir su objetivo, los supervivientes salen hacia el patio y atacan la Puerta. Si un jugador está cerca o les pega, se desvían a por él, con correa. Portaestandarte (élite con bandera desde la oleada 2): acelera a su escuadra y, si cae, la desmoraliza y da oro.
+- **Objetivos**: torres de vigía (disparan flechas), almacén (da oro cada 10 s), polvorín (ballestas y torres +40 % de daño; explota al caer) y la Puerta (si cae, se pierde). Bajo el 50 % pueden arder y perder vida hasta que alguien apague el fuego.
+- **Oro compartido**: bajas, portaestandartes, escaramuzas, fin de oleada y túneles sellados. Se gasta en reparar (canalizado junto al objetivo), reconstruir ruinas (80) y construir trampas en ranuras fijas: pinchos (30), ballesta (50) y brasero (40).
+- **Mantenimiento**: pinchos con cargas (rearmar), ballestas con virotes y braseros con leña; virotes y leña son «pertrechos» que se cogen en la armería del patio o en la caja de cada muralla y se llevan encima.
+- **Estabilidad del frente** (0-100): baja al perder objetivos y con cada enemigo que llega al patio; sube al ganar escaramuzas (aniquilar una incursión entera sin que nadie llegue al patio), al sellar túneles y al acabar oleadas. A cero, retirada (derrota).
+- **Eventos semialeatorios** (desde la oleada 2): lluvia de fuego en la zona del grupo (solo la zona techada es segura) y zapadores (un túnel junto a un objetivo del que salen enemigos hasta que se apuntala; con varios jugadores hacen falta dos a la vez).
+- **Mejoras entre oleadas** (provisionales): se elige una de tres (muros reforzados, oro, reparar más rápido, virotes de acero, vigor, brasas eternas, moral, carpinteros).
+- Todo se hace con el botón de **Fijar** (confirmar): construir, reparar, coger pertrechos, recargar, viajar, apuntalar y tocar el cuerno para empezar la oleada antes.
+- Código: bloque «Modo Asedio» al final del script (constantes en `SG` y `SG_TRAPS`, mejoras en `SG_UPGRADES`). Ganchos: `siegeSteer` en `updateEnemy`, `siegeUpdate` en `update`, dibujo en `drawGame` y entrada `siege` al principio de `INTERACTS`. Con `?debug`, `MZ.siege.quick([personajes])` arranca una partida de asedio de prueba.
+
+## Laboratorio: pantalla partida para 4 (mecánica 9)
+- `laboratorio-coop.html#split4`: hasta cuatro jugadores en un mapa grande. Se agrupan por distancia con histéresis (juntos hasta 640 px, se unen a menos de 440) y cada grupo tiene su vista: entera, mitades, mitad + dos cuartos o 2×2. J1 y J2 con teclado (o J2 con IA), J3 y J4 con los mandos 3 y 4 o la IA; cualquier mando conectado manda sobre su jugador. Opción «siempre 2×2» para medir el peor caso; el marcador enseña los ms de dibujo.

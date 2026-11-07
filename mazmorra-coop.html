@@ -1088,6 +1088,7 @@ function playMusicStep(tr, i, t, sd, bus) {
 }
 function musicWanted() {
   if (state === 'over') return null; // derrota: silencio
+  if (SIEGE.on && (state === 'play' || state === 'pause' || state === 'tutorial' || state === 'siegeUp')) return SIEGE.phase === 'wave' ? 'fight' : 'calm';
   if (!(state === 'play' || state === 'pause' || state === 'tutorial') || !room || room.cleared) return 'calm';
   return room.type === 'boss' ? 'boss' : 'fight'; // mientras la sala no esté despejada (también entre oleadas)
 }
@@ -1272,13 +1273,14 @@ function drawLevels() {
 // ---------- Menú: número de jugadores ----------
 function countBox(n) { const bw = 120, gap = 12, x0 = (LW - (5 * bw + 4 * gap)) / 2; return [x0 + (n - 1) * (bw + gap), 150, bw, 130]; } // la 5.ª es 1 jugador + aliado IA
 function optRect() { return [LW / 2 + 182, 300, 172, 28]; } // botón «Opciones» del menú principal (la opción 6)
+function modeRect() { return [24, 20, 210, 58]; } // botón «Modo» del menú principal (la opción 8): Mazmorra o Asedio
 function diagRect() { const [ox, oy, ow, oh] = optRect(); return [ox, oy + oh + 6, ow, 24]; } // acceso por botón a la página de diagnóstico de mandos (diagnostico-mando.html)
 function updateCount() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
     const mv = m.dx || m.dy;
-    if (mv) countSel = ((countSel - 1 + mv + 7) % 7) + 1; // 1-5 jugadores, 6 = opciones de control, 7 = Dev Options
-    if (m.a) { if (countSel === 6) openOptions('count'); else if (countSel === 7) openDev(); else goSelect(dev); return; }
+    if (mv) countSel = ((countSel - 1 + mv + 8) % 8) + 1; // 1-5 jugadores, 6 = opciones de control, 7 = Dev Options, 8 = modo (Mazmorra o Asedio)
+    if (m.a) { if (countSel === 6) openOptions('count'); else if (countSel === 7) openDev(); else if (countSel === 8) siegeMode = !siegeMode; else goSelect(dev); return; }
   }
 }
 function goSelect(dev) {
@@ -1384,12 +1386,13 @@ function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clie
 const insideAt = (x, y, b) => x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3];
 cvs.addEventListener('mousemove', e => {
   const [x, y] = canvasPoint(e);
-  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; if (insideAt(x, y, devRect())) countSel = 7; }
+  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; if (insideAt(x, y, devRect())) countSel = 7; if (insideAt(x, y, modeRect())) countSel = 8; }
   else if (state === 'dev') { for (let i = 0; i < 3; i++) if (insideAt(x, y, devRow(i))) devSel = i; }
   else if (state === 'levels') { for (let n = 1; n <= 8; n++) if (insideAt(x, y, levelRect(n))) levelSel = n - 1; }
   else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i))) pauseSel = i; }
   else if (state === 'options') { for (let r = 1; r <= optList().length + 2; r++) if (insideAt(x, y, optRowRect(r))) OPT.row = r; }
   else if (state === 'over') { for (let i = 0; i < 3; i++) if (insideAt(x, y, overRect(i))) overSel = i; }
+  else if (state === 'siegeUp') { for (let i = 0; i < 3; i++) if (insideAt(x, y, sgUpRect(i))) SIEGE.upSel = i; }
   else if (state === 'select') {
     hoverCard = -1; hoverStart = insideAt(x, y, startRect());
     for (let i = 0; i < 8; i++) if (insideAt(x, y, cardRect(i))) hoverCard = i;
@@ -1406,6 +1409,7 @@ cvs.addEventListener('pointerdown', e => {
   if (state === 'count') {
     if (inside(devRect())) { countSel = 7; openDev(); return; }
     if (inside(optRect())) { countSel = 6; openOptions('count'); return; }
+    if (inside(modeRect())) { countSel = 8; siegeMode = !siegeMode; return; }
     if (inside(diagRect())) { location.href = 'diagnostico-mando.html'; return; }
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
   } else if (state === 'dev') {
@@ -1427,6 +1431,8 @@ cvs.addEventListener('pointerdown', e => {
     for (let i = 0; i < TUT_TABS.length; i++) if (inside(tutTabRect(i))) { TUT.tab = i; TUT.at = 0; return; }
     if (inside(tutBtn(true))) { tutAdvance(); return; }
     if (inside(tutBtn(false))) { tutClose(); return; }
+  } else if (state === 'siegeUp') {
+    for (let i = 0; i < 3; i++) if (inside(sgUpRect(i))) { SIEGE.upSel = i; sgUpChoose(i); return; }
   } else if (state === 'over') {
     if (overT > 1.2) for (let i = 0; i < 3; i++) if (inside(overRect(i))) { overSel = i; chooseOver(i); return; }
   } else if (state === 'pause') {
@@ -1466,7 +1472,7 @@ function startGame() {
     players.push(Object.assign({}, base, { id: 2, dev: 'npc', npc: true, ch, color: ch.color, slotColor: SLOTC[1], r: 12 * ch.size, hp: ch.hp, maxHp: ch.hp,
       prev: { a: true, s: true, d: true, q: true, e: true, l: true, c: true }, slash: null, target: null }));
   }
-  newRun();
+  if (siegeMode) siegeStart(); else { SIEGE = { on: false }; newRun(); }
   startTutorial(); // antes de jugar, un aviso por personaje (si está activado en General)
 }
 
@@ -5602,7 +5608,9 @@ function updateEnemy(e, dt) {
   if (e.maxSta > 0 && e.calm > 2) e.sta = Math.min(e.maxSta, e.sta + e.maxSta * 0.2 * dt); // recupera estamina si no le golpean
   const [p, d] = nearestPlayer(e);
   let mv = [0, 0];
-  if (p) {
+  const sgMv = SIEGE.on && e.sg ? siegeSteer(e, p, d, dt) : null; // asedio: van a por los objetivos salvo que un jugador los distraiga
+  if (sgMv) mv = sgMv;
+  else if (p) {
     const dx = p.x - e.x, dy = p.y - e.y, nx = dx / (d || 1), ny = dy / (d || 1);
     e.face = Math.atan2(dy, dx);
     mv = ENEMY_AI[e.type](e, p, d, nx, ny, dt);
@@ -5747,6 +5755,7 @@ function update(dt) {
   if (state === 'dev') { updateDev(); return; }
   if (state === 'levels') { updateLevels(); return; }
   if (state === 'tutorial') { updateTutorial(dt); return; }
+  if (state === 'siegeUp') { siegeUpUpdate(dt); return; }
   if (state === 'over') {
     overT += dt;
     for (const dev of DEVICES) {
@@ -5843,13 +5852,14 @@ function update(dt) {
     if (p) { healPlayer(p, HEAL.pickup); burst(h.x, h.y - 14, '#ff4d6d', 10); pickups.splice(i, 1); }
   }
 
-  if (!room.cleared && enemies.length === 0) {
+  if (SIEGE.on) siegeUpdate(dt); // asedio: zonas, oleadas, trampas y eventos en vez de puertas y salas
+  else if (!room.cleared && enemies.length === 0) {
     room.wave++;
     if (room.wave < room.waves.length) { spawnWave(); showBanner('Llega otra oleada'); }
     else roomCleared();
   }
 
-  if (room.cleared) {
+  if (room.cleared && !SIEGE.on) {
     for (const p of players) {
       if (p.down || p.npc) continue; // el aliado IA no cambia de sala
       const d = exitDir(p);
@@ -5860,7 +5870,8 @@ function update(dt) {
   }
 
   updateCamera(dt);
-  if (humans().length && players.every(p => p.down)) { // se pierde cuando no queda nadie en pie que pueda levantar a los demás
+  if (humans().length && players.every(p => p.down) && state === 'play') { // se pierde cuando no queda nadie en pie que pueda levantar a los demás
+    if (SIEGE.on) SIEGE.result = { win: false, title: 'El grupo ha caído', sub: 'Nadie queda en pie para defender la fortaleza.' };
     state = 'over'; overT = 0; overSel = 0;
     for (const dev of DEVICES) menuInput(dev);
   }
@@ -5919,7 +5930,7 @@ function drawCount() {
   ctx.save(); ctx.translate(0, off);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 36px ' + FONT; ctx.fillText('Mazmorra cooperativa', LW / 2, 70);
-  ctx.fillStyle = '#b9afc9'; ctx.font = '400 17px ' + FONT; ctx.fillText('¿Cuántos vais a jugar?', LW / 2, 108);
+  ctx.fillStyle = siegeMode ? '#ffd54a' : '#b9afc9'; ctx.font = '400 17px ' + FONT; ctx.fillText(siegeMode ? 'Modo Asedio · ¿Cuántos vais a jugar?' : '¿Cuántos vais a jugar?', LW / 2, 108);
   { // estado de los mandos: cuántos se han detectado (máximo 4)
     const nPads = padsConnected();
     ctx.textAlign = 'right'; ctx.font = '600 13px ' + FONT;
@@ -5949,6 +5960,15 @@ function drawCount() {
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
     ctx.fillText('Controles y sonido', ox + ow / 2, oy + 19);
+  }
+  { // botón de modo de juego (opción 8): Mazmorra (roguelite de salas) o Asedio (defender la fortaleza, prototipo)
+    const [mx, my, mw, mh] = modeRect(), sel = countSel === 8;
+    rrect(mx, my, mw, mh, 7); ctx.fillStyle = sel ? '#2f2640' : (siegeMode ? '#2a2216' : '#1c1726'); ctx.fill();
+    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : (siegeMode ? '#ffd54a' : '#3b3349'); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = siegeMode ? '#ffd54a' : (sel ? '#f2eefa' : '#d8d0e6'); ctx.font = '700 13px ' + FONT;
+    ctx.fillText('Modo: ' + (siegeMode ? 'Asedio' : 'Mazmorra'), mx + mw / 2, my + 22);
+    ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT;
+    ctx.fillText(siegeMode ? 'Defender la fortaleza (prototipo)' : 'Pulsa para cambiar a Asedio', mx + mw / 2, my + 42);
   }
   { // botón de diagnóstico de mandos, debajo de Opciones
     const [gx, gy, gw, gh] = diagRect();
@@ -7251,7 +7271,7 @@ function drawWindIcon(x, y, s, col) {
 function windK(e) {
   if (e.airborne || e.stunT > 0) return 0;
   const clamp = (v) => Math.min(1, Math.max(0, v));
-  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind') return clamp(1 - e.t / e.windDur);
+  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind' || e.state === 'sgWind') return clamp(1 - e.t / e.windDur);
   if (e.type === 'shooter' && e.cd < 0.6) return clamp(1 - e.cd / 0.6);
   if (e.type === 'splitter' && e.bombCd < 0.6) return clamp(1 - e.bombCd / 0.6);
   return 0;
@@ -7259,6 +7279,7 @@ function windK(e) {
 // ¿Está a punto de atacar? (todos los enemigos de tier 1-3 avisan antes de hacer daño)
 function attackWarn(e) {
   if (e.airborne || e.stunT > 0 || e.hitstun > 0 || e.spawnT > 0) return false;
+  if (e.state === 'sgWind') return true; // asedio: golpe preparado contra un objetivo
   switch (e.type) {
     case 'mite': case 'slime': return e.state === 'wind';
     case 'bat': return e.state === 'wind';
@@ -7551,6 +7572,11 @@ function drawHUD() {
     if (drag) for (let k = 0; k < AB.dragon.max; k++) { ctx.fillStyle = k < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; rrect(px[2] + k * 9, py + z + 4, 7, 5, 2); ctx.fill(); } // cargas
   }
   const nx = U.gap + players.length * (U.panelW + U.gap) + 4;
+  if (SIEGE.on) { // asedio: sin piso ni minimapa de salas (el estado va en el panel del asedio)
+    ctx.font = '700 14px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText('Asedio', nx, 21);
+    ctx.font = '400 10px ' + FONT; ctx.fillStyle = '#6f6680'; ctx.fillText('Fase 1 · Murallas', nx, 38);
+    ctx.restore(); return;
+  }
   ctx.font = '700 14px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + floor.depth, nx, 21);
   ctx.font = '400 10px ' + FONT; ctx.fillStyle = '#6f6680'; ctx.fillText('Semilla ' + seed, nx, 38);
   if (testMode) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('Modo de prueba', nx + 72, 21); ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#b9a96a'; ctx.fillText('clic de rueda, J o cruceta: lanzar', nx + 72, 38); }
@@ -7660,6 +7686,7 @@ function drawGame() {
   drawFloor();
   if (room.decor && room.decor.water) drawWater(room.decor.water);
   if (room.stairs) drawPortal();
+  if (SIEGE.on) siegeDrawFloor();
   // Capa del suelo: zonas, avisos y previsualizaciones se dibujan en el plano aplastado (círculos → elipses)
   ctx.save(); ctx.scale(1, K);
   drawHazards(); drawFriendlyZones(); drawVines(); drawArcOrbs('floor'); drawTargets(); drawShieldZones(); drawPreviews(); drawComboHints(); drawChargeHints();
@@ -7687,17 +7714,19 @@ function drawGame() {
   for (const t of turrets) list.push({ y: t.y, f: () => drawTurret(t) });
   for (const p of players) if (p.shieldOut) list.push({ y: p.shieldOut.y, f: () => drawThrownShield(p) });
   for (const p of players) if (!p.down && (p.zoneA || 0) > 0.03) list.push({ y: p.y + p.ay * (p.r + AB.wall.zone) + 0.5, f: () => drawShieldBarrier(p) }); // barrera del escudo, por delante o por detrás de Ceniza según hacia dónde mire
+  if (SIEGE.on) siegeDrawList(list);
   list.sort((a, b) => a.y - b.y); // la clave de la vista en tres cuartos: se pinta de atrás hacia delante
   projectOn();
   try {
     for (const it of list) it.f();
     for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
-    drawArcOrbs('air'); drawGrenades(); drawCoralAir(); drawDolls(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); drawTexts(); drawInteractHints();
+    drawArcOrbs('air'); drawGrenades(); drawCoralAir(); drawDolls(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); if (SIEGE.on) siegeDrawAir(); drawTexts(); drawInteractHints();
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
   drawOffscreen();
+  if (SIEGE.on) siegeDrawUI();
   const boss = enemies.find(e => e.type === 'boss' && e.spawnT <= 0);
   if (boss) {
     const by = H - 22, bw = W - 280, on = bossLaunchable(boss);
@@ -7840,14 +7869,14 @@ function draw() {
   else if (state === 'ideas') drawIdeas();
   else if (state === 'dev') drawDev();
   else if (state === 'levels') drawLevels();
-  else { drawGame(); if (state === 'pause') drawPause(); if (state === 'tutorial') drawTutorial(); }
+  else { drawGame(); if (state === 'pause') drawPause(); if (state === 'tutorial') drawTutorial(); if (state === 'siegeUp') siegeUpDraw(); }
 }
 
 // ---------- Menú de derrota ----------
 const OVER_OPTS = ['Reintentar', 'Cambiar de personaje', 'Volver al menú principal'];
 function overRect(i) { return [W / 2 - 140, H / 2 - 4 + i * 48, 280, 40]; }
 function chooseOver(i) {
-  if (i === 0) newRun(); // mismo equipo, mazmorra nueva
+  if (i === 0) { if (SIEGE.on) siegeStart(); else newRun(); } // mismo equipo, mazmorra (o asedio) nueva
   else if (i === 1) { // vuelve a la selección con los mismos jugadores y mandos
     want = npcMode ? 2 : humans().length;
     slots = humans().map(p => ({ dev: p.dev, cur: CHARS.indexOf(p.ch), locked: false }));
@@ -7859,9 +7888,10 @@ function chooseOver(i) {
 function drawOver() {
   ctx.fillStyle = 'rgba(6,4,10,0.75)'; ctx.fillRect(0, HUD, W, H - HUD);
   ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa';
-  ctx.font = '700 30px ' + FONT; ctx.fillText('El grupo ha caído', W / 2, H / 2 - 70);
+  const sr = SIEGE.on && SIEGE.result;
+  ctx.font = '700 30px ' + FONT; if (sr && sr.win) ctx.fillStyle = '#ffd54a'; ctx.fillText(sr ? sr.title : 'El grupo ha caído', W / 2, H / 2 - 70);
   ctx.font = '400 15px ' + FONT; ctx.fillStyle = '#b9afc9';
-  ctx.fillText('Llegasteis al piso ' + floor.depth, W / 2, H / 2 - 40);
+  ctx.fillText(sr ? sr.sub + (sr.win ? '' : ' (oleada ' + SIEGE.wave + ' de ' + SG.waves + ')') : 'Llegasteis al piso ' + floor.depth, W / 2, H / 2 - 40);
   const ready = overT > 1.2;
   OVER_OPTS.forEach((label, i) => {
     const [x, y, w, h] = overRect(i), sel = ready && i === overSel;
@@ -8466,6 +8496,758 @@ function drawGuide() {
   });
 }
 
+// ---------- Modo Asedio (prototipo · fase 1: Murallas exteriores) ----------
+// Defender la fortaleza contra oleadas. Tres zonas separadas (Muralla oeste, Patio y Muralla este), cada una es una
+// sala propia; el grupo viaja entre ellas con las piedras de paso. Las zonas donde no está el grupo se simulan de
+// forma simplificada (los enemigos avanzan en línea recta y golpean objetivos, las trampas y torres siguen disparando).
+// Las incursiones entran por la brecha de cada muralla, se reparten entre los objetivos (como los minions de un moba)
+// y los supervivientes convergen en el patio contra la Puerta de la fortaleza.
+// Oro compartido: reparar, reconstruir, construir trampas. Mantenimiento: rearmar pinchos, recargar ballestas y
+// echar leña a los braseros con pertrechos, apagar fuegos. Estabilidad del frente: baja al perder objetivos y con
+// los enemigos que llegan al patio; sube al ganar escaramuzas (aniquilar una incursión antes de que converja).
+let siegeMode = false; // menú principal: modo elegido para la próxima partida
+let SIEGE = { on: false };
+const SG = {
+  waves: 5, prep0: 25, prep: 15, gold0: 80, // oleadas de la fase 1, preparación (la primera más larga) y oro inicial
+  goldKill: [0, 2, 5, 12, 30], goldBanner: 15, goldWave: 30, goldSkirmish: 20, goldSeal: 15,
+  stab0: 70, stabObj: 15, stabLeak: 2, stabSkirmish: 8, stabWave: 5, stabSeal: 5,
+  objDmg: { 1: 6, 2: 12, 3: 25, 4: 40 }, wind: 0.8, recover: 0.7, offCd: 1.6, offSpd: 0.85, // golpes a objetivos
+  aggroR: 170, aggroHit: 4, leashR: 380, noAggro: 2.5, // se desvían a por un jugador cercano o que les pega; con correa
+  repairRate: 30, repairGold: 0.2, rebuild: 80, rebuildFrac: 0.4, burnDps: 3, burnChance: 0.12, douse: 1.2,
+  travel: 7, // segundos que tardan los supervivientes en llegar de la muralla al patio
+  waveHp: 0.12, // vida extra de los enemigos por oleada
+  tower: { range: 300, cd: 2.2, dmg: 1.4 }, store: { gold: 3, every: 10 }, powderMul: 1.4,
+  rain: { dur: 18, warn: 4, every: 0.13, r: 34, delay: 1.1, dmg: 14, edmg: 1.5 },
+  sappers: { every: 3.6, seal: 2.4 }
+};
+const SG_TRAPS = {
+  spikes:   { name: 'Pinchos', cost: 30, r: 44, tick: 0.5, dmg: 1.2, charges: 16, color: '#c9c2d6' },
+  ballista: { name: 'Ballesta', cost: 50, range: 270, cd: 1.1, dmg: 2.6, ammo: 14, color: '#d9a066' },
+  brazier:  { name: 'Brasero', cost: 40, r: 80, tick: 0.6, dmg: 0.5, fuel: 35, color: '#ff8a3d' }
+};
+// Mejoras entre oleadas (provisionales): se elige una de tres
+const SG_UPGRADES = [
+  { id: 'walls', name: 'Muros reforzados', desc: 'Objetivos +25 % de vida máxima y reparados del todo', apply: S => { for (const o of sgObjs()) { o.max = Math.round(o.max * 1.25); if (!o.destroyed) o.hp = o.max; } } },
+  { id: 'purse', name: 'Bolsa de guerra', desc: '+60 de oro', apply: S => { S.gold += 60; } },
+  { id: 'builders', name: 'Manos de constructor', desc: 'Reparar es un 60 % más rápido', apply: S => { S.mods.repair *= 1.6; } },
+  { id: 'steel', name: 'Virotes de acero', desc: 'Ballestas y torres +40 % de daño', apply: S => { S.mods.bolt *= 1.4; } },
+  { id: 'vigor', name: 'Vigor', desc: 'Personajes +20 % de vida máxima y curados del todo', apply: S => { for (const p of players) { p.maxHp = Math.round(p.maxHp * 1.2); p.hp = p.maxHp; } } },
+  { id: 'embers', name: 'Brasas eternas', desc: 'Los braseros gastan la mitad de leña', apply: S => { S.mods.fuel *= 0.5; } },
+  { id: 'morale', name: 'Moral alta', desc: '+15 de estabilidad del frente', apply: S => { S.stab = Math.min(100, S.stab + 15); } },
+  { id: 'cheap', name: 'Carpinteros', desc: 'Construir trampas cuesta un 30 % menos', apply: S => { S.mods.cost *= 0.7; } }
+];
+const sgTc = v => (v + 0.5) * T; // centro de la casilla v
+const sgPt = (x, y) => ({ x: sgTc(x), y: sgTc(y) });
+function sgObjs() { return SIEGE.zones ? SIEGE.zones.flatMap(z => z.objs) : []; }
+function sgList(z) { return z === SIEGE.cur ? enemies : z.enemies; } // la zona activa usa la lista global
+function sgZone(id) { return SIEGE.zones.find(z => z.id === id); }
+
+// ---------- Construcción de las zonas ----------
+function sgRoom(gx, C, R, gaps, rocks, type) {
+  const t = [];
+  for (let y = 0; y < R; y++) { t.push([]); for (let x = 0; x < C; x++) t[y].push((x === 0 || y === 0 || x === C - 1 || y === R - 1) ? 1 : 0); }
+  for (const [x, y] of gaps) t[y][x] = 0;
+  for (const [x, y] of rocks) t[y][x] = 2;
+  const r = { gx, gy: 0, type: type || 'normal', cols: C, rows: R, tiles: t, rng: hash(seed, 777, gx + 5), cleared: true, visited: true, siege: true,
+    doors: { up: null, down: null, left: null, right: null }, pickups: [] };
+  r.decor = genDecor(r, 1);
+  r.decor.floor = r.decor.floor.filter(dc => dc.y > 2 && dc.y < R - 3); // poca decoración: que no se confunda con trampas
+  return r;
+}
+function sgObj(z, kind, name, tx, ty, r, hp) {
+  const o = Object.assign(sgPt(tx, ty), { kind, name, r, hp, max: hp, destroyed: false, burn: false, hitT: -9, flash: 0, cd: 1, zone: z });
+  z.objs.push(o); return o;
+}
+function sgWallZone(id, east) {
+  const C = 33, R = 19, M = x => east ? C - 1 - x : x; // la muralla este es la oeste en espejo
+  const gaps = [[M(0), 8], [M(0), 9], [M(0), 10], [M(32), 8], [M(32), 9], [M(32), 10]];
+  const rocks = [[5, 3], [6, 3], [5, 4], [5, 15], [6, 15], [5, 14], [29, 15], [29, 14], [28, 3]].map(([x, y]) => [M(x), y]);
+  const z = { id, name: east ? 'Muralla este' : 'Muralla oeste', short: east ? 'Este' : 'Oeste', east, objs: [], slots: [], stones: [], crates: [], enemies: [] };
+  z.room = sgRoom(east ? 1 : -1, C, R, gaps, rocks);
+  z.B = sgPt(M(1), 9); z.F = sgPt(M(10), 9); z.X = { x: east ? -T * 0.4 : C * T + T * 0.4, y: sgTc(9) }; // brecha, bifurcación y salida al patio
+  z.exitPt = sgPt(M(31), 9);
+  sgObj(z, 'tower', 'Torre de vigía ' + (east ? 'este' : 'oeste'), M(16), 4, 34, 400);
+  if (east) sgObj(z, 'powder', 'Polvorín', M(16), 14, 36, 350);
+  else sgObj(z, 'store', 'Almacén', M(16), 14, 38, 400);
+  z.slots.push({ ...sgPt(M(6), 9), kind: 'spikes', trap: null }, { ...sgPt(M(13), 9), kind: 'ballista', trap: null }, { ...sgPt(M(21), 9), kind: 'brazier', trap: null });
+  z.stones.push({ ...sgPt(M(24), 9), to: 'patio', label: 'Viajar al Patio' });
+  z.crates.push({ ...sgPt(M(26), 13) });
+  z.cover = east ? { x0: M(27), y0: 7, x1: M(22), y1: 11 } : { x0: 22, y0: 7, x1: 27, y1: 11 }; // zona techada (refugio de la lluvia de fuego)
+  return z;
+}
+function sgPatio() {
+  const C = 29, R = 21;
+  const gaps = [[0, 14], [0, 15], [0, 16], [28, 14], [28, 15], [28, 16]];
+  const rocks = [[3, 3], [25, 3], [3, 18], [25, 18], [4, 18], [24, 18]];
+  const z = { id: 'patio', name: 'Patio de armas', short: 'Patio', objs: [], slots: [], stones: [], crates: [], enemies: [] };
+  z.room = sgRoom(0, C, R, gaps, rocks, 'start');
+  const g = sgObj(z, 'gate', 'Puerta de la fortaleza', 14, 1, 58, 900); g.y = T * 2.1;
+  z.entries = { west: [sgPt(0.4, 15), sgPt(6, 15)], east: [sgPt(27.6, 15), sgPt(22, 15)] }; // entradas de los supervivientes
+  z.slots.push({ ...sgPt(5, 15), kind: 'spikes', trap: null }, { ...sgPt(23, 15), kind: 'spikes', trap: null }, { ...sgPt(14, 9), kind: 'ballista', trap: null }, { ...sgPt(14, 6), kind: 'brazier', trap: null });
+  z.stones.push({ ...sgPt(4, 9), to: 'west', label: 'Viajar a la Muralla oeste' }, { ...sgPt(24, 9), to: 'east', label: 'Viajar a la Muralla este' });
+  z.crates.push({ ...sgPt(9, 5) });
+  z.horn = sgPt(19, 5);
+  z.cover = { x0: 10, y0: 1, x1: 18, y1: 4 };
+  return z;
+}
+function sgInCover(z, x, y) { const c = z.cover; if (!c) return false; const x0 = Math.min(c.x0, c.x1) * T, x1 = (Math.max(c.x0, c.x1) + 1) * T; return x >= x0 && x <= x1 && y >= c.y0 * T && y <= (c.y1 + 1) * T; }
+
+// ---------- Inicio, viaje entre zonas y oleadas ----------
+function siegeStart() {
+  newRun(); // reinicia a los personajes como una partida normal; después se sustituye el mapa
+  SIEGE = { on: true, zones: [], cur: null, gold: SG.gold0, stab: SG.stab0, wave: 0, phase: 'prep', phaseT: SG.prep0, waveT: 0,
+    spawnQ: [], incs: [], all: [], transit: [], bolts: [], marks: [], tunnels: [], rain: null, warn: null, events: [], tp: null,
+    mods: { repair: 1, bolt: 1, fuel: 1, cost: 1 }, alertT: {}, storeT: 0, time: 0, result: null, upOpts: null, upSel: 0, log: [] };
+  const W0 = sgWallZone('west', false), P = sgPatio(), E0 = sgWallZone('east', true);
+  SIEGE.zones = [W0, P, E0];
+  floor = { rooms: new Map(SIEGE.zones.map(z => [z.id, z.room])), start: P.room, boss: null, depth: 1, siege: true };
+  siegeEnter(P, sgPt(14, 12));
+  showBanner('Asedio: prepara las defensas (' + SG.prep0 + ' s)');
+}
+function siegeEnter(z, at) {
+  const S = SIEGE;
+  if (S.cur) S.cur.enemies = enemies.filter(e => !e.dead && !e.sgLeft);
+  S.cur = z;
+  for (const p of players) p.sgTask = null;
+  enterRoom(z.room, null);
+  enemies = z.enemies; z.enemies = null;
+  for (const e of enemies) { e.spawnT = 0; e.lastHp = e.hp; }
+  const n = players.length;
+  players.forEach((p, i) => { const a = n > 1 ? i / n * Math.PI * 2 : 0; p.x = at.x + Math.cos(a) * 34; p.y = at.y + 44 + Math.sin(a) * 22; });
+  S.marks = [];
+  snapCamera();
+}
+function sgTravel(p, stone) {
+  const S = SIEGE; if (S.tp) return;
+  const to = sgZone(stone.to), back = to.stones.find(s => s.to === S.cur.id) || to.stones[0];
+  S.tp = { to, at: back, t: 0.45 }; fade = 0.45;
+  floatText(p.x, p.y - 50, 'Viajando…', '#b49bff');
+}
+function sgWaveComp(w, np) { // composición de una incursión
+  const out = [], n1 = 3 + w + np, n2 = Math.floor(w / 2) + (np > 2 ? 1 : 0);
+  for (let i = 0; i < n1; i++) out.push({ type: w >= 3 && i % 4 === 3 ? 'bat' : (i % 3 === 2 ? 'slime' : 'mite') });
+  for (let i = 0; i < n2; i++) out.push({ type: i % 2 ? 'shooter' : 'charger' });
+  if (w >= 2) out.push({ type: 'charger', elite: true, banner: true }); // portaestandarte
+  if (w >= 4) out.push({ type: Math.random() < 0.5 ? 'golem' : 'splitter' });
+  return out;
+}
+function sgStartWave(w) {
+  const S = SIEGE, np = Math.max(1, humans().length);
+  S.wave = w; S.phase = 'wave'; S.waveT = 0; S.spawnQ = []; S.events = [];
+  const plan = w === 1 ? [['west', 0], ['east', 14]] : w === 5 ? [['west', 0], ['east', 6], ['west', 26], ['east', 32], ['west', 50]] : [['west', 0], ['east', 8], ['west', 26], ['east', 34]];
+  for (const [zid, t0] of plan) {
+    const z = sgZone(zid), comp = sgWaveComp(w, np), inc = { z, total: comp.length, spawned: 0, alive: 0, leaked: 0, killed: 0, done: false, banner: null };
+    S.incs.push(inc);
+    comp.forEach((c, i) => S.spawnQ.push(Object.assign({ t: t0 + i * 0.45, z, inc }, c)));
+  }
+  if (w >= 2) { // eventos semialeatorios: uno por oleada (dos en la última)
+    const kinds = w === 2 ? ['rain'] : w === 3 ? ['sappers'] : w === 5 ? ['rain', 'sappers'] : [Math.random() < 0.5 ? 'rain' : 'sappers'];
+    kinds.forEach((k, i) => S.events.push({ kind: k, at: 12 + Math.random() * 14 + i * 22 }));
+  }
+  showBanner('Oleada ' + w + ' de ' + SG.waves + ': ¡incursiones por las murallas!');
+  SFX.launch();
+}
+function sgSpawn(q) {
+  const S = SIEGE, z = q.z, f = 1 + SG.waveHp * (S.wave - 1);
+  const e = makeEnemy(q.type, z.B.x + (z.east ? -1 : 1) * Math.random() * 30, z.B.y + (Math.random() - 0.5) * T * 2.2, !!q.elite);
+  e.hp *= f; e.maxHp *= f; e.lastHp = e.hp;
+  e.sgZ = z; e.sg = { inc: q.inc, wp: [{ x: z.F.x, y: z.F.y + (Math.random() - 0.5) * 60 }], after: 'assign', obj: null, attacking: false };
+  if (q.banner) { e.banner = true; q.inc.banner = e; }
+  if (z !== S.cur) e.spawnT = 0;
+  sgList(z).push(e); S.all.push(e);
+  q.inc.spawned++; q.inc.alive++;
+}
+function sgEndWave() {
+  const S = SIEGE;
+  S.gold += SG.goldWave; S.stab = Math.min(100, S.stab + SG.stabWave);
+  musicFanfare('room');
+  for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = 1.5; }
+  if (S.wave >= SG.waves) { sgFinish(true, '¡Fase 1 superada!', 'Las murallas exteriores resisten. Las fases 2 (la puerta) y 3 (la torre) están en diseño.'); return; }
+  const pool = SG_UPGRADES.slice();
+  S.upOpts = []; while (S.upOpts.length < 3 && pool.length) S.upOpts.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  S.upSel = 0; S.phase = 'prep'; S.phaseT = SG.prep;
+  state = 'siegeUp';
+  for (const dev of DEVICES) menuInput(dev);
+}
+function sgFinish(win, title, sub) {
+  SIEGE.result = { win, title, sub };
+  state = 'over'; overT = 0; overSel = 0;
+  for (const dev of DEVICES) menuInput(dev);
+}
+
+// ---------- Cerebro de los enemigos del asedio ----------
+function sgSpot(e, o) { // punto desde el que ataca: los de distancia se quedan lejos
+  const ranged = e.type === 'shooter' || e.type === 'bat' || e.type === 'splitter';
+  let a = Math.atan2(e.y - o.y, e.x - o.x);
+  if (o.kind === 'gate') a = Math.max(0.35, Math.min(Math.PI - 0.35, a < 0 ? Math.PI / 2 : a)); // la puerta solo se ataca desde abajo
+  const d = o.r + (ranged ? 150 : e.r + 3) + (Math.random() - 0.5) * 16;
+  return { x: o.x + Math.cos(a) * d, y: o.y + Math.sin(a) * d };
+}
+function sgAssign(e, z) { // olfato: prefieren objetivos dañados y sin defensores; al azar ponderado, así la incursión se reparte
+  const g = e.sg, alive = z.objs.filter(o => !o.destroyed);
+  if (!alive.length) { sgNext(e, z); return; }
+  const wt = alive.map(o => 1 + (1 - o.hp / o.max) * 1.5 + (z === SIEGE.cur && players.some(p => !p.down && Math.hypot(p.x - o.x, p.y - o.y) < 220) ? 0 : 1));
+  let pick = 0;
+  if (e.banner) pick = wt.indexOf(Math.max(...wt));
+  else { let r = Math.random() * wt.reduce((a, b) => a + b, 0); for (pick = 0; pick < wt.length - 1; pick++) { r -= wt[pick]; if (r <= 0) break; } }
+  g.obj = alive[pick]; g.wp = [sgSpot(e, g.obj)]; g.after = 'attack';
+}
+function sgNext(e, z) { // su objetivo ha caído: convergen hacia el patio (o, en el patio, a la puerta)
+  const g = e.sg; g.attacking = false;
+  if (z.id === 'patio') { const gate = z.objs.find(o => o.kind === 'gate' && !o.destroyed); g.obj = gate || null; g.wp = gate ? [sgSpot(e, gate)] : []; g.after = 'attack'; return; }
+  g.obj = null; g.wp = [z.exitPt, z.X]; g.after = 'exit';
+}
+function sgThink(e, z) { // devuelve el punto al que va, o null si está atacando o se ha ido
+  const g = e.sg;
+  if (g.attacking) { if (g.obj && !g.obj.destroyed) return null; sgNext(e, z); }
+  if (g.after === 'attack' && g.obj && g.obj.destroyed) sgNext(e, z);
+  while (g.wp.length && Math.hypot(e.x - g.wp[0].x, e.y - g.wp[0].y) < 26) g.wp.shift();
+  if (!g.wp.length) {
+    if (g.after === 'assign') sgAssign(e, z);
+    else if (g.after === 'attack') { if (g.obj && !g.obj.destroyed) { g.attacking = true; return null; } sgNext(e, z); }
+    else if (g.after === 'exit') { sgLeave(e, z); return null; }
+  }
+  return g.wp[0] || null;
+}
+function sgSpeedMul(e) { const b = e.sg.inc && e.sg.inc.banner; return b && !b.dead && b !== e ? 1.2 : 1; } // el estandarte da prisa a su escuadra
+// Gancho de updateEnemy (zona activa): null = IA normal contra los jugadores; si no, la velocidad deseada
+function siegeSteer(e, p, d, dt) {
+  const g = e.sg;
+  if (g.noAggro > 0) g.noAggro -= dt;
+  if (e.lastHp == null) e.lastHp = e.hp;
+  if (e.hp < e.lastHp - 1e-6) g.aggro = SG.aggroHit; // le ha pegado un jugador
+  e.lastHp = e.hp;
+  if (g.aggro > 0) g.aggro -= dt;
+  if ((p && d < SG.aggroR && !(g.noAggro > 0)) || g.aggro > 0) {
+    if (g.lx == null) { g.lx = e.x; g.ly = e.y; }
+    if (Math.hypot(e.x - g.lx, e.y - g.ly) > SG.leashR) { g.aggro = 0; g.noAggro = SG.noAggro; g.lx = null; e.state = 'walk'; } // correa: vuelve a su objetivo
+    else { if (e.state === 'sgWind' || e.state === 'sgRec') { e.state = 'walk'; e.t = 0.5; } g.attacking = false; return null; }
+  } else g.lx = null;
+  if (e.state !== 'walk' && e.state !== 'sgWind' && e.state !== 'sgRec') return null; // termina el ataque que ya había empezado
+  const tgt = sgThink(e, SIEGE.cur);
+  if (e.sgLeft) return [0, 0];
+  if (g.attacking) {
+    const o = g.obj; e.face = Math.atan2(o.y - e.y, o.x - e.x);
+    if (e.state === 'walk') { e.state = 'sgWind'; e.t = e.windDur = SG.wind; }
+    else if (e.state === 'sgWind') { e.t -= dt; if (e.t <= 0) { sgObjHit(o, e); e.state = 'sgRec'; e.t = SG.recover; } }
+    else { e.t -= dt; if (e.t <= 0) e.state = 'walk'; }
+    return [0, 0];
+  }
+  if (!tgt) return [0, 0];
+  const dx = tgt.x - e.x, dy = tgt.y - e.y, dd = Math.hypot(dx, dy) || 1, s = e.spd * sgSpeedMul(e);
+  e.face = Math.atan2(dy, dx);
+  return [dx / dd * s, dy / dd * s];
+}
+function sgLeave(e, z) { // llega a la salida: desaparece de la muralla y va de camino al patio
+  const S = SIEGE;
+  e.sgLeft = true;
+  if (e.sg.inc) { e.sg.inc.leaked++; e.sg.inc.alive--; sgCheckInc(e.sg.inc); e.sg.inc = null; }
+  S.transit.push({ e, t: SG.travel, side: z.id });
+}
+function sgArrive(tr) { // los supervivientes convergen en el patio
+  const S = SIEGE, P = sgZone('patio'), e = tr.e, [a, b] = P.entries[tr.side];
+  e.sgZ = P; e.sgLeft = false; e.x = a.x; e.y = a.y + (Math.random() - 0.5) * 60; e.state = 'walk'; e.kbx = e.kby = 0; e.z = e.flyZ || 0; e.airborne = false; e.lastHp = e.hp;
+  const gate = P.objs.find(o => o.kind === 'gate');
+  e.sg.wp = [{ x: b.x, y: b.y + (Math.random() - 0.5) * 50 }, sgSpot(e, gate)]; e.sg.obj = gate; e.sg.after = 'attack'; e.sg.attacking = false;
+  e.spawnT = P === S.cur ? 0.3 : 0;
+  sgList(P).push(e); S.all.includes(e) || S.all.push(e);
+  S.stab = Math.max(0, S.stab - SG.stabLeak);
+  sgAlert('arrive', 'Llegan supervivientes al patio');
+}
+function sgAdopt(e, z) { // enemigos que aparecen sin plan (los que suelta el splitter, los zapadores)
+  e.sgZ = z; e.sg = { inc: null, wp: [], after: 'assign', obj: null, attacking: false }; e.lastHp = e.hp;
+  if (z.id === 'patio') sgNext(e, z);
+  SIEGE.all.push(e);
+}
+function sgObjHit(o, e) {
+  const S = SIEGE, dmg = SG.objDmg[e.tier] * (e.elite ? 1.3 : 1);
+  if (o.destroyed) return;
+  o.hp -= dmg; o.hitT = S.time; o.flash = 0.15;
+  if (o.zone === S.cur) {
+    const ranged = e.type === 'shooter' || e.type === 'bat' || e.type === 'splitter';
+    if (ranged) effects.push({ type: 'execShot', x1: e.x, y1: e.y - 14, x2: o.x, y2: o.y - 20, t: 0, dur: 0.25, color: e.color });
+    burst(o.x + (e.x - o.x) * 0.3, o.y - 20, '#d8cfe6', 6);
+  } else sgAlert(o.name, '¡Atacan: ' + o.name + '!');
+  if (!o.burn && o.kind !== 'gate' && o.hp < o.max * 0.5 && Math.random() < SG.burnChance) { o.burn = true; if (o.zone !== S.cur) sgAlert(o.name + 'f', '¡Arde: ' + o.name + '!'); }
+  if (o.hp <= 0) sgDestroy(o);
+}
+function sgDestroy(o) {
+  const S = SIEGE;
+  o.hp = 0; o.destroyed = true; o.burn = false;
+  if (o.kind === 'gate') { sgFinish(false, 'La puerta ha caído', 'Los enemigos entran en la fortaleza (en el juego completo, empezaría la fase 2).'); return; }
+  S.stab = Math.max(0, S.stab - SG.stabObj);
+  showBanner('Ha caído: ' + o.name + ' (−' + SG.stabObj + ' estabilidad)');
+  if (o.zone === S.cur) { burst(o.x, o.y - 30, '#a89cbd', 40); shake = Math.max(shake, 8); effects.push({ type: 'ring', x: o.x, y: o.y, r: o.r + 40, t: 0, dur: 0.5, color: '#ff6b6b' }); }
+  if (o.kind === 'powder') { // el polvorín explota
+    const L = sgList(o.zone);
+    for (const e of L) if (Math.hypot(e.x - o.x, e.y - o.y) < 150) sgDmg(e, o.zone, 6, o.x, o.y, 260);
+    if (o.zone === S.cur) {
+      for (const p of players) if (!p.down && Math.hypot(p.x - o.x, p.y - o.y) < 150) hurtPlayer(p, o.x, o.y, null, 30);
+      effects.push({ type: 'ring', x: o.x, y: o.y, r: 150, t: 0, dur: 0.6, color: '#ff8a3d' }); burst(o.x, o.y - 20, '#ff8a3d', 50); shake = Math.max(shake, 14);
+    }
+  }
+}
+function sgCheckInc(inc) {
+  if (inc.done || inc.spawned < inc.total || inc.alive > 0) return;
+  inc.done = true;
+  if (inc.leaked === 0) { // escaramuza ganada: estabiliza el frente
+    const S = SIEGE; S.gold += SG.goldSkirmish; S.stab = Math.min(100, S.stab + SG.stabSkirmish);
+    showBanner('¡Escaramuza ganada en la ' + inc.z.name.toLowerCase() + '! +' + SG.goldSkirmish + ' oro, +' + SG.stabSkirmish + ' estabilidad');
+  }
+}
+function sgAlert(key, text) { // avisos de lo que pasa fuera de la vista, sin repetirse cada golpe
+  const S = SIEGE;
+  if ((S.alertT[key] || -99) > S.time - 8) return;
+  S.alertT[key] = S.time;
+  S.log.unshift({ text, t: S.time }); if (S.log.length > 3) S.log.length = 3;
+}
+// Daño de trampas, torres y eventos: en la zona activa es un golpe normal (sin sacudir la pantalla ni provocar al enemigo);
+// fuera de la vista solo resta vida
+function sgDmg(e, z, dmg, sx, sy, kb) {
+  if (e.dead || e.spawnT > 0) return;
+  if (z === SIEGE.cur) { const sh = shake; damageEnemy(e, sx, sy, dmg, dmg * 0.8, kb || 40, true); shake = Math.max(sh, Math.min(shake, 4)); e.lastHp = e.hp; }
+  else { e.hp -= dmg; if (e.hp <= 0) e.dead = true; }
+}
+
+// ---------- Actualización del asedio (cada paso, en vez de puertas y oleadas de sala) ----------
+function siegeUpdate(dt) {
+  const S = SIEGE, cur = S.cur;
+  S.time += dt;
+  if (S.tp) { S.tp.t -= dt; if (S.tp.t <= 0) { const tp = S.tp; S.tp = null; siegeEnter(tp.to, tp.at); showBanner(tp.to.name); } return; }
+  // fases: preparación y oleada
+  if (S.phase === 'prep') { S.phaseT -= dt; if (S.phaseT <= 0) sgStartWave(S.wave + 1); }
+  else {
+    S.waveT += dt;
+    while (S.spawnQ.length && S.spawnQ[0].t <= S.waveT) sgSpawn(S.spawnQ.shift());
+    S.spawnQ.sort((a, b) => a.t - b.t);
+    for (const ev of S.events) if (!ev.fired && S.waveT >= ev.at) { ev.fired = true; sgEvent(ev.kind); }
+    S.storeT += dt;
+    if (S.storeT >= SG.store.every) { S.storeT = 0; if (sgObjs().some(o => o.kind === 'store' && !o.destroyed)) S.gold += SG.store.gold; }
+  }
+  // zona activa: adoptar enemigos sin plan y quitar los que se han ido
+  for (const e of enemies) if (!e.sg && !e.dead) sgAdopt(e, cur);
+  enemies = enemies.filter(e => !e.sgLeft);
+  // zonas fuera de la vista: simulación sencilla
+  for (const z of S.zones) if (z !== cur) sgOffZone(z, dt);
+  // de camino al patio
+  for (const tr of S.transit) { tr.t -= dt; if (tr.t <= 0) sgArrive(tr); }
+  S.transit = S.transit.filter(tr => tr.t > 0);
+  // trampas, torres, objetivos
+  for (const z of S.zones) sgDefenses(z, dt);
+  sgBolts(dt);
+  for (const o of sgObjs()) {
+    o.flash = Math.max(0, o.flash - dt);
+    if (o.burn && !o.destroyed) { o.hp -= SG.burnDps * dt; if (o.zone === cur && Math.random() < dt * 14) particles.push({ x: o.x + (Math.random() - 0.5) * o.r, y: o.y - 20 - Math.random() * 40, vx: 0, vy: -40, life: 0.5, max: 0.5, color: Math.random() < 0.5 ? '#ff8a3d' : '#ffd54a', s: 4 }); if (o.hp <= 0) sgDestroy(o); }
+    if (o.zone === cur && !o.destroyed) for (const q of players.concat(enemies)) { // los edificios ocupan su sitio
+      if (q.airborne || (q.z || 0) > 30) continue;
+      const dx = q.x - o.x, dy = q.y - o.y, dd = Math.hypot(dx, dy) || 1, m = o.r + q.r;
+      if (dd < m) { q.x = o.x + dx / dd * m; q.y = o.y + dy / dd * m; }
+    }
+  }
+  sgTasks(dt);
+  sgEvents(dt);
+  // recompensas por bajas
+  for (const e of S.all) if (e.dead && !e.sgDone) {
+    e.sgDone = true; if (e.sgLeft) continue;
+    const z = e.sgZ || cur;
+    const g = Math.round(SG.goldKill[e.tier] * (e.elite ? 2 : 1) + (e.banner ? SG.goldBanner : 0));
+    S.gold += g;
+    if (z === cur) floatText(e.x, e.y - 34, '+' + g, '#ffd54a');
+    if (e.banner) sgBannerFall(e, z);
+    if (e.sg && e.sg.inc) { e.sg.inc.alive--; e.sg.inc.killed++; sgCheckInc(e.sg.inc); }
+  }
+  S.all = S.all.filter(e => !e.sgDone);
+  // fin de la oleada
+  if (S.phase === 'wave' && !S.spawnQ.length && !S.all.length && !S.transit.length && !S.tunnels.length && !S.rain) sgEndWave();
+  if (S.stab <= 0 && !S.result) sgFinish(false, 'Retirada', 'La estabilidad del frente ha caído a cero: la muralla exterior está perdida.');
+}
+function sgBannerFall(e, z) { // cae el portaestandarte: su escuadra se desmoraliza
+  showBanner('¡Ha caído el portaestandarte! +' + SG.goldBanner + ' oro');
+  for (const q of sgList(z)) if (!q.dead && q.sg && q.sg.inc === e.sg.inc && Math.hypot(q.x - e.x, q.y - e.y) < 260) { q.getup = Math.max(q.getup || 0, 1.2); if (z === SIEGE.cur) floatText(q.x, q.y - 40, 'Desmoralizado', '#b9afc9'); }
+}
+function sgOffZone(z, dt) {
+  const L = z.enemies;
+  for (const e of L) {
+    if (e.dead || e.sgLeft) continue;
+    e.spawnT = 0;
+    if (e.getup > 0) { e.getup -= dt; continue; }
+    const tgt = sgThink(e, z);
+    if (e.sgLeft) continue;
+    if (e.sg.attacking) { e.sg.cd = (e.sg.cd == null ? SG.offCd : e.sg.cd) - dt; if (e.sg.cd <= 0) { e.sg.cd = SG.offCd; sgObjHit(e.sg.obj, e); } }
+    else if (tgt) { const dx = tgt.x - e.x, dy = tgt.y - e.y, dd = Math.hypot(dx, dy) || 1, s = e.spd * SG.offSpd * sgSpeedMul(e) * dt; e.x += dx / dd * Math.min(s, dd); e.y += dy / dd * Math.min(s, dd); }
+  }
+  z.enemies = L.filter(e => !e.dead && !e.sgLeft);
+}
+function sgNearest(L, x, y, R, ground) {
+  let best = null, bd = R;
+  for (const e of L) { if (e.dead || e.spawnT > 0 || e.sgLeft || (ground && (e.flying || e.airborne))) continue; const d = Math.hypot(e.x - x, e.y - y); if (d < bd) { bd = d; best = e; } }
+  return best;
+}
+function sgBoltMul() { return SIEGE.mods.bolt * (sgObjs().some(o => o.kind === 'powder' && !o.destroyed) ? SG.powderMul : 1); }
+function sgShoot(z, x, y, e, dmg, color) {
+  if (z === SIEGE.cur) SIEGE.bolts.push({ z, x, y, e, dmg, color, life: 1.2 });
+  else sgDmg(e, z, dmg, x, y);
+}
+function sgDefenses(z, dt) {
+  const S = SIEGE, L = sgList(z), active = S.phase === 'wave';
+  for (const s of z.slots) {
+    const t = s.trap; if (!t) continue;
+    const D = SG_TRAPS[s.kind];
+    t.cd = (t.cd || 0) - dt;
+    if (s.kind === 'spikes' && t.charges > 0 && t.cd <= 0) {
+      let hit = false;
+      for (const e of L) if (!e.dead && !e.flying && !e.airborne && e.spawnT <= 0 && !e.sgLeft && Math.hypot(e.x - s.x, e.y - s.y) < D.r + e.r * 0.5) { sgDmg(e, z, D.dmg, s.x, s.y, 30); hit = true; }
+      t.cd = D.tick; if (hit) { t.charges--; t.pop = 0.2; }
+    }
+    if (s.kind === 'ballista' && t.ammo > 0 && t.cd <= 0) {
+      const e = sgNearest(L, s.x, s.y, D.range, false);
+      if (e) { t.ang = Math.atan2(e.y - s.y, e.x - s.x); t.ammo--; t.cd = D.cd; sgShoot(z, s.x, s.y - 18, e, D.dmg * sgBoltMul(), '#f2d39a'); }
+    }
+    if (s.kind === 'brazier' && t.fuel > 0) {
+      if (active) t.fuel -= dt * S.mods.fuel;
+      if (t.cd <= 0) { t.cd = D.tick; for (const e of L) if (!e.dead && !e.flying && e.spawnT <= 0 && !e.sgLeft && Math.hypot(e.x - s.x, e.y - s.y) < D.r) { sgDmg(e, z, z === S.cur ? D.dmg : D.dmg * 2, s.x, s.y, 10); if (z === S.cur) applyBurn(e, null); } }
+    }
+    t.pop = Math.max(0, (t.pop || 0) - dt);
+  }
+  for (const o of z.objs) if (o.kind === 'tower' && !o.destroyed) { // la torre de vigía dispara flechas
+    o.cd -= dt;
+    if (o.cd <= 0) { const e = sgNearest(L, o.x, o.y, SG.tower.range, false); o.cd = SG.tower.cd; if (e) sgShoot(z, o.x, o.y - 80, e, SG.tower.dmg * sgBoltMul(), '#e8e2f2'); }
+  }
+}
+function sgBolts(dt) {
+  const S = SIEGE;
+  for (const b of S.bolts) {
+    b.life -= dt;
+    if (b.z !== S.cur || b.e.dead || b.e.sgLeft) { b.life = 0; continue; }
+    const tx = b.e.x, ty = b.e.y - 12 - (b.e.z || 0) * 0.5, dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy), s = 620 * dt;
+    b.ang = Math.atan2(dy, dx);
+    if (d <= s + 8) { sgDmg(b.e, b.z, b.dmg, b.x, b.y, 70); b.life = 0; burst(tx, ty, b.color, 4); }
+    else { b.x += dx / d * s; b.y += dy / d * s; }
+  }
+  S.bolts = S.bolts.filter(b => b.life > 0);
+}
+
+// ---------- Acciones de los jugadores (botón de fijar = confirmar) ----------
+function sgCost(kind) { return Math.round(SG_TRAPS[kind].cost * SIEGE.mods.cost); }
+function siegeInteract(p) {
+  const S = SIEGE, z = S.cur; if (!z || S.tp) return null;
+  if (p.sgTask) { const k = p.sgTask.kind; return { label: k === 'repair' ? 'Reparando… (pulsa para parar)' : k === 'douse' ? 'Apagando el fuego…' : 'Apuntalando…', act: q => { q.sgTask = null; } }; }
+  const opts = [], near = (o, r) => Math.hypot(p.x - o.x, p.y - o.y) < r;
+  for (const s of z.stones) if (near(s, 52)) opts.push([s, { label: s.label, act: q => sgTravel(q, s) }]);
+  if (z.horn && S.phase === 'prep' && near(z.horn, 50)) opts.push([z.horn, { label: 'Tocar el cuerno: empezar la oleada', act: () => { S.phaseT = 0; } }]);
+  for (const c of z.crates) if (near(c, 48) && !p.sgCarry) opts.push([c, { label: 'Coger pertrechos (virotes y leña)', act: q => { q.sgCarry = true; SFX.reload(true); } }]);
+  for (const s of z.slots) {
+    if (!near(s, 46)) continue;
+    const D = SG_TRAPS[s.kind], t = s.trap;
+    if (!t) { const c = sgCost(s.kind); opts.push([s, { label: 'Construir ' + D.name.toLowerCase() + ' (' + c + ' oro)', act: q => sgBuild(q, s) }]); }
+    else if (s.kind === 'spikes' && t.charges < D.charges) opts.push([s, { label: 'Rearmar pinchos', act: q => { t.charges = D.charges; floatText(s.x, s.y - 30, 'Rearmados', '#c9c2d6'); SFX.reload(true); } }]);
+    else if (s.kind === 'ballista' && t.ammo < D.ammo) opts.push([s, { label: p.sgCarry ? 'Recargar virotes' : 'Sin virotes: trae pertrechos', act: q => { if (!q.sgCarry) return; q.sgCarry = false; t.ammo = D.ammo; floatText(s.x, s.y - 40, 'Recargada', '#f2d39a'); SFX.reload(true); } }]);
+    else if (s.kind === 'brazier' && t.fuel < D.fuel - 1) opts.push([s, { label: p.sgCarry ? 'Echar leña' : 'Sin leña: trae pertrechos', act: q => { if (!q.sgCarry) return; q.sgCarry = false; t.fuel = D.fuel; floatText(s.x, s.y - 40, 'Avivado', '#ff8a3d'); SFX.reload(true); } }]);
+  }
+  for (const o of z.objs) {
+    if (!near(o, o.r + 44)) continue;
+    if (o.destroyed) opts.push([o, { label: 'Reconstruir ' + o.name.split(' ')[0].toLowerCase() + ' (' + SG.rebuild + ' oro)', act: q => sgRebuild(q, o) }]);
+    else if (o.burn) opts.push([o, { label: 'Apagar el fuego', act: q => { q.sgTask = { kind: 'douse', o, t: 0 }; } }]);
+    else if (o.hp < o.max - 1) opts.push([o, { label: 'Reparar ' + o.name.split(' ')[0].toLowerCase() + ' (oro)', act: q => { q.sgTask = { kind: 'repair', o }; } }]);
+  }
+  for (const tn of S.tunnels) if (tn.z === z) for (const pr of tn.props) if (near(pr, 46)) opts.push([pr, { label: 'Apuntalar el túnel', act: q => { q.sgTask = { kind: 'brace', pr, tn }; } }]);
+  if (!opts.length) return null;
+  opts.sort((a, b) => Math.hypot(p.x - a[0].x, p.y - a[0].y) - Math.hypot(p.x - b[0].x, p.y - b[0].y));
+  return opts[0][1];
+}
+function sgBuild(p, s) {
+  const S = SIEGE, c = sgCost(s.kind), D = SG_TRAPS[s.kind];
+  if (S.gold < c) { floatText(p.x, p.y - 50, 'Falta oro', '#ff8f8f'); return; }
+  S.gold -= c;
+  s.trap = { charges: D.charges, ammo: D.ammo, fuel: D.fuel, cd: 0, ang: 0 };
+  burst(s.x, s.y - 10, '#ffd54a', 14); floatText(s.x, s.y - 40, D.name + ' construida', '#ffd54a'); SFX.hit(true);
+}
+function sgRebuild(p, o) {
+  const S = SIEGE;
+  if (S.gold < SG.rebuild) { floatText(p.x, p.y - 50, 'Falta oro', '#ff8f8f'); return; }
+  S.gold -= SG.rebuild; o.destroyed = false; o.hp = o.max * SG.rebuildFrac; o.burn = false;
+  S.stab = Math.min(100, S.stab + Math.round(SG.stabObj / 2));
+  showBanner('Reconquistado: ' + o.name); burst(o.x, o.y - 30, '#ffd54a', 30); SFX.hit(true);
+}
+function sgTasks(dt) {
+  const S = SIEGE;
+  for (const p of players) {
+    const k = p.sgTask; if (!k) continue;
+    const ref = k.o || k.pr;
+    if (p.down || Math.hypot(p.x - ref.x, p.y - ref.y) > (k.o ? k.o.r + 60 : 60)) { p.sgTask = null; continue; }
+    if (k.kind === 'repair') {
+      const o = k.o; if (o.destroyed || o.hp >= o.max) { p.sgTask = null; if (!o.destroyed) floatText(o.x, o.y - 60, 'Reparado', '#7ee08a'); continue; }
+      let amt = Math.min(SG.repairRate * S.mods.repair * dt, o.max - o.hp), cost = amt * SG.repairGold;
+      if (S.gold < cost) { p.sgTask = null; floatText(p.x, p.y - 50, 'Sin oro', '#ff8f8f'); continue; }
+      o.hp += amt; S.gold -= cost; k.prog = o.hp / o.max;
+      if (Math.random() < dt * 8) burst(o.x + (Math.random() - 0.5) * o.r, o.y - 20, '#ffd54a', 1);
+    } else if (k.kind === 'douse') {
+      k.t += dt; k.prog = k.t / SG.douse;
+      if (k.t >= SG.douse) { k.o.burn = false; p.sgTask = null; floatText(k.o.x, k.o.y - 60, 'Fuego apagado', '#7ab8ff'); burst(k.o.x, k.o.y - 20, '#7ab8ff', 14); }
+    } else if (k.kind === 'brace') { if (!S.tunnels.includes(k.tn)) p.sgTask = null; else k.prog = k.tn.prog; }
+  }
+  for (const p of players) if (p.down) p.sgCarry = false; // al caer se pierden los pertrechos
+}
+
+// ---------- Eventos semialeatorios ----------
+function sgEvent(kind) {
+  const S = SIEGE;
+  if (kind === 'rain') { // lluvia de fuego en la zona donde está el grupo: hay que ponerse a cubierto
+    S.warn = { kind, z: S.cur, t: SG.rain.warn };
+    showBanner('¡Lluvia de fuego en ' + S.cur.short.toLowerCase() + ' en ' + SG.rain.warn + ' s! Poneos bajo la zona techada');
+  } else { // zapadores: un túnel junto a un objetivo; hay que apuntalarlo (dos jugadores a la vez si sois varios)
+    const zs = S.zones.filter(z => z.objs.some(o => !o.destroyed)), z = zs[Math.floor(Math.random() * zs.length)] || S.cur;
+    const alive = z.objs.filter(o => !o.destroyed), o = alive[Math.floor(Math.random() * alive.length)];
+    const ang = z.id === 'patio' ? Math.PI / 2 : Math.atan2(sgTc(9) - o.y, sgTc(z.east ? 22 : 10) - o.x);
+    const x = o.x + Math.cos(ang) * (o.r + 110), y = o.y + Math.sin(ang) * (o.r + 110);
+    S.tunnels.push({ z, x, y, cd: 1.5, prog: 0, props: [{ x: x - 70, y }, { x: x + 70, y }] });
+    showBanner('¡Zapadores! Túnel junto a: ' + o.name + ' (' + z.short + '). Apuntaladlo' + (humans().length > 1 ? ' entre dos' : ''));
+  }
+}
+function sgEvents(dt) {
+  const S = SIEGE, R = SG.rain;
+  if (S.warn) { S.warn.t -= dt; if (S.warn.t <= 0) { S.rain = { z: S.warn.z, t: R.dur, acc: 0 }; S.warn = null; } }
+  if (S.rain) {
+    S.rain.t -= dt;
+    if (S.rain.z === S.cur) {
+      S.rain.acc += dt;
+      while (S.rain.acc >= R.every) {
+        S.rain.acc -= R.every;
+        const z = S.cur, live = players.filter(p => !p.down);
+        for (let k = 0; k < 8; k++) {
+          let x, y;
+          if (live.length && Math.random() < 0.6) { const p = live[Math.floor(Math.random() * live.length)]; x = p.x + (Math.random() - 0.5) * 320; y = p.y + (Math.random() - 0.5) * 240; }
+          else { x = T + Math.random() * (z.room.cols - 2) * T; y = T + Math.random() * (z.room.rows - 2) * T; }
+          const tx = Math.floor(x / T), ty = Math.floor(y / T);
+          if (tx < 1 || ty < 1 || tx >= z.room.cols - 1 || ty >= z.room.rows - 1 || z.room.tiles[ty][tx] !== 0 || sgInCover(z, x, y)) continue;
+          S.marks.push({ x, y, t: 0 }); break;
+        }
+      }
+    }
+    if (S.rain.t <= 0) { S.rain = null; showBanner('Cesa la lluvia de fuego'); }
+  }
+  for (const m of S.marks) {
+    m.t += dt;
+    if (m.t >= R.delay && !m.done) {
+      m.done = true;
+      for (const p of players) if (!p.down && Math.hypot(p.x - m.x, p.y - m.y) < R.r + p.r) hurtPlayer(p, m.x, m.y, null, R.dmg);
+      for (const e of enemies) if (!e.dead && Math.hypot(e.x - m.x, e.y - m.y) < R.r + e.r) { sgDmg(e, S.cur, R.edmg, m.x, m.y, 60); applyBurn(e, null); }
+      effects.push({ type: 'ring', x: m.x, y: m.y, r: R.r, t: 0, dur: 0.3, color: '#ff8a3d' }); burst(m.x, m.y - 6, '#ff8a3d', 6);
+    }
+  }
+  S.marks = S.marks.filter(m => m.t < R.delay + 0.05);
+  for (const tn of S.tunnels) {
+    tn.cd -= dt;
+    if (tn.cd <= 0) { // salen enemigos del túnel
+      tn.cd = SG.sappers.every;
+      const e = makeEnemy(Math.random() < 0.3 ? 'slime' : 'mite', tn.x, tn.y, false); e.spawnT = tn.z === S.cur ? 0.5 : 0;
+      sgList(tn.z).push(e); sgAdopt(e, tn.z);
+      if (tn.z !== S.cur) sgAlert('tunnel' + tn.z.id, 'Salen zapadores en ' + tn.z.short.toLowerCase());
+    }
+    const need = Math.min(2, Math.max(1, humans().length)), braced = new Set(players.filter(p => p.sgTask && p.sgTask.kind === 'brace' && p.sgTask.tn === tn).map(p => p.sgTask.pr));
+    if (braced.size >= need) tn.prog += dt / SG.sappers.seal; else tn.prog = Math.max(0, tn.prog - dt * 0.3);
+    if (tn.prog >= 1) { tn.sealed = true; S.gold += SG.goldSeal; S.stab = Math.min(100, S.stab + SG.stabSeal); showBanner('¡Túnel sellado! +' + SG.goldSeal + ' oro'); burst(tn.x, tn.y, '#d8cfe6', 30); }
+  }
+  S.tunnels = S.tunnels.filter(tn => !tn.sealed);
+}
+
+// ---------- Mejoras entre oleadas ----------
+function sgUpRect(i) { const w = Math.min(230, (W - 60) / 3), h = 150, x0 = (W - (3 * w + 2 * 16)) / 2; return [x0 + i * (w + 16), H / 2 - 50, w, h]; }
+function sgUpChoose(i) {
+  const S = SIEGE, u = S.upOpts[i]; if (!u) return;
+  u.apply(S); S.upOpts = null; state = 'play';
+  for (const p of players) { for (const kk in p.prev) p.prev[kk] = true; p.shotHold = true; }
+  showBanner(u.name + '. Preparación: ' + SG.prep + ' s');
+}
+function siegeUpUpdate() {
+  const S = SIEGE;
+  for (const dev of DEVICES) {
+    const m = menuInput(dev), mv = m.dx || m.dy;
+    if (mv) S.upSel = (S.upSel + mv + 3) % 3;
+    if (m.a) { sgUpChoose(S.upSel); return; }
+  }
+}
+function siegeUpDraw() {
+  const S = SIEGE; if (!S.upOpts) return;
+  ctx.fillStyle = 'rgba(6,4,10,0.7)'; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT;
+  ctx.fillText('Oleada ' + S.wave + ' superada', W / 2, H / 2 - 110);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 14px ' + FONT; ctx.fillText('Elegid una mejora para el grupo (provisional)', W / 2, H / 2 - 82);
+  S.upOpts.forEach((u, i) => {
+    const [x, y, w, h] = sgUpRect(i), sel = i === S.upSel;
+    rrect(x, sel ? y - 6 : y, w, h, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 3 : 1.5; ctx.strokeStyle = sel ? '#ffd54a' : '#3b3349'; ctx.stroke();
+    const yy = sel ? y - 6 : y;
+    ctx.fillStyle = '#ffd54a'; ctx.font = '700 16px ' + FONT; ctx.fillText(u.name, x + w / 2, yy + 38);
+    ctx.fillStyle = '#d8d0e6'; ctx.font = '400 13px ' + FONT;
+    const words = u.desc.split(' '); let line = '', ly = yy + 70;
+    for (const wd of words) { if (ctx.measureText(line + wd).width > w - 24) { ctx.fillText(line, x + w / 2, ly); ly += 18; line = ''; } line += wd + ' '; }
+    ctx.fillText(line, x + w / 2, ly);
+  });
+  ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText('Toca una carta, o elige con la dirección y confirma con golpe', W / 2, H / 2 + 132);
+}
+
+// ---------- Dibujo ----------
+function sgFloorRect(z, c) { const x0 = Math.min(c.x0, c.x1) * T, x1 = (Math.max(c.x0, c.x1) + 1) * T; return [x0, c.y0 * T, x1 - x0, (c.y1 + 1 - c.y0) * T]; }
+function siegeDrawFloor() { // capa del suelo (coordenadas de mundo, aplastadas)
+  const S = SIEGE, z = S.cur; if (!z) return;
+  ctx.save(); ctx.scale(1, K);
+  if (z.cover) { // zona techada: sombra de tejado
+    const [x, y, w, h] = sgFloorRect(z, z.cover), hot = (S.rain && S.rain.z === z) || (S.warn && S.warn.z === z);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = hot ? `rgba(126,224,195,${0.6 + 0.4 * Math.sin(time * 8)})` : 'rgba(126,224,195,0.35)'; ctx.lineWidth = hot ? 4 : 2; ctx.setLineDash([10, 8]); ctx.strokeRect(x + 2, y + 2, w - 4, h - 4); ctx.setLineDash([]);
+  }
+  if (z.id !== 'patio') { // brecha: escombros en el hueco de la muralla
+    ctx.fillStyle = '#4a4256';
+    for (let i = 0; i < 7; i++) { const bx = z.B.x - (z.east ? -1 : 1) * (14 + (i % 3) * 10), by = z.B.y - T * 1.2 + i * 14; ellipse(bx, by, 7 + (i % 2) * 3, 6); }
+  }
+  for (const s of z.slots) { // ranuras de trampa
+    const D = SG_TRAPS[s.kind], t = s.trap;
+    if (!t) { ctx.strokeStyle = 'rgba(255,213,74,0.55)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.arc(s.x, s.y, 26, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); continue; }
+    if (s.kind === 'spikes') {
+      ctx.fillStyle = t.charges > 0 ? '#3b3349' : '#2a2433'; ctx.beginPath(); ctx.arc(s.x, s.y, D.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#5e566d'; ctx.lineWidth = 2; ctx.stroke();
+    }
+    if (s.kind === 'brazier' && t.fuel > 0) { ctx.fillStyle = `rgba(255,138,61,${0.08 + 0.04 * Math.sin(time * 6)})`; ctx.beginPath(); ctx.arc(s.x, s.y, D.r, 0, Math.PI * 2); ctx.fill(); }
+    if (s.kind === 'ballista') { ctx.strokeStyle = 'rgba(242,211,154,0.12)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, D.range, 0, Math.PI * 2); ctx.stroke(); }
+  }
+  for (const st of z.stones) { ctx.fillStyle = `rgba(180,155,255,${0.18 + 0.08 * Math.sin(time * 3)})`; ctx.beginPath(); ctx.arc(st.x, st.y, 40, 0, Math.PI * 2); ctx.fill(); }
+  for (const tn of S.tunnels) if (tn.z === z) {
+    ctx.fillStyle = '#0b0912'; ctx.beginPath(); ctx.ellipse(tn.x, tn.y, 30, 24, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#6b5a3e'; ctx.lineWidth = 4; ctx.stroke();
+    for (const pr of tn.props) { ctx.strokeStyle = 'rgba(255,213,74,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.arc(pr.x, pr.y, 22, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
+  }
+  for (const m of S.marks) { const q = Math.min(1, m.t / SG.rain.delay); ctx.fillStyle = `rgba(255,107,60,${0.15 + 0.3 * q})`; ctx.beginPath(); ctx.arc(m.x, m.y, SG.rain.r * (0.4 + 0.6 * q), 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(255,170,90,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(m.x, m.y, SG.rain.r, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.restore();
+}
+function sgBar(x, y, w, f, col) { ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, 7); ctx.fillStyle = col; ctx.fillRect(x - w / 2, y, w * Math.max(0, Math.min(1, f)), 5); }
+function sgLabel(txt, x, y, col) { ctx.font = '700 11px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillText(txt, x + 1, y + 1); ctx.fillStyle = col || '#f2eefa'; ctx.fillText(txt, x, y); }
+function sgDrawObj(o) {
+  const x = o.x, y = o.y * K, P = pal;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(x, y, o.r * 1.1, o.r * 0.5);
+  if (o.destroyed) { // ruinas
+    ctx.fillStyle = '#4a4256'; for (let i = 0; i < 6; i++) ellipse(x + Math.cos(i * 1.7) * o.r * 0.6, y - 4 + Math.sin(i * 2.3) * 6, 10, 7);
+    ctx.fillStyle = '#2a2433'; ctx.fillRect(x - o.r * 0.5, y - 18, o.r, 14);
+    sgLabel('Ruinas · ' + o.name, x, y - 30, '#8f86a0'); return;
+  }
+  const fl = o.flash > 0, top = fl ? '#ffffff' : P.rockTop, front = fl ? '#e0dae8' : P.rockFront;
+  if (o.kind === 'tower') {
+    const w = o.r * 1.3, h = 92;
+    ctx.fillStyle = front; ctx.fillRect(x - w / 2, y - h, w, h);
+    ctx.fillStyle = top; ctx.fillRect(x - w / 2 - 6, y - h - 10, w + 12, 12);
+    for (let i = 0; i < 4; i++) ctx.fillRect(x - w / 2 - 6 + i * (w + 12) / 3.5, y - h - 22, 9, 12);
+    ctx.fillStyle = '#16121e'; ctx.fillRect(x - 5, y - h + 24, 10, 18);
+  } else if (o.kind === 'gate') {
+    const w = 130, h = 96;
+    ctx.fillStyle = front; ctx.fillRect(x - w / 2 - 18, y - h, 18, h); ctx.fillRect(x + w / 2, y - h, 18, h);
+    ctx.fillStyle = fl ? '#ffffff' : '#6b4a2a'; ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x - w / 2, y - h + 30); ctx.quadraticCurveTo(x, y - h - 20, x + w / 2, y - h + 30); ctx.lineTo(x + w / 2, y); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#3e2a17'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - h + 4); ctx.stroke();
+    ctx.fillStyle = '#9a9aa8'; for (let i = -2; i <= 2; i++) ctx.fillRect(x + i * 24 - 2, y - h + 20, 4, h - 22);
+  } else if (o.kind === 'store') {
+    const w = o.r * 2, h = 40;
+    ctx.fillStyle = front; ctx.fillRect(x - w / 2, y - h, w, h);
+    ctx.fillStyle = fl ? '#ffffff' : '#8a4a32'; ctx.beginPath(); ctx.moveTo(x - w / 2 - 8, y - h); ctx.lineTo(x, y - h - 30); ctx.lineTo(x + w / 2 + 8, y - h); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#16121e'; ctx.fillRect(x - 9, y - 24, 18, 24);
+  } else if (o.kind === 'powder') {
+    for (const [ox, oy] of [[-18, 0], [18, 0], [0, -8], [-8, -26], [10, -24]]) { ctx.fillStyle = fl ? '#ffffff' : '#7a5a34'; rrect(x + ox - 12, y + oy - 26, 24, 28, 6); ctx.fill(); ctx.fillStyle = '#3e2a17'; ctx.fillRect(x + ox - 12, y + oy - 18, 24, 3); ctx.fillRect(x + ox - 12, y + oy - 8, 24, 3); }
+    ctx.fillStyle = '#ff6b6b'; ctx.font = '900 14px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('☠', x, y - 40);
+  }
+  const by = y - (o.kind === 'tower' ? 128 : o.kind === 'gate' ? 118 : 74), hf = o.hp / o.max;
+  sgBar(x, by, 70, hf, hf > 0.5 ? '#7ee08a' : hf > 0.25 ? '#ffd54a' : '#ff6b6b');
+  sgLabel(o.name + (o.burn ? ' · ¡arde!' : ''), x, by - 5, o.burn ? '#ff8a3d' : (SIEGE.time - o.hitT < 1 ? '#ff8f8f' : '#f2eefa'));
+  if (o.burn) for (let i = 0; i < 3; i++) { ctx.fillStyle = i % 2 ? '#ffd54a' : '#ff8a3d'; const fx = x + (i - 1) * o.r * 0.5, fh = 14 + 6 * Math.sin(time * 12 + i * 2); ctx.beginPath(); ctx.moveTo(fx - 7, y - 30); ctx.quadraticCurveTo(fx, y - 30 - fh * 2, fx + 7, y - 30); ctx.fill(); }
+}
+function sgDrawSlot(s) {
+  const x = s.x, y = s.y * K, t = s.trap, D = SG_TRAPS[s.kind];
+  if (!t) { sgLabel(D.name + ' · ' + sgCost(s.kind), x, y + 4, '#ffd54a'); return; }
+  if (s.kind === 'spikes') {
+    ctx.fillStyle = t.charges > 0 ? '#c9c2d6' : '#5e566d';
+    const up = t.pop > 0 ? 8 : 0;
+    for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, r = i % 2 ? 20 : 30, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * K; ctx.beginPath(); ctx.moveTo(px - 4, py); ctx.lineTo(px, py - 10 - up); ctx.lineTo(px + 4, py); ctx.fill(); }
+    sgBar(x, y + 22, 40, t.charges / D.charges, '#c9c2d6');
+    if (t.charges <= 0) sgLabel('Rearmar', x, y - 22, '#ffd54a');
+  } else if (s.kind === 'ballista') {
+    ctx.strokeStyle = '#5a3e22'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x - 12, y); ctx.lineTo(x, y - 18); ctx.lineTo(x + 12, y); ctx.stroke();
+    ctx.save(); ctx.translate(x, y - 20); ctx.rotate(t.ang || 0);
+    ctx.fillStyle = '#7a5a34'; ctx.fillRect(-8, -3, 30, 6);
+    ctx.strokeStyle = '#d9a066'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(14, 0, 14, -Math.PI / 2, Math.PI / 2, true); ctx.stroke();
+    ctx.restore();
+    sgBar(x, y + 10, 40, t.ammo / D.ammo, '#f2d39a');
+    if (t.ammo <= 0) sgLabel('Sin virotes', x, y - 42, '#ffd54a');
+  } else {
+    ctx.fillStyle = '#4a4256'; ctx.fillRect(x - 4, y - 22, 8, 22);
+    ctx.fillStyle = '#6b5a3e'; ctx.beginPath(); ctx.ellipse(x, y - 24, 18, 7, 0, 0, Math.PI * 2); ctx.fill();
+    if (t.fuel > 0) for (let i = 0; i < 3; i++) { ctx.fillStyle = i === 1 ? '#ffd54a' : '#ff8a3d'; const fx = x + (i - 1) * 9, fh = 12 + 5 * Math.sin(time * 14 + i * 2); ctx.beginPath(); ctx.moveTo(fx - 6, y - 26); ctx.quadraticCurveTo(fx, y - 26 - fh * 2, fx + 6, y - 26); ctx.fill(); }
+    sgBar(x, y + 8, 40, t.fuel / D.fuel, '#ff8a3d');
+    if (t.fuel <= 0) sgLabel('Sin leña', x, y - 44, '#ffd54a');
+  }
+}
+function sgDrawStone(st) {
+  const x = st.x, y = st.y * K;
+  ctx.fillStyle = '#5e566d'; ctx.beginPath(); ctx.moveTo(x - 12, y); ctx.lineTo(x - 8, y - 52); ctx.lineTo(x, y - 60); ctx.lineTo(x + 8, y - 52); ctx.lineTo(x + 12, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = `rgba(180,155,255,${0.6 + 0.4 * Math.sin(time * 4)})`; ctx.fillRect(x - 3, y - 44, 6, 22);
+  sgLabel('→ ' + sgZone(st.to).short, x, y - 68, '#c9b8ff');
+}
+function sgDrawCrate(c) {
+  const x = c.x, y = c.y * K;
+  ctx.fillStyle = '#7a5a34'; ctx.fillRect(x - 16, y - 24, 32, 24); ctx.strokeStyle = '#3e2a17'; ctx.lineWidth = 2; ctx.strokeRect(x - 16, y - 24, 32, 24);
+  ctx.beginPath(); ctx.moveTo(x - 16, y - 24); ctx.lineTo(x + 16, y); ctx.moveTo(x + 16, y - 24); ctx.lineTo(x - 16, y); ctx.stroke();
+  sgLabel(SIEGE.cur.id === 'patio' ? 'Armería' : 'Pertrechos', x, y - 30, '#d9a066');
+}
+function siegeDrawList(list) { // objetos «de pie»: se ordenan con personajes y enemigos
+  const S = SIEGE, z = S.cur; if (!z) return;
+  for (const o of z.objs) list.push({ y: o.y, f: () => sgDrawObj(o) });
+  for (const s of z.slots) list.push({ y: s.y, f: () => sgDrawSlot(s) });
+  for (const st of z.stones) list.push({ y: st.y, f: () => sgDrawStone(st) });
+  for (const c of z.crates) list.push({ y: c.y, f: () => sgDrawCrate(c) });
+  if (z.horn && S.phase === 'prep') list.push({ y: z.horn.y, f: () => { const x = z.horn.x, y = z.horn.y * K; ctx.fillStyle = '#d9a066'; ctx.beginPath(); ctx.moveTo(x - 14, y - 30); ctx.quadraticCurveTo(x, y - 10, x + 14, y - 40); ctx.lineTo(x + 8, y - 44); ctx.quadraticCurveTo(x, y - 20, x - 10, y - 34); ctx.fill(); sgLabel('Cuerno', x, y - 52, '#d9a066'); } });
+  for (const tn of S.tunnels) if (tn.z === z) for (const pr of tn.props) list.push({ y: pr.y, f: () => { const x = pr.x, y = pr.y * K; ctx.fillStyle = '#6b5a3e'; ctx.fillRect(x - 3, y - 34, 6, 34); ctx.fillRect(x - 14, y - 36, 28, 5); } });
+  for (const e of enemies) if (e.banner && !e.dead) list.push({ y: e.y + 0.1, f: () => { const x = e.x + 14, y = e.y - 30 - (e.z || 0); ctx.strokeStyle = '#d8cfe6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y + 20); ctx.lineTo(x, y - 34); ctx.stroke(); ctx.fillStyle = '#e5484d'; ctx.beginPath(); ctx.moveTo(x, y - 34); ctx.lineTo(x + 22 + Math.sin(time * 6) * 2, y - 27); ctx.lineTo(x, y - 18); ctx.fill(); } });
+  for (const p of players) if (p.sgCarry && !p.down) list.push({ y: p.y + 0.2, f: () => { const x = p.x, y = p.y - 52 * p.ch.size - (p.z || 0); ctx.fillStyle = '#7a5a34'; ctx.fillRect(x - 10, y - 12, 20, 14); ctx.strokeStyle = '#3e2a17'; ctx.lineWidth = 1.5; ctx.strokeRect(x - 10, y - 12, 20, 14); } });
+}
+function siegeDrawAir() { // proyectiles, bolas de fuego que caen y progreso de tareas (dentro de la proyección)
+  const S = SIEGE;
+  for (const b of S.bolts) { ctx.save(); ctx.translate(b.x, b.y * K); ctx.rotate(b.ang || 0); ctx.fillStyle = b.color; ctx.fillRect(-10, -1.5, 20, 3); ctx.restore(); }
+  for (const m of S.marks) { const q = Math.min(1, m.t / SG.rain.delay), y = m.y * K - (1 - q) * 320; ctx.fillStyle = '#ffd54a'; ellipse(m.x + (1 - q) * 60, y, 7, 7); ctx.fillStyle = 'rgba(255,138,61,0.6)'; ellipse(m.x + (1 - q) * 66, y - 10, 5, 9); }
+  for (const p of players) { // players ya proyectados
+    const k = p.sgTask; if (!k || p.down || k.prog == null) continue;
+    const x = p.x, y = p.y - 70 * p.ch.size;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = k.kind === 'douse' ? '#7ab8ff' : '#ffd54a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, k.prog)); ctx.stroke();
+  }
+  for (const tn of S.tunnels) if (tn.z === S.cur && tn.prog > 0) sgBar(tn.x, tn.y * K - 40, 60, tn.prog, '#d8cfe6');
+  if (S.cur && S.cur.cover) { const [x, y, w, h] = sgFloorRect(S.cur, S.cur.cover); sgLabel('Zona techada', x + w / 2, (y + h) * K - 6, '#7ee0c3'); }
+}
+function siegeDrawUI() { // panel de estado, zonas y avisos (coordenadas de pantalla)
+  const S = SIEGE; if (!S.cur) return;
+  const x = 10, y = HUD + 10;
+  ctx.save();
+  rrect(x, y, 236, 74, 8); ctx.fillStyle = 'rgba(14,10,22,0.82)'; ctx.fill();
+  ctx.textAlign = 'left'; ctx.font = '700 13px ' + FONT; ctx.fillStyle = '#f2eefa';
+  const tt = S.phase === 'prep' ? 'Preparación · ' + Math.ceil(S.phaseT) + ' s' : 'Oleada ' + S.wave + '/' + SG.waves + ' · ' + Math.floor(S.waveT / 60) + ':' + String(Math.floor(S.waveT % 60)).padStart(2, '0');
+  ctx.fillText(tt, x + 10, y + 19);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#ffd54a'; ctx.fillText(Math.floor(S.gold) + ' oro', x + 226, y + 19);
+  ctx.textAlign = 'left'; ctx.font = '600 11px ' + FONT; ctx.fillStyle = '#b9afc9'; ctx.fillText('Estabilidad del frente', x + 10, y + 38);
+  const sf = S.stab / 100; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x + 10, y + 44, 216, 8); ctx.fillStyle = sf > 0.5 ? '#7ee0c3' : sf > 0.25 ? '#ffd54a' : '#ff6b6b'; ctx.fillRect(x + 10, y + 44, 216 * sf, 8);
+  ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#8f86a0';
+  const ev = S.warn ? '¡Lluvia de fuego en ' + Math.ceil(S.warn.t) + ' s!' : S.rain ? 'Lluvia de fuego (' + S.rain.z.short + ') · ' + Math.ceil(S.rain.t) + ' s' : S.tunnels.length ? 'Túnel de zapadores en ' + S.tunnels.map(t => t.z.short).join(', ') : (S.transit.length ? S.transit.length + ' enemigo(s) de camino al patio' : '');
+  if (ev) { ctx.fillStyle = S.warn || S.rain ? '#ff8a3d' : '#d8cfe6'; ctx.fillText(ev, x + 10, y + 66); }
+  // zonas: tres casillas con sus objetivos
+  const bw = 150, gap = 8, bx0 = W / 2 - (3 * bw + 2 * gap) / 2, by = H - 64;
+  S.zones.forEach((z, i) => {
+    const bx = bx0 + i * (bw + gap), here = z === S.cur, L = sgList(z), n = L ? L.filter(e => !e.dead && !e.sgLeft).length : 0, hit = z.objs.some(o => S.time - o.hitT < 1.5 && !o.destroyed);
+    rrect(bx, by, bw, 54, 7); ctx.fillStyle = here ? 'rgba(47,38,64,0.92)' : 'rgba(14,10,22,0.8)'; ctx.fill();
+    ctx.lineWidth = here ? 2.5 : 1.5; ctx.strokeStyle = hit && Math.sin(time * 10) > 0 ? '#ff6b6b' : (here ? '#b49bff' : '#3b3349'); ctx.stroke();
+    ctx.textAlign = 'left'; ctx.font = '700 12px ' + FONT; ctx.fillStyle = here ? '#f2eefa' : '#b9afc9'; ctx.fillText(z.short + (here ? ' · aquí' : ''), bx + 8, by + 16);
+    ctx.textAlign = 'right'; ctx.fillStyle = n ? '#ff8f8f' : '#6f6680'; ctx.fillText(n + ' enem.', bx + bw - 8, by + 16);
+    z.objs.forEach((o, k) => { const ox = bx + 8, oy = by + 24 + k * 13; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(ox, oy, bw - 16, 8); ctx.fillStyle = o.destroyed ? '#3b3349' : o.burn ? '#ff8a3d' : '#7ee08a'; ctx.fillRect(ox, oy, (bw - 16) * (o.destroyed ? 1 : o.hp / o.max), 8); });
+  });
+  S.log.forEach((l, i) => { const a = Math.max(0, 1 - (S.time - l.t) / 6); if (a <= 0) return; ctx.globalAlpha = a; ctx.textAlign = 'right'; ctx.font = '700 12px ' + FONT; ctx.fillStyle = '#ff8f8f'; ctx.fillText(l.text, W - 12, HUD + 24 + i * 18); });
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+INTERACTS.unshift({ id: 'siege', label: p => (p.sgIt ? p.sgIt.label : ''), near: p => SIEGE.on && state === 'play' && !!(p.sgIt = siegeInteract(p)), act: p => { if (p.sgIt) p.sgIt.act(p); } });
+
 // ---------- Arranque ----------
 let last = performance.now(), acc = 0;
 const STEP = 1 / 60;
@@ -8482,7 +9264,7 @@ function frame(now) {
 resize();
 requestAnimationFrame(frame);
 // Gancho de depuración para pruebas automáticas: solo existe si la URL lleva ?debug
-if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS }; }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD };
+if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD };
 })();
 
 // ===== Código retirado, comentado y sin efecto =====
