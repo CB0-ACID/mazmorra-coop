@@ -5205,6 +5205,24 @@ function updateHazards(dt) {
 }
 
 // ---------- Física ----------
+// Red de seguridad: nada puede quedar fuera del mapa de la sala (ni por saltos, empujes o balas rápidas)
+function outsideRoom(x, y) { return x < 0 || y < 0 || x >= COLS * T || y >= ROWS * T; }
+// Comprueba el tramo recorrido entre dos puntos (muestreado), no solo el punto final
+function segSolid(x0, y0, x1, y1) {
+  const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 8));
+  for (let i = 1; i <= n; i++) {
+    const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n;
+    if (isSolid(Math.floor(x / T), Math.floor(y / T), false)) return true;
+  }
+  return false;
+}
+// Devuelve dentro de la sala a cualquier personaje o enemigo que haya salido, y anula su empuje hacia fuera
+function keepInside(e) {
+  const r = e.r || 0, W = COLS * T, H = ROWS * T;
+  if (e.x >= r && e.x <= W - r && e.y >= r && e.y <= H - r) return;
+  e.x = Math.max(r, Math.min(W - r, e.x)); e.y = Math.max(r, Math.min(H - r, e.y));
+  e.kbx = 0; e.kby = 0;
+}
 function collide(e, canDoor) {
   let hit = false;
   const tx0 = Math.floor((e.x - e.r) / T), tx1 = Math.floor((e.x + e.r) / T);
@@ -5324,6 +5342,8 @@ function update(dt) {
   separate(enemies.filter(e => e.spawnT <= 0 && !e.airborne && e.state !== 'leap'));
   separate(players.filter(p => !p.down));
   for (const e of enemies) if (e.state !== 'leap') collide(e, false);
+  for (const e of enemies) keepInside(e);
+  for (const p of players) keepInside(p);
   leash();
   updateHazards(dt);
   updateChains(dt); updateShieldThrows(dt); updateShieldFlung(dt);
@@ -5332,8 +5352,9 @@ function update(dt) {
   updateCBombs(dt); updateStickies(); updateShells(dt); updateDolls(dt); // Coral: granadas, cargas pegajosas y mortero
 
   for (const b of bullets) {
+    const ox = b.x, oy = b.y;
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-    if (isSolid(Math.floor(b.x / T), Math.floor(b.y / T), false)) { b.life = 0; burst(b.x, b.y - 12, '#ff6b8a', 4); continue; }
+    if (outsideRoom(b.x, b.y) || segSolid(ox, oy, b.x, b.y)) { b.life = 0; burst(b.x, b.y - 12, '#ff6b8a', 4); continue; } // tramo completo: una bala rápida no atraviesa muros
     if (players.some(q => q.shieldT > 0 && !q.down && Math.hypot(q.x - b.x, q.y - b.y) < AB.shield.r)) { b.life = 0; burst(b.x, b.y - 12, '#d8cfe6', 3); continue; } // Bastión
     { // escudo en alto: intercepta las balas que llegan por delante (también las que iban hacia los aliados de detrás) y las refleja
       // const wp = players.find(q => q.shieldUp && !q.down && Math.hypot(q.x - b.x, q.y - b.y) < q.r + 24 && blocks(q, b.x, b.y)); // antes: solo el punto actual
@@ -5346,13 +5367,15 @@ function update(dt) {
   bullets = bullets.filter(b => b.life > 0);
 
   for (const b of pBullets) {
+    const ox = b.x, oy = b.y;
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
     if (b.aim) { // altura del proyectil: sube a medida que se acerca al enemigo en el aire
       const ph = b.h; b.trav += Math.hypot(b.vx, b.vy) * dt;
       if (!b.aim.dead) b.tz = b.aim.z;
       b.h = 12 + Math.min(1, b.trav / b.d0) * b.tz; b.vh = (b.h - ph) / dt;
     }
-    if (isSolid(Math.floor(b.x / T), Math.floor(b.y / T), false)) { if (b.bounces > 0) bounceBullet(b, dt); else { b.life = 0; burst(b.x, b.y - b.h, b.color, 4); continue; } }
+    if (outsideRoom(b.x, b.y)) { b.life = 0; continue; }
+    if (segSolid(ox, oy, b.x, b.y)) { if (b.bounces > 0) bounceBullet(b, dt); else { b.life = 0; burst(b.x, b.y - b.h, b.color, 4); continue; } }
     for (const e of enemies) {
       if (e.dead || e.spawnT > 0) continue;
       if (b.aim && !e.airborne && b.h > 40) continue; // ya va por encima de los enemigos del suelo
