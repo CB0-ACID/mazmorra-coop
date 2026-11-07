@@ -136,7 +136,7 @@ body.touch.portrait:not(.rotdismiss) #rotate{display:flex}
 (() => {
 'use strict';
 // ---------- Constantes del mundo ----------
-const T = 40, HUD = 52;
+const T = 40; let HUD = 52; // alto del marcador; layoutHud() lo ajusta a la pantalla (ver HUD_UI)
 // Tamaño de diseño: 840 × 596. La escala del juego se calcula siempre a partir de él; si la pantalla tiene otra
 // proporción, el área visible (W × H) se amplía por los lados o por arriba y abajo, sin cambiar la escala del mundo.
 const BW = 21 * T, BH = HUD + 24 + 13 * T, BVH = BH - HUD, OY = HUD + 24;
@@ -456,6 +456,19 @@ let ctx = cvs.getContext('2d'); // let: los iconos de los botones táctiles lo c
 const stage = document.getElementById('stage');
 let lastMenu = null;
 function isMenuState() { return state === 'count' || state === 'select' || state === 'options' || state === 'ideas'; }
+// ---------- Tamaño del marcador en partida ----------
+// Se diseña a escala 1 (pantalla de escritorio) y se amplía cuando el lienzo se ve pequeño, para que en el móvil
+// lo importante no baje de unos mínimos en píxeles reales (CSS): iconos ≈ 26 px, texto ≥ 12 px, barra de vida ≈ 15 px.
+// La escala sale de cuánto mide un píxel lógico en pantalla (s): hs = cssPorUnidad / s, entre min y max, y se
+// reduce si con muchos jugadores no cabría a lo ancho.
+const HUD_UI = { base: 50, panelW: 182, gap: 10, pip: 26, bar: 15, cssPerUnit: 1.0, min: 1, max: 1.8, floor: 0.85 };
+let hudS = 1, viewS = 1; // hudS: escala del marcador; viewS: píxeles CSS por unidad lógica (la fija resize)
+function layoutHud() {
+  const n = Math.max(1, players.length);
+  const need = HUD_UI.gap + n * (HUD_UI.panelW + HUD_UI.gap) + 64 + 96 + 12; // paneles + piso + minimapa
+  hudS = Math.max(HUD_UI.floor, Math.min(HUD_UI.max, Math.max(HUD_UI.min, HUD_UI.cssPerUnit / viewS), W / need));
+  HUD = Math.round(HUD_UI.base * hudS); VH = H - HUD;
+}
 function resize() {
   const menu = isMenuState(), dpr = Math.min(2, window.devicePixelRatio || 1);
   document.body.classList.toggle('menu', menu); // primero se oculta el pie, para medir el espacio real
@@ -463,7 +476,7 @@ function resize() {
   // El lienzo ocupa toda la zona disponible, en menús y en juego. La escala es la de diseño (840 × 596, o la que
   // quepa si la pantalla es más pequeña); el área lógica se amplía para cubrir la proporción de la pantalla.
   const s = Math.max(0.2, Math.min(r.width / BW, r.height / BH));
-  W = LW = Math.max(BW, r.width / s); H = LH = Math.max(BH, r.height / s); VH = H - HUD;
+  W = LW = Math.max(BW, r.width / s); H = LH = Math.max(BH, r.height / s); viewS = s; layoutHud();
   cvs.style.width = r.width + 'px'; cvs.style.height = r.height + 'px';
   cvs.width = Math.floor(r.width * dpr); cvs.height = Math.floor(r.height * dpr);
   ctx.setTransform(cvs.width / W, 0, 0, cvs.height / H, 0, 0);
@@ -737,6 +750,13 @@ const SFX = {
     tone(0.3, 110, 40, 0.9, 'sine'); noise(0.25, 6000, 1500, 0.4, 'highpass', 0.5);
   },
   launch() { if (!sfxOk('launch', 0.05)) { return; } tone(0.22, 220, 700, 0.3, 'triangle'); noise(0.2, 500, 2500, 0.25, 'bandpass', 1); },
+  // habilidad lista: dos notas suaves y cortas; la 1 algo más grave que la 2 para distinguirlas de oído
+  ready(slot) {
+    if (!sfxOk('ready' + slot, 0.25)) return;
+    const [a, b] = slot === 'sec' ? [880, 1319] : [698, 1047];
+    tone(0.16, a, a, 0.09, 'sine'); tone(0.12, a * 2, a * 2, 0.018, 'sine');
+    setTimeout(() => { if (actx && !muted) { tone(0.26, b, b, 0.075, 'sine'); tone(0.2, b * 2, b * 2, 0.014, 'sine'); } }, 75);
+  },
   hurt() { if (sfxOk('hurt', 0.1)) tone(0.2, 300, 90, 0.45, 'square'); },
   beam() { if (sfxOk('beam', 0.1)) tone(0.08, 880 + Math.random() * 120, 1200, 0.05, 'sine'); },
   reload(done) { if (sfxOk('rld', 0.08)) { noise(0.04, done ? 3200 : 2200, done ? 2600 : 1600, 0.4, 'bandpass', 0.7); tone(0.05, done ? 900 : 520, done ? 1200 : 380, 0.25, 'square'); } },
@@ -3697,24 +3717,35 @@ function drawAbilityIcon(type, cx, cy, s, col) {
   ctx.setLineDash([]); ctx.restore();
 }
 // Casilla de habilidad del marcador. Lista: fondo y borde con los tonos del personaje. Recargando: se rellena de abajo arriba.
-function drawPip(x, y, frac, type, color, active, disabled) {
-  const s = 17, f = Math.max(0, Math.min(1, frac)), tn = iconTones(color);
+// Casilla de habilidad del marcador (tamaño z). Recargando: se rellena de abajo arriba y muestra los segundos que faltan.
+// fx (0–1): destello al quedar lista
+function drawPip(x, y, frac, type, color, active, disabled, z = 17, secs = 0, fx = 0) {
+  const s = z, f = Math.max(0, Math.min(1, frac)), tn = iconTones(color), r = Math.max(4, s * 0.2), lw = s > 22 ? 2 : 1.5;
   if (disabled) { // no se puede usar ahora mismo
-    rrect(x, y, s, s, 4); ctx.fillStyle = '#1a1622'; ctx.fill(); ctx.strokeStyle = '#3b3349'; ctx.lineWidth = 1; ctx.stroke();
+    rrect(x, y, s, s, r); ctx.fillStyle = '#1a1622'; ctx.fill(); ctx.strokeStyle = '#3b3349'; ctx.lineWidth = 1; ctx.stroke();
     drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.72, ICON_GREY);
-    ctx.strokeStyle = '#7a6f8c'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x + 2, y + s - 2); ctx.lineTo(x + s - 2, y + 2); ctx.stroke();
-    return;
-  }
-  if (f > 0) {
-    rrect(x, y, s, s, 4); ctx.fillStyle = '#1d1826'; ctx.fill();
-    ctx.save(); rrect(x, y, s, s, 4); ctx.clip(); ctx.fillStyle = tn.bgHi; ctx.fillRect(x, y + s * f, s, s * (1 - f)); ctx.restore();
-    rrect(x, y, s, s, 4); ctx.strokeStyle = tn.D; ctx.lineWidth = 1; ctx.stroke();
-    ctx.save(); ctx.globalAlpha = 0.4; drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.72, color); ctx.restore();
+    ctx.strokeStyle = '#7a6f8c'; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x + 3, y + s - 3); ctx.lineTo(x + s - 3, y + 3); ctx.stroke();
+  } else if (f > 0) {
+    rrect(x, y, s, s, r); ctx.fillStyle = '#1d1826'; ctx.fill();
+    ctx.save(); rrect(x, y, s, s, r); ctx.clip(); ctx.fillStyle = tn.bgHi; ctx.fillRect(x, y + s * f, s, s * (1 - f)); ctx.restore();
+    rrect(x, y, s, s, r); ctx.strokeStyle = tn.D; ctx.lineWidth = 1; ctx.stroke();
+    ctx.save(); ctx.globalAlpha = secs > 0 ? 0.28 : 0.4; drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.72, color); ctx.restore();
   } else {
-    rrect(x, y, s, s, 4); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = 1.5; ctx.stroke();
+    rrect(x, y, s, s, r); ctx.fillStyle = tn.bgHi; ctx.fill(); ctx.strokeStyle = tn.B; ctx.lineWidth = lw; ctx.stroke();
     drawAbilityIcon(type, x + s / 2, y + s / 2, s * 0.72, color);
   }
-  if (active) { rrect(x - 2, y - 2, s + 4, s + 4, 5); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke(); }
+  if (secs > 0 && !disabled) { // segundos que faltan: entero desde 1 s, con decimal por debajo
+    const t = secs >= 1 ? String(Math.ceil(secs)) : secs.toFixed(1).replace('.', ',');
+    const fs = Math.round(s * (t.length > 2 ? 0.4 : 0.5));
+    ctx.font = '800 ' + fs + 'px ' + FONT; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,8,16,0.95)'; ctx.strokeText(t, x + s / 2, y + s / 2 + fs * 0.36);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(t, x + s / 2, y + s / 2 + fs * 0.36); ctx.textAlign = 'left';
+  }
+  if (fx > 0) { // acaba de quedar lista: aro que se abre y se desvanece
+    const g = (1 - fx) * s * 0.35;
+    ctx.globalAlpha = fx; rrect(x - g, y - g, s + g * 2, s + g * 2, r + g); ctx.strokeStyle = tn.L; ctx.lineWidth = 2.5; ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  if (active) { rrect(x - 2, y - 2, s + 4, s + 4, r + 1); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke(); }
 }
 
 // ¿Llega el golpe por el frente de un tanque que bloquea?
@@ -4197,6 +4228,25 @@ function exitDir(p) {
 }
 
 // ---------- Bucle de simulación (paso fijo) ----------
+// Avisa (sonido suave y destello en la casilla) cuando una habilidad 1 o 2 termina de recargar.
+// Solo jugadores humanos y recargas de 1,5 s o más, para no sonar a cada momento. El Puño del dragón avisa al ganar carga.
+const READY_MIN_CD = 1.5;
+function watchReady(dt) {
+  for (const p of players) {
+    p.readyFx = p.readyFx || { pri: 0, sec: 0 };
+    p.readyFx.pri -= dt; p.readyFx.sec -= dt;
+    if (p.npc || p.down) { p.rdy = null; continue; }
+    const c = p.ch, now = {
+      pri: p.priCd <= 0, sec: c.secType === 'dragon' ? (p.dragonCharges || 0) : p.secCd <= 0
+    };
+    if (p.rdy) {
+      if (now.pri && !p.rdy.pri && (p.priCdMax || c.priCd) >= READY_MIN_CD) { SFX.ready('pri'); p.readyFx.pri = 0.45; }
+      const gained = c.secType === 'dragon' ? now.sec > p.rdy.sec : now.sec && !p.rdy.sec && (p.secCdMax || c.secCd) >= READY_MIN_CD;
+      if (gained) { SFX.ready('sec'); p.readyFx.sec = 0.45; }
+    }
+    p.rdy = now;
+  }
+}
 function update(dt) {
   time += dt;
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
@@ -4230,6 +4280,7 @@ function update(dt) {
   }
 
   if (pausePressed()) { enterPause(); return; }
+  watchReady(dt);
   if (hitstop > 0) { // congelado breve en los impactos; las pulsaciones se guardan en el búfer
     hitstop -= dt;
     for (const p of players) {
@@ -5403,7 +5454,7 @@ function drawTexts() {
   // barrita sobre la cabeza durante un momento al recibir daño o curarse (útil con cuatro jugadores)
   for (const p of players) if (!p.down && ((p.hurtFx || 0) > 0 || (p.healFx || 0) > 0)) {
     ctx.globalAlpha = Math.min(1, Math.max(p.hurtFx || 0, p.healFx || 0) * 4);
-    bar(p.x - 16, p.y - 40 * p.ch.size - 12 - (p.z || 0), 32, 3, p.hp / p.maxHp, p.hp / p.maxHp <= 0.25 ? '#ff9aa8' : '#ff4d6d');
+    bar(p.x - 16, p.y - 40 * p.ch.size - 12 - (p.z || 0), 32, 3, p.hp / p.maxHp, hpColor(p.hp / p.maxHp, false));
     ctx.globalAlpha = 1;
   }
   for (const p of players) if (!p.down && (p.bubbleT || 0) > 0) drawSpeech(p, '¡Bravata!', 1 - p.bubbleT / p.ch.bubbleTime);
@@ -5772,6 +5823,9 @@ function drawShotState(p) {
 }
 // Barra de vida del HUD: el tramo perdido queda un instante en blanco y luego se vacía;
 // las marcas finas van cada 20 puntos (lo que antes era un corazón)
+// Color de la vida: verde; al 20 % o menos, rojo (y parpadea en el marcador)
+const HP_LOW = 0.2, HP_OK = '#4fd16a', HP_LOWC = '#ff4d4d', HP_LOW_BLINK = '#ff9a9a';
+function hpColor(f, blink) { return f > HP_LOW ? HP_OK : blink && Math.floor(time * 6) % 2 ? HP_LOW_BLINK : HP_LOWC; }
 function drawHpBar(p, x, y, w, h) {
   const f = Math.max(0, p.hp) / p.maxHp;
   if (p.hpLag == null || p.hpLag < p.hp) p.hpLag = p.hp;
@@ -5779,16 +5833,16 @@ function drawHpBar(p, x, y, w, h) {
   ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = '#3a3342'; ctx.fillRect(x, y, w, h);
   ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillRect(x, y, w * Math.max(0, p.hpLag) / p.maxHp, h);
-  const low = !p.down && f <= 0.25;
-  ctx.fillStyle = p.down ? '#6b4a55' : (low && Math.floor(time * 6) % 2 ? '#ff9aa8' : '#ff4d6d');
+  ctx.fillStyle = p.down ? '#6b4a55' : hpColor(f, true);
   ctx.fillRect(x, y, w * f, h);
-  if (p.healFx > 0) { ctx.fillStyle = 'rgba(255,170,190,' + (p.healFx * 0.8).toFixed(2) + ')'; ctx.fillRect(x, y, w * f, h); }
+  if (p.healFx > 0) { ctx.fillStyle = 'rgba(200,255,210,' + (p.healFx * 0.8).toFixed(2) + ')'; ctx.fillRect(x, y, w * f, h); }
   ctx.fillStyle = 'rgba(10,8,16,0.45)';
   for (let v = 20; v < p.maxHp; v += 20) ctx.fillRect(x + Math.round(w * v / p.maxHp), y, 1, h);
   const txt = Math.ceil(Math.max(0, p.hp)) + '/' + p.maxHp;
-  ctx.font = '700 9px ' + FONT; ctx.textAlign = 'right'; ctx.lineJoin = 'round';
-  ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(10,8,16,0.9)'; ctx.strokeText(txt, x + w - 2, y + h - 1.5);
-  ctx.fillStyle = '#ffffff'; ctx.fillText(txt, x + w - 2, y + h - 1.5);
+  const fs = Math.max(9, Math.round(h * 0.78)); // el número crece con la barra
+  ctx.font = '700 ' + fs + 'px ' + FONT; ctx.textAlign = 'right'; ctx.lineJoin = 'round';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,8,16,0.9)'; ctx.strokeText(txt, x + w - 3, y + h / 2 + fs * 0.36);
+  ctx.fillStyle = '#ffffff'; ctx.fillText(txt, x + w - 3, y + h / 2 + fs * 0.36);
   ctx.textAlign = 'left';
 }
 function drawPickup(h) {
@@ -5798,32 +5852,40 @@ function drawPickup(h) {
 
 function drawHUD() {
   ctx.fillStyle = '#0a0810'; ctx.fillRect(0, 0, W, HUD);
+  ctx.save(); ctx.scale(hudS, hudS); // todo el marcador se dibuja a escala 1 y se amplía con hudS
+  const Wb = W / hudS, U = HUD_UI, z = U.pip;
   ctx.textAlign = 'left';
   for (let i = 0; i < players.length; i++) {
-    const x = 12 + i * 120, p = players[i];
-    ctx.font = '700 13px ' + FONT; ctx.fillStyle = p.slotColor; ctx.fillText('J' + p.id, x, 21);
-    drawHpBar(p, x + 28, 9, 84, 10);
-    ctx.font = '600 11px ' + FONT; ctx.fillStyle = p.down ? '#ff8f8f' : '#b9afc9';
-    ctx.fillText(p.ch.name, x, 40);
-    const mv = moveOf(p.ch); // ranura de movimiento
-    drawPip(x + 56, 27, mv.hold ? 0 : moveFrac(p), mv.icon, p.color, mv.hold ? !!p.blocking : p.moveT > 0 || !!p.jump, false);
-    if (p.ch.moveCharges) for (let i = 0; i < p.ch.moveCharges; i++) { ctx.fillStyle = i < (p.mCh || 0) ? p.color : '#3a3342'; ctx.fillRect(x + 56 + i * 6, 47, 4, 3); } // cargas
-    const tur = myTurret(p);
-    drawPip(x + 76, 27, p.priCd / (p.priCdMax || p.ch.priCd), p.ch.priType, p.color, p.cast === 'pri' || (p.ch.priType === 'turret' && !!tur) || !!p.shieldUp, !abilityReady(p, 'pri'));
-    if (p.ch.priType === 'raiseShield') bar(x + 76, 47, 17, 2, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
-    drawPip(x + 96, 27, p.ch.secType === 'dragon' ? Math.max(p.secCd / (p.secCdMax || p.ch.secCd), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || p.ch.secCd), p.ch.secType, p.color, p.cast === 'sec' || (p.ch.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'));
-    if (p.ch.secType === 'dragon') for (let i = 0; i < AB.dragon.max; i++) { ctx.fillStyle = i < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; ctx.fillRect(x + 96 + i * 6, 47, 4, 3); } // cargas
-    if (p.ch.priType === 'turret') bar(x + 76, 47, 17, 2, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
+    const x = U.gap + i * (U.panelW + U.gap), p = players[i], c = p.ch, fxOf = k => Math.max(0, (p.readyFx && p.readyFx[k]) || 0) / 0.45;
+    ctx.font = '800 14px ' + FONT; ctx.fillStyle = p.slotColor; ctx.fillText('J' + p.id, x, 17);
+    ctx.fillStyle = p.down ? '#ff8f8f' : '#d8d0e6'; fitText(p.down ? 'Caído' : c.name, x + 25, 17, 62, 600, 12);
+    drawHpBar(p, x, 24, 88, U.bar);
+    // tres casillas: movimiento, habilidad 1 y habilidad 2
+    const px = [x + 96, x + 96 + z + 4, x + 96 + (z + 4) * 2], py = 5, mv = moveOf(c), tur = myTurret(p);
+    const secsOf = v => (v > 0.05 ? v : 0);
+    drawPip(px[0], py, mv.hold ? 0 : moveFrac(p), mv.icon, p.color, mv.hold ? !!p.blocking : p.moveT > 0 || !!p.jump, false, z,
+      mv.hold || c.moveCharges ? 0 : (p.moveCd >= 0.5 ? p.moveCd : 0));
+    if (c.moveCharges) for (let k = 0; k < c.moveCharges; k++) { ctx.fillStyle = k < (p.mCh || 0) ? p.color : '#3a3342'; rrect(px[0] + k * 9, py + z + 4, 7, 5, 2); ctx.fill(); } // cargas
+    drawPip(px[1], py, p.priCd / (p.priCdMax || c.priCd), c.priType, p.color, p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp,
+      !abilityReady(p, 'pri'), z, secsOf(p.priCd), fxOf('pri'));
+    if (c.priType === 'raiseShield') bar(px[1], py + z + 4, z, 4, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
+    if (c.priType === 'turret') bar(px[1], py + z + 4, z, 4, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
+    const drag = c.secType === 'dragon';
+    drawPip(px[2], py, drag ? Math.max(p.secCd / (p.secCdMax || c.secCd), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || c.secCd), c.secType, p.color,
+      p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0), !abilityReady(p, 'sec'), z, drag ? 0 : secsOf(p.secCd), fxOf('sec'));
+    if (drag) for (let k = 0; k < AB.dragon.max; k++) { ctx.fillStyle = k < (p.dragonCharges || 0) ? '#ff8a3d' : '#3a3342'; rrect(px[2] + k * 9, py + z + 4, 7, 5, 2); ctx.fill(); } // cargas
   }
-  ctx.font = '700 13px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + floor.depth, 496, 21);
-  ctx.font = '400 11px ' + FONT; ctx.fillStyle = '#8f86a0'; ctx.fillText('Semilla ' + seed, 496, 40);
-  if (testMode) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('Modo de prueba', 590, 21); ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#b9a96a'; ctx.fillText('clic de rueda, J o cruceta: lanzar', 590, 40); }
+  const nx = U.gap + players.length * (U.panelW + U.gap) + 4;
+  ctx.font = '700 14px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + floor.depth, nx, 21);
+  ctx.font = '400 10px ' + FONT; ctx.fillStyle = '#6f6680'; ctx.fillText('Semilla ' + seed, nx, 38);
+  if (testMode) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('Modo de prueba', nx + 72, 21); ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#b9a96a'; ctx.fillText('clic de rueda, J o cruceta: lanzar', nx + 72, 38); }
   const known = [...floor.rooms.values()].filter(r => r.visited || Object.values(r.doors).some(n => n && n.visited));
   let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
   for (const r of known) { x0 = Math.min(x0, r.gx); x1 = Math.max(x1, r.gx); y0 = Math.min(y0, r.gy); y1 = Math.max(y1, r.gy); }
   const sx = x1 - x0 + 1, sy = y1 - y0 + 1;
-  const c = Math.min(14, (HUD - 10) / sy, 120 / sx);
-  const ox2 = W - 12 - sx * c, oy2 = (HUD - sy * c) / 2;
+  const HB = HUD_UI.base, c = Math.min(14, (HB - 10) / sy, 96 / sx);
+  const padR = isTouch ? 64 / (viewS * hudS) : 0; // en táctil, el botón de pausa ocupa la esquina derecha
+  const ox2 = Wb - 12 - padR - sx * c, oy2 = (HB - sy * c) / 2;
   for (const r of known) {
     let col = r.visited ? '#655d78' : '#2c2737';
     if (r.type === 'boss') col = '#a8323a';
@@ -5831,6 +5893,7 @@ function drawHUD() {
     if (r === room) col = '#f2eefa';
     ctx.fillStyle = col; ctx.fillRect(ox2 + (r.gx - x0) * c + 1, oy2 + (r.gy - y0) * c + 1, c - 2, c - 2);
   }
+  ctx.restore();
 }
 
 // ---------- Cámara de grupo ----------
@@ -5910,6 +5973,7 @@ function drawOffscreen() {
 }
 
 function drawGame() {
+  layoutHud(); // depende del número de jugadores
   pal = PALETTES[(floor.depth - 1) % PALETTES.length];
   ctx.fillStyle = '#0a0810'; ctx.fillRect(0, 0, W, H);
   ctx.save();
