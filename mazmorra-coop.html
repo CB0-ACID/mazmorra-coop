@@ -1788,7 +1788,7 @@ function updatePlayer(p, dt) {
     const s = p.slash; s.t += dt;
     for (const e of enemies) {
       if (e.dead || e.spawnT > 0 || s.hit.has(e)) continue;
-      if (slashHits(p, s, e.x, e.y, e.r) && Math.abs((e.airborne ? e.z : 0) - (p.z || 0)) < 70) { s.hit.add(e); meleeHit(p, e, s); }
+      if (slashHits(p, s, e.x, e.y, e.r) && Math.abs((e.airborne ? e.z : 0) - (p.z || 0)) < ((p.jump || (p.z || 0) > 8) ? AIR_SLASH_Z : 70)) { s.hit.add(e); meleeHit(p, e, s); }
     }
     for (const b of bullets) if (slashHits(p, s, b.x, b.y, 0)) { b.life = 0; burst(b.x, b.y - 12, '#ffffff', 3); }
     if (c.meleeStyle === 'claw' && s.kind === 'heavy') { // Tajo sombra: siluetas y marca en X al atravesar
@@ -2923,6 +2923,7 @@ function updateFrostShot(p, inp, dt) {
 function freezeEnemy(e, fromBurst, time) {
   const was = e.frozenT > 0, t = e.type === 'boss' ? 1 : (time || AB.frostburst.time);
   if (was) { e.frozenT = Math.max(e.frozenT, t); e.frozenBurst = e.frozenBurst || !!fromBurst; return; } // ya congelado: solo amplía el tiempo
+  if (e.flying && !e.airborne) { e.airborne = true; e.vz = 0; } // un volador congelado en pleno vuelo cae como cualquier aéreo
   e.frozenT = t; e.frozenBurst = !!fromBurst; e.frozenAir = !!e.airborne; e.kbx = e.kby = 0;
   if (e.frozenAir) floatText(e.x, upY(e.y, 50 + e.z), 'Congelado', '#bfeaf5');
 }
@@ -3851,9 +3852,28 @@ function impactFx(p, e, heavy, light) {
   if (!e.dead) applyHitstun(e, heavy);
 }
 // Hitstun: los tier 1 y 2 siempre se interrumpen; los tier 3 solo con golpes pesados; el guardián nunca
-function applyHitstun(e, heavy) {
-  if (e.type === 'boss' || e.state === 'leap' || e.state === 'blinkOut' || e.state === 'blinkIn') return;
-  if (e.tier === 3 && !heavy) return;
+// [sustituido] versión anterior: solo tier 1-2 y tier 3 con golpes pesados; el guardián nunca
+// function applyHitstun(e, heavy) {
+//   if (e.type === 'boss' || e.state === 'leap' || e.state === 'blinkOut' || e.state === 'blinkIn') return;
+//   if (e.tier === 3 && !heavy) return;
+//   e.hitstun = Math.max(e.hitstun || 0, heavy ? HITSTUN_HEAVY : HITSTUN_LIGHT);
+//   e.state = 'walk'; e.t = Math.max(e.t || 0, 0.3);
+// }
+function applyHitstun(e, heavy) { interruptHit(e, heavy); }
+// Interrupción: el enemigo se queda quieto encajando el golpe y pierde el ataque que preparaba.
+// El guardián no se encoge: su ataque se cancela y se reinicia el enfriamiento.
+function interruptHit(e, heavy) {
+  if (e.dead || e.state === 'leap' || e.state === 'blinkOut' || e.state === 'blinkIn' || e.airborne) return;
+  if (!interruptible(e)) return;
+  if (e.type === 'boss') {
+    if (attackWarn(e)) floatText(e.x, upY(e.y, 60), 'Interrumpido', '#6ee7ff');
+    if (e.cd < 0.55) e.cd = e.hp < e.maxHp / 2 ? 1.4 : 2;
+    if (e.cd2 < 0.4) e.cd2 = 1;
+    return;
+  }
+  if (attackWarn(e)) floatText(e.x, upY(e.y, 40 + (e.z || 0)), 'Interrumpido', '#ffffff');
+  if (e.type === 'shooter' && e.cd < 0.6) e.cd = 1;          // el disparo preparado no sale: vuelve a cargar
+  if (e.type === 'splitter' && e.bombCd < 0.6) e.bombCd = 2; // las bombas ya sembradas siguen; no siembra otra enseguida
   e.hitstun = Math.max(e.hitstun || 0, heavy ? HITSTUN_HEAVY : HITSTUN_LIGHT);
   e.state = 'walk'; e.t = Math.max(e.t || 0, 0.3); // cancela cargas, zarpazos y golpes en preparación
 }
@@ -3863,6 +3883,8 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   if (e.flying && !ranged) return; // volador: solo le hacen daño los ataques a distancia (disparos y proyectiles)
   if (e.stunT > 0 && e.type !== 'boss') hpDmg *= STUN_DMG_MUL; // aturdido: recibe más daño
   if (e.frozenAir && e.frozenT > 0) { shatterEnemy(e); return; } // congelado en el aire: cualquier golpe lo rompe
+  e.hitLean = (e.x - sx) >= 0 ? -0.22 : 0.22; // se inclina hacia atrás, alejándose del golpe
+  interruptHit(e, false);
   e.hp -= hpDmg; e.flash = 0.1; e.calm = 0; e.squash = 1; // aplastamiento al recibir el golpe
   if (e.rootT > 0) staDmg *= AB.roots.staMul; // enredado por las raíces de Musgo: pierde más estamina
   if (e.maxSta > 0 && !(e.stunT > 0)) { e.sta = Math.max(0, e.sta - staDmg); if (e.sta <= 0) stunEnemy(e); }
@@ -3901,7 +3923,9 @@ function stunEnemy(e) {
   floatText(e.x, upY(e.y, 40 + e.z), 'Aturdido', '#ffd54a'); burst(e.x, upY(e.y, 20 + e.z), '#ffd54a', 10);
 }
 // Guardián: solo se le puede levantar por los aires con la estamina al 50 % o menos
-const BOSS_LAUNCH_STA = 0.5;
+const BOSS_LAUNCH_STA = 0.25; // guardián: levantable e interrumpible solo con la estamina al 25 % o menos
+const T3_LAUNCH_STA = 0.5;     // tier 3: levantable e interrumpible a mitad de barra o menos
+const AIR_SLASH_Z = 150;       // altura máxima entre un personaje que salta y un enemigo aéreo para que su golpe conecte
 function bossLaunchable(e) { return e.type === 'boss' && e.stunT <= 0 && e.sta <= e.maxSta * BOSS_LAUNCH_STA; }
 // Un guardián aturdido en el aire no se mantiene volando con golpes: cae
 function bossStunnedAir(e) { return e.type === 'boss' && e.airborne && e.stunT > 0; }
@@ -3909,6 +3933,16 @@ function bossStunnedAir(e) { return e.type === 'boss' && e.airborne && e.stunT >
 function launchable(e, force) {
   if (e.airborne || e.state === 'leap') return false;
   if (e.type === 'boss') return bossLaunchable(e);
+  // [sustituido] antes el tier 3 siempre se podía lanzar: // return true;
+  if (e.tier === 3) return levantable(e);
+  return true;
+}
+// Tier 3 levantable: barra en el color «levantable» (mitad o menos) y sin aturdir
+function levantable(e) { return e.tier === 3 && e.stunT <= 0 && e.sta <= e.maxSta * T3_LAUNCH_STA; }
+// ¿Un golpe puede interrumpir lo que está haciendo? Tier 1-2 siempre; tier 3 y guardián solo cuando son levantables
+function interruptible(e) {
+  if (e.type === 'boss') return bossLaunchable(e);
+  if (e.tier === 3) return levantable(e);
   return true;
 }
 // force: lanza aunque tenga más de la mitad de estamina (habilidad de área)
@@ -5662,7 +5696,9 @@ function drawEnemyBars(e, top) {
   const w = Math.max(26, e.r * 2.2), x = e.x - w / 2;
   if (e.tier === 1) { if (e.hp < e.maxHp) bar(x, top, w, 4, e.hp / e.maxHp, '#ff5a6e'); return; }
   bar(x, top - 6, w, 4, e.hp / e.maxHp, '#ff5a6e');
-  bar(x, top, w, 3, e.sta / e.maxSta, e.stunT > 0 ? '#ffffff' : '#f5c542');
+  const lev = levantable(e), col = e.stunT > 0 ? '#ffffff' : ((e.tier === 2 || lev) ? '#6ee7ff' : '#f5c542'); // mismo color que el guardián
+  bar(x, top, w, 3, e.sta / e.maxSta, col);
+  if (e.tier === 3) { ctx.fillStyle = lev ? '#6ee7ff' : '#f2eefa'; ctx.fillRect(x + w * T3_LAUNCH_STA - 1, top - 1, 2, 5); } // marca del 50 %
 }
 // Icono de viento (guardián levantable): tres trazos curvos
 function drawWindIcon(x, y, s, col) {
@@ -5741,6 +5777,8 @@ function drawEnemy(e) {
   if (wk > 0 && Math.floor(time * (6 + 18 * wk)) % 2) fill = '#fff3c4'; // parpadeo que se acelera conforme se carga
   if (e.type === 'boss' && e.hp < e.maxHp / 2) fill = '#ff5c5c';
   if (stun) x += Math.sin(time * 24) * 1.2;
+  const hs = e.hitstun > 0 ? Math.min(1, e.hitstun / HITSTUN_HEAVY) : 0, lean = (e.hitLean || 0) * hs; // reacción a golpe: inclinación y temblor
+  if (hs > 0) x += Math.sin(time * 40) * 1.5 * hs;
   if (e.flash > 0) fill = '#ffffff';
   let alpha = 1;
   if (e.state === 'blinkOut') alpha = Math.max(0.08, e.t / 0.4); else if (e.state === 'blinkIn') alpha = Math.max(0.08, 1 - e.t / 0.3);
@@ -5756,7 +5794,7 @@ function drawEnemy(e) {
   const sq = e.squash || 0; // se aplasta y estira un instante al recibir el golpe
   // preparación: se encoge y ensancha (el slime se estira hacia arriba) para que se vea venir el golpe
   const cwx = wk * (e.type === 'slime' ? -0.2 : 0.22), cwy = wk * (e.type === 'slime' ? 0.35 : -0.3);
-  ctx.save(); ctx.translate(x, y + r); ctx.scale((1 + 0.28 * sq) * (1 + cwx), (1 - 0.22 * sq) * (1 + cwy)); ctx.translate(-x, -(y + r));
+  ctx.save(); ctx.translate(x, y + r); ctx.rotate(lean); ctx.scale((1 + 0.28 * sq) * (1 + cwx), (1 - 0.22 * sq) * (1 + cwy)); ctx.translate(-x, -(y + r));
   enemyPath(e, x, y, r); ctx.fill(); ctx.stroke();
   if (e.type === 'splitter') { ctx.fillStyle = '#c0267a'; ellipse(x, y, r * 0.32, r * 0.32); }
   ctx.fillStyle = '#16121e';
