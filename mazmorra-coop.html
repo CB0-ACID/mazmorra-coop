@@ -7748,8 +7748,9 @@ function drawGame() {
   if (banner) {
     ctx.globalAlpha = Math.min(1, banner.t * 2);
     ctx.font = '700 17px ' + FONT; ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(banner.text, W / 2 + 1, OY + 34);
-    ctx.fillStyle = '#f2eefa'; ctx.fillText(banner.text, W / 2, OY + 33);
+    const bnY = SIEGE.on ? HUD + 136 * hudS : OY + 34; // en el asedio, debajo del reloj y de su aviso
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(banner.text, W / 2 + 1, bnY);
+    ctx.fillStyle = '#f2eefa'; ctx.fillText(banner.text, W / 2, bnY - 1);
     ctx.globalAlpha = 1;
   }
   drawHUD();
@@ -8528,7 +8529,7 @@ const SG_TRAPS = {
 // Mejoras entre oleadas (provisionales): se elige una de tres
 const SG_UPGRADES = [
   { id: 'walls', name: 'Muros reforzados', desc: 'Objetivos +25 % de vida máxima y reparados del todo', apply: S => { for (const o of sgObjs()) { o.max = Math.round(o.max * 1.25); if (!o.destroyed) o.hp = o.max; } } },
-  { id: 'purse', name: 'Bolsa de guerra', desc: '+60 de oro', apply: S => { S.gold += 60; } },
+  { id: 'purse', name: 'Bolsa de guerra', desc: '+60 de oro', apply: S => { sgGold(60); } },
   { id: 'builders', name: 'Manos de constructor', desc: 'Reparar es un 60 % más rápido', apply: S => { S.mods.repair *= 1.6; } },
   { id: 'steel', name: 'Virotes de acero', desc: 'Ballestas y torres +40 % de daño', apply: S => { S.mods.bolt *= 1.4; } },
   { id: 'vigor', name: 'Vigor', desc: 'Personajes +20 % de vida máxima y curados del todo', apply: S => { for (const p of players) { p.maxHp = Math.round(p.maxHp * 1.2); p.hp = p.maxHp; } } },
@@ -8538,14 +8539,29 @@ const SG_UPGRADES = [
 ];
 const sgTc = v => (v + 0.5) * T; // centro de la casilla v
 const sgPt = (x, y) => ({ x: sgTc(x), y: sgTc(y) });
+// Oro: todo pasa por aquí para que suene al ganar y al gastar
+function sgGold(d) {
+  const S = SIEGE; S.gold = Math.max(0, S.gold + d);
+  if (!actx || muted || !AUD.sfxOn) return;
+  if (d > 0 && sfxOk('coinUp', 0.07)) { // ganar: dos notas agudas y brillantes, como una moneda
+    tone(0.08, 1568, 1568, 0.09, 'square'); tone(0.06, 3136, 3136, 0.02, 'sine');
+    setTimeout(() => { if (actx && !muted && AUD.sfxOn) { tone(0.16, 2093, 2093, 0.08, 'square'); tone(0.12, 4186, 4186, 0.015, 'sine'); } }, 70);
+  } else if (d < 0 && sfxOk('coinDown', d < -2 ? 0.05 : 0.32)) { // gastar: tintineo que baja (al reparar, más espaciado)
+    tone(0.12, 1319, 659, 0.08, 'triangle'); noise(0.07, 6000, 3000, 0.08, 'bandpass', 2);
+    if (d <= -10) setTimeout(() => { if (actx && !muted && AUD.sfxOn) tone(0.18, 880, 440, 0.07, 'triangle'); }, 80);
+  }
+}
+function sgBeep(last) { if (actx && !muted && AUD.sfxOn && sfxOk('sgBeep', 0.3)) tone(last ? 0.35 : 0.1, last ? 660 : 880, last ? 660 : 880, last ? 0.12 : 0.08, 'square'); } // cuenta atrás
 function sgObjs() { return SIEGE.zones ? SIEGE.zones.flatMap(z => z.objs) : []; }
 function sgList(z) { return z === SIEGE.cur ? enemies : z.enemies; } // la zona activa usa la lista global
 function sgZone(id) { return SIEGE.zones.find(z => z.id === id); }
 
 // ---------- Construcción de las zonas ----------
-function sgRoom(gx, C, R, gaps, rocks, type) {
+function sgRoom(gx, C, R, gaps, rocks, type, octo) {
   const t = [];
   for (let y = 0; y < R; y++) { t.push([]); for (let x = 0; x < C; x++) t[y].push((x === 0 || y === 0 || x === C - 1 || y === R - 1) ? 1 : 0); }
+  if (octo) for (let y = 1; y <= octo; y++) for (let x = 1; x <= octo; x++) if (x + y <= octo + 1) // esquinas en diagonal, como las salas octogonales de la mazmorra
+    for (const [a, b] of [[x, y], [C - 1 - x, y], [x, R - 1 - y], [C - 1 - x, R - 1 - y]]) t[b][a] = 1;
   for (const [x, y] of gaps) t[y][x] = 0;
   for (const [x, y] of rocks) t[y][x] = 2;
   const r = { gx, gy: 0, type: type || 'normal', cols: C, rows: R, tiles: t, rng: hash(seed, 777, gx + 5), cleared: true, visited: true, siege: true,
@@ -8558,36 +8574,39 @@ function sgObj(z, kind, name, tx, ty, r, hp) {
   const o = Object.assign(sgPt(tx, ty), { kind, name, r, hp, max: hp, destroyed: false, burn: false, hitT: -9, flash: 0, cd: 1, zone: z });
   z.objs.push(o); return o;
 }
+// Mapas algo más grandes que la pantalla (también en el móvil apaisado), para que la cámara de grupo los recorra como en la mazmorra
+// [antes: murallas de 33 × 19 y patio de 29 × 21, que en pantallas anchas cabían enteros y la cámara no se movía]
 function sgWallZone(id, east) {
-  const C = 33, R = 19, M = x => east ? C - 1 - x : x; // la muralla este es la oeste en espejo
-  const gaps = [[M(0), 8], [M(0), 9], [M(0), 10], [M(32), 8], [M(32), 9], [M(32), 10]];
-  const rocks = [[5, 3], [6, 3], [5, 4], [5, 15], [6, 15], [5, 14], [29, 15], [29, 14], [28, 3]].map(([x, y]) => [M(x), y]);
-  const z = { id, name: east ? 'Muralla este' : 'Muralla oeste', short: east ? 'Este' : 'Oeste', east, objs: [], slots: [], stones: [], crates: [], enemies: [] };
-  z.room = sgRoom(east ? 1 : -1, C, R, gaps, rocks);
-  z.B = sgPt(M(1), 9); z.F = sgPt(M(10), 9); z.X = { x: east ? -T * 0.4 : C * T + T * 0.4, y: sgTc(9) }; // brecha, bifurcación y salida al patio
-  z.exitPt = sgPt(M(31), 9);
-  sgObj(z, 'tower', 'Torre de vigía ' + (east ? 'este' : 'oeste'), M(16), 4, 34, 400);
-  if (east) sgObj(z, 'powder', 'Polvorín', M(16), 14, 36, 350);
-  else sgObj(z, 'store', 'Almacén', M(16), 14, 38, 400);
-  z.slots.push({ ...sgPt(M(6), 9), kind: 'spikes', trap: null }, { ...sgPt(M(13), 9), kind: 'ballista', trap: null }, { ...sgPt(M(21), 9), kind: 'brazier', trap: null });
-  z.stones.push({ ...sgPt(M(24), 9), to: 'patio', label: 'Viajar al Patio' });
-  z.crates.push({ ...sgPt(M(26), 13) });
-  z.cover = east ? { x0: M(27), y0: 7, x1: M(22), y1: 11 } : { x0: 22, y0: 7, x1: 27, y1: 11 }; // zona techada (refugio de la lluvia de fuego)
+  const C = 45, R = 25, my = 12, M = x => east ? C - 1 - x : x; // la muralla este es la oeste en espejo
+  const gaps = [[M(0), my - 1], [M(0), my], [M(0), my + 1], [M(44), my - 1], [M(44), my], [M(44), my + 1]];
+  const rocks = [[5, 5], [6, 5], [5, 6], [5, 18], [6, 19], [5, 19], [30, 4], [30, 20], [39, 5], [40, 5], [39, 19], [40, 19], [12, 3], [12, 21]].map(([x, y]) => [M(x), y]);
+  const z = { id, name: east ? 'Muralla este' : 'Muralla oeste', short: east ? 'Este' : 'Oeste', east, objs: [], slots: [], stones: [], crates: [], enemies: [], midY: my };
+  z.room = sgRoom(east ? 1 : -1, C, R, gaps, rocks, 'normal', 4);
+  z.B = sgPt(M(1), my); z.F = sgPt(M(14), my); z.X = { x: east ? -T * 0.4 : C * T + T * 0.4, y: sgTc(my) }; // brecha, bifurcación y salida al patio
+  z.exitPt = sgPt(M(43), my);
+  sgObj(z, 'tower', 'Torre de vigía ' + (east ? 'este' : 'oeste'), M(22), 5, 34, 400);
+  if (east) sgObj(z, 'powder', 'Polvorín', M(22), 19, 36, 350);
+  else sgObj(z, 'store', 'Almacén', M(22), 19, 38, 400);
+  z.slots.push({ ...sgPt(M(8), my), kind: 'spikes', trap: null }, { ...sgPt(M(18), my), kind: 'ballista', trap: null }, { ...sgPt(M(29), my), kind: 'brazier', trap: null }, { ...sgPt(M(26), 16), kind: 'spikes', trap: null });
+  z.stones.push({ ...sgPt(M(34), my), to: 'patio', label: 'Viajar al Patio' }, { ...sgPt(M(13), 8), to: 'patio', label: 'Viajar al Patio' }); // la segunda, cerca de la brecha, para no cruzar el mapa
+  z.crates.push({ ...sgPt(M(36), 17) });
+  z.cover = east ? { x0: M(37), y0: 9, x1: M(31), y1: 15 } : { x0: 31, y0: 9, x1: 37, y1: 15 }; // zona techada (refugio de la lluvia de fuego)
   return z;
 }
 function sgPatio() {
-  const C = 29, R = 21;
-  const gaps = [[0, 14], [0, 15], [0, 16], [28, 14], [28, 15], [28, 16]];
-  const rocks = [[3, 3], [25, 3], [3, 18], [25, 18], [4, 18], [24, 18]];
+  const C = 41, R = 29;
+  const gaps = [[0, 20], [0, 21], [0, 22], [40, 20], [40, 21], [40, 22]];
+  const rocks = [[3, 9], [37, 9], [9, 24], [10, 24], [30, 24], [31, 24], [8, 5], [32, 5]];
   const z = { id: 'patio', name: 'Patio de armas', short: 'Patio', objs: [], slots: [], stones: [], crates: [], enemies: [] };
-  z.room = sgRoom(0, C, R, gaps, rocks, 'start');
-  const g = sgObj(z, 'gate', 'Puerta de la fortaleza', 14, 1, 58, 900); g.y = T * 2.1;
-  z.entries = { west: [sgPt(0.4, 15), sgPt(6, 15)], east: [sgPt(27.6, 15), sgPt(22, 15)] }; // entradas de los supervivientes
-  z.slots.push({ ...sgPt(5, 15), kind: 'spikes', trap: null }, { ...sgPt(23, 15), kind: 'spikes', trap: null }, { ...sgPt(14, 9), kind: 'ballista', trap: null }, { ...sgPt(14, 6), kind: 'brazier', trap: null });
-  z.stones.push({ ...sgPt(4, 9), to: 'west', label: 'Viajar a la Muralla oeste' }, { ...sgPt(24, 9), to: 'east', label: 'Viajar a la Muralla este' });
-  z.crates.push({ ...sgPt(9, 5) });
-  z.horn = sgPt(19, 5);
-  z.cover = { x0: 10, y0: 1, x1: 18, y1: 4 };
+  z.room = sgRoom(0, C, R, gaps, rocks, 'start', 4);
+  const g = sgObj(z, 'gate', 'Puerta de la fortaleza', 20, 1, 58, 900); g.y = T * 2.1;
+  z.entries = { west: [sgPt(0.4, 21), sgPt(8, 21)], east: [sgPt(39.6, 21), sgPt(32, 21)] }; // entradas de los supervivientes
+  z.slots.push({ ...sgPt(7, 21), kind: 'spikes', trap: null }, { ...sgPt(33, 21), kind: 'spikes', trap: null }, { ...sgPt(20, 13), kind: 'ballista', trap: null }, { ...sgPt(20, 8), kind: 'brazier', trap: null },
+    { ...sgPt(12, 17), kind: 'ballista', trap: null }, { ...sgPt(28, 17), kind: 'ballista', trap: null });
+  z.stones.push({ ...sgPt(5, 14), to: 'west', label: 'Viajar a la Muralla oeste' }, { ...sgPt(35, 14), to: 'east', label: 'Viajar a la Muralla este' });
+  z.crates.push({ ...sgPt(13, 6) });
+  z.horn = sgPt(27, 6);
+  z.cover = { x0: 15, y0: 1, x1: 25, y1: 5 };
   return z;
 }
 function sgInCover(z, x, y) { const c = z.cover; if (!c) return false; const x0 = Math.min(c.x0, c.x1) * T, x1 = (Math.max(c.x0, c.x1) + 1) * T; return x >= x0 && x <= x1 && y >= c.y0 * T && y <= (c.y1 + 1) * T; }
@@ -8601,7 +8620,7 @@ function siegeStart() {
   const W0 = sgWallZone('west', false), P = sgPatio(), E0 = sgWallZone('east', true);
   SIEGE.zones = [W0, P, E0];
   floor = { rooms: new Map(SIEGE.zones.map(z => [z.id, z.room])), start: P.room, boss: null, depth: 1, siege: true };
-  siegeEnter(P, sgPt(14, 12));
+  siegeEnter(P, sgPt(20, 16));
   showBanner('Asedio: prepara las defensas (' + SG.prep0 + ' s)');
 }
 function siegeEnter(z, at) {
@@ -8672,7 +8691,7 @@ function sgSpawn(q) {
 }
 function sgEndWave() {
   const S = SIEGE;
-  S.gold += SG.goldWave; S.stab = Math.min(100, S.stab + SG.stabWave);
+  sgGold(SG.goldWave); S.stab = Math.min(100, S.stab + SG.stabWave);
   musicFanfare('room');
   for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = 1.5; }
   if (S.wave >= SG.waves) { sgFinish(true, '¡Fase 1 superada!', 'Las murallas exteriores resisten. Las fases 2 (la puerta) y 3 (la torre) están en diseño.'); return; }
@@ -8811,7 +8830,7 @@ function sgCheckInc(inc) {
   if (inc.done || inc.spawned < inc.total || inc.alive > 0) return;
   inc.done = true;
   if (inc.leaked === 0) { // escaramuza ganada: estabiliza el frente
-    const S = SIEGE; S.gold += SG.goldSkirmish; S.stab = Math.min(100, S.stab + SG.stabSkirmish);
+    const S = SIEGE; sgGold(SG.goldSkirmish); S.stab = Math.min(100, S.stab + SG.stabSkirmish);
     showBanner('¡Escaramuza ganada en la ' + inc.z.name.toLowerCase() + '! +' + SG.goldSkirmish + ' oro, +' + SG.stabSkirmish + ' estabilidad');
   }
 }
@@ -8835,14 +8854,18 @@ function siegeUpdate(dt) {
   S.time += dt;
   if (S.tp) { S.tp.t -= dt; if (S.tp.t <= 0) { const tp = S.tp; S.tp = null; siegeEnter(tp.to, tp.at); showBanner(tp.to.name); } return; }
   // fases: preparación y oleada
-  if (S.phase === 'prep') { S.phaseT -= dt; if (S.phaseT <= 0) sgStartWave(S.wave + 1); }
+  if (S.phase === 'prep') {
+    const before = Math.ceil(S.phaseT); S.phaseT -= dt;
+    if (Math.ceil(S.phaseT) < before && before <= 5 && S.phaseT > 0) sgBeep(false); // últimos 5 segundos
+    if (S.phaseT <= 0) { sgBeep(true); sgStartWave(S.wave + 1); }
+  }
   else {
     S.waveT += dt;
     while (S.spawnQ.length && S.spawnQ[0].t <= S.waveT) sgSpawn(S.spawnQ.shift());
     S.spawnQ.sort((a, b) => a.t - b.t);
     for (const ev of S.events) if (!ev.fired && S.waveT >= ev.at) { ev.fired = true; sgEvent(ev.kind); }
     S.storeT += dt;
-    if (S.storeT >= SG.store.every) { S.storeT = 0; if (sgObjs().some(o => o.kind === 'store' && !o.destroyed)) S.gold += SG.store.gold; }
+    if (S.storeT >= SG.store.every) { S.storeT = 0; if (sgObjs().some(o => o.kind === 'store' && !o.destroyed)) sgGold(SG.store.gold); }
   }
   // zona activa: adoptar enemigos sin plan y quitar los que se han ido
   for (const e of enemies) if (!e.sg && !e.dead) sgAdopt(e, cur);
@@ -8872,7 +8895,7 @@ function siegeUpdate(dt) {
     e.sgDone = true; if (e.sgLeft) continue;
     const z = e.sgZ || cur;
     const g = Math.round(SG.goldKill[e.tier] * (e.elite ? 2 : 1) + (e.banner ? SG.goldBanner : 0));
-    S.gold += g;
+    sgGold(g);
     if (z === cur) floatText(e.x, e.y - 34, '+' + g, '#ffd54a');
     if (e.banner) sgBannerFall(e, z);
     if (e.sg && e.sg.inc) { e.sg.inc.alive--; e.sg.inc.killed++; sgCheckInc(e.sg.inc); }
@@ -8985,14 +9008,14 @@ function siegeInteract(p) {
 function sgBuild(p, s) {
   const S = SIEGE, c = sgCost(s.kind), D = SG_TRAPS[s.kind];
   if (S.gold < c) { floatText(p.x, p.y - 50, 'Falta oro', '#ff8f8f'); return; }
-  S.gold -= c;
+  sgGold(-c); floatText(p.x, p.y - 56, '−' + c + ' oro', '#ffd54a');
   s.trap = { charges: D.charges, ammo: D.ammo, fuel: D.fuel, cd: 0, ang: 0 };
   burst(s.x, s.y - 10, '#ffd54a', 14); floatText(s.x, s.y - 40, D.name + ' construida', '#ffd54a'); SFX.hit(true);
 }
 function sgRebuild(p, o) {
   const S = SIEGE;
   if (S.gold < SG.rebuild) { floatText(p.x, p.y - 50, 'Falta oro', '#ff8f8f'); return; }
-  S.gold -= SG.rebuild; o.destroyed = false; o.hp = o.max * SG.rebuildFrac; o.burn = false;
+  sgGold(-SG.rebuild); floatText(p.x, p.y - 56, '−' + SG.rebuild + ' oro', '#ffd54a'); o.destroyed = false; o.hp = o.max * SG.rebuildFrac; o.burn = false;
   S.stab = Math.min(100, S.stab + Math.round(SG.stabObj / 2));
   showBanner('Reconquistado: ' + o.name); burst(o.x, o.y - 30, '#ffd54a', 30); SFX.hit(true);
 }
@@ -9006,7 +9029,7 @@ function sgTasks(dt) {
       const o = k.o; if (o.destroyed || o.hp >= o.max) { p.sgTask = null; if (!o.destroyed) floatText(o.x, o.y - 60, 'Reparado', '#7ee08a'); continue; }
       let amt = Math.min(SG.repairRate * S.mods.repair * dt, o.max - o.hp), cost = amt * SG.repairGold;
       if (S.gold < cost) { p.sgTask = null; floatText(p.x, p.y - 50, 'Sin oro', '#ff8f8f'); continue; }
-      o.hp += amt; S.gold -= cost; k.prog = o.hp / o.max;
+      o.hp += amt; sgGold(-cost); k.prog = o.hp / o.max;
       if (Math.random() < dt * 8) burst(o.x + (Math.random() - 0.5) * o.r, o.y - 20, '#ffd54a', 1);
     } else if (k.kind === 'douse') {
       k.t += dt; k.prog = k.t / SG.douse;
@@ -9025,7 +9048,7 @@ function sgEvent(kind) {
   } else { // zapadores: un túnel junto a un objetivo; hay que apuntalarlo (dos jugadores a la vez si sois varios)
     const zs = S.zones.filter(z => z.objs.some(o => !o.destroyed)), z = zs[Math.floor(Math.random() * zs.length)] || S.cur;
     const alive = z.objs.filter(o => !o.destroyed), o = alive[Math.floor(Math.random() * alive.length)];
-    const ang = z.id === 'patio' ? Math.PI / 2 : Math.atan2(sgTc(9) - o.y, sgTc(z.east ? 22 : 10) - o.x);
+    const ang = z.id === 'patio' ? Math.PI / 2 : Math.atan2(sgTc(z.midY) - o.y, sgTc(z.east ? 30 : 14) - o.x);
     const x = o.x + Math.cos(ang) * (o.r + 110), y = o.y + Math.sin(ang) * (o.r + 110);
     S.tunnels.push({ z, x, y, cd: 1.5, prog: 0, props: [{ x: x - 70, y }, { x: x + 70, y }] });
     showBanner('¡Zapadores! Túnel junto a: ' + o.name + ' (' + z.short + '). Apuntaladlo' + (humans().length > 1 ? ' entre dos' : ''));
@@ -9033,7 +9056,7 @@ function sgEvent(kind) {
 }
 function sgEvents(dt) {
   const S = SIEGE, R = SG.rain;
-  if (S.warn) { S.warn.t -= dt; if (S.warn.t <= 0) { S.rain = { z: S.warn.z, t: R.dur, acc: 0 }; S.warn = null; } }
+  if (S.warn) { const b0 = Math.ceil(S.warn.t); S.warn.t -= dt; if (Math.ceil(S.warn.t) < b0) sgBeep(S.warn.t <= 0); if (S.warn.t <= 0) { S.rain = { z: S.warn.z, t: R.dur, acc: 0 }; S.warn = null; } }
   if (S.rain) {
     S.rain.t -= dt;
     if (S.rain.z === S.cur) {
@@ -9073,13 +9096,14 @@ function sgEvents(dt) {
     }
     const need = Math.min(2, Math.max(1, humans().length)), braced = new Set(players.filter(p => p.sgTask && p.sgTask.kind === 'brace' && p.sgTask.tn === tn).map(p => p.sgTask.pr));
     if (braced.size >= need) tn.prog += dt / SG.sappers.seal; else tn.prog = Math.max(0, tn.prog - dt * 0.3);
-    if (tn.prog >= 1) { tn.sealed = true; S.gold += SG.goldSeal; S.stab = Math.min(100, S.stab + SG.stabSeal); showBanner('¡Túnel sellado! +' + SG.goldSeal + ' oro'); burst(tn.x, tn.y, '#d8cfe6', 30); }
+    if (tn.prog >= 1) { tn.sealed = true; sgGold(SG.goldSeal); S.stab = Math.min(100, S.stab + SG.stabSeal); showBanner('¡Túnel sellado! +' + SG.goldSeal + ' oro'); burst(tn.x, tn.y, '#d8cfe6', 30); }
   }
   S.tunnels = S.tunnels.filter(tn => !tn.sealed);
 }
 
 // ---------- Mejoras entre oleadas ----------
-function sgUpRect(i) { const w = Math.min(230, (W - 60) / 3), h = 150, x0 = (W - (3 * w + 2 * 16)) / 2; return [x0 + i * (w + 16), H / 2 - 50, w, h]; }
+function sgUpRectU(i) { const Wu = W / hudS, Hu = H / hudS, w = Math.min(230, (Wu - 60) / 3), h = 150, x0 = (Wu - (3 * w + 2 * 16)) / 2; return [x0 + i * (w + 16), Hu / 2 - 50, w, h]; } // en unidades del marcador
+function sgUpRect(i) { return sgUpRectU(i).map(v => v * hudS); } // en unidades del lienzo (para el ratón y el toque)
 function sgUpChoose(i) {
   const S = SIEGE, u = S.upOpts[i]; if (!u) return;
   u.apply(S); S.upOpts = null; state = 'play';
@@ -9097,11 +9121,12 @@ function siegeUpUpdate() {
 function siegeUpDraw() {
   const S = SIEGE; if (!S.upOpts) return;
   ctx.fillStyle = 'rgba(6,4,10,0.7)'; ctx.fillRect(0, 0, W, H);
+  ctx.save(); ctx.scale(hudS, hudS); const W_ = W, H_ = H; { const W = W_ / hudS, H = H_ / hudS;
   ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT;
   ctx.fillText('Oleada ' + S.wave + ' superada', W / 2, H / 2 - 110);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 14px ' + FONT; ctx.fillText('Elegid una mejora para el grupo (provisional)', W / 2, H / 2 - 82);
   S.upOpts.forEach((u, i) => {
-    const [x, y, w, h] = sgUpRect(i), sel = i === S.upSel;
+    const [x, y, w, h] = sgUpRectU(i), sel = i === S.upSel;
     rrect(x, sel ? y - 6 : y, w, h, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
     ctx.lineWidth = sel ? 3 : 1.5; ctx.strokeStyle = sel ? '#ffd54a' : '#3b3349'; ctx.stroke();
     const yy = sel ? y - 6 : y;
@@ -9112,6 +9137,7 @@ function siegeUpDraw() {
     ctx.fillText(line, x + w / 2, ly);
   });
   ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText('Toca una carta, o elige con la dirección y confirma con golpe', W / 2, H / 2 + 132);
+  } ctx.restore();
 }
 
 // ---------- Dibujo ----------
@@ -9253,32 +9279,73 @@ function siegeDrawAir() { // proyectiles, bolas de fuego que caen y progreso de 
   for (const tn of S.tunnels) if (tn.z === S.cur && tn.prog > 0) sgBar(tn.x, tn.y * K - 40, 60, tn.prog, '#d8cfe6');
   if (S.cur && S.cur.cover) { const [x, y, w, h] = sgFloorRect(S.cur, S.cur.cover); sgLabel('Zona techada', x + w / 2, (y + h) * K - 6, '#7ee0c3'); }
 }
-function siegeDrawUI() { // panel de estado, zonas y avisos (coordenadas de pantalla)
+// Reloj del asedio, arriba en el centro: cuánto falta para la oleada, qué viene y cuándo
+function HUD_PX() { return HUD; } // alto real del marcador (la variable global HUD), visible desde funciones con variables locales del mismo nombre
+function sgNextInc() { const q = SIEGE.spawnQ[0]; return q ? { z: q.z, t: q.t - SIEGE.waveT } : null; }
+function sgDrawTimer(W, HUD) {
+  const S = SIEGE, cx = W / 2, y = HUD + 8, w = Math.min(420, W - 2 * 256), h = 58;
+  const fmt = t => Math.floor(t / 60) + ':' + String(Math.max(0, Math.floor(t % 60))).padStart(2, '0');
+  let title, big, sub, frac, col;
+  if (S.phase === 'prep') {
+    const tot = S.wave === 0 ? SG.prep0 : SG.prep;
+    title = 'Siguiente oleada (' + (S.wave + 1) + ' de ' + SG.waves + ')'; big = fmt(Math.ceil(S.phaseT)); frac = S.phaseT / tot; col = S.phaseT <= 5 ? '#ff8a3d' : '#7ee0c3';
+    sub = 'Preparación: repara, construye y recarga · el cuerno del patio la adelanta';
+  } else {
+    const alive = S.all.length + S.transit.length, nx = sgNextInc();
+    title = 'Oleada ' + S.wave + ' de ' + SG.waves + ' · ' + fmt(S.waveT); big = alive + ' enem.'; col = '#ff8f8f';
+    const left = S.spawnQ.length;
+    frac = null;
+    sub = nx ? 'Próxima incursión por ' + nx.z.name.toLowerCase() + (nx.t > 0.5 ? ' en ' + Math.ceil(nx.t) + ' s' : ': ¡entrando!') + ' · faltan ' + left + ' por entrar'
+      : (S.tunnels.length ? 'Sellad los túneles para terminar la oleada' : 'Ya han entrado todas: acabad con los que quedan');
+  }
+  ctx.save();
+  rrect(cx - w / 2, y, w, h, 9); ctx.fillStyle = 'rgba(14,10,22,0.85)'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = col; ctx.stroke();
+  ctx.textAlign = 'left'; ctx.font = '700 12px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText(title, cx - w / 2 + 12, y + 18);
+  const pulse = S.phase === 'prep' && S.phaseT <= 5 ? 1 + 0.12 * Math.abs(Math.sin(time * Math.PI)) : 1;
+  ctx.textAlign = 'right'; ctx.font = '800 ' + Math.round(24 * pulse) + 'px ' + FONT; ctx.fillStyle = col; ctx.fillText(big, cx + w / 2 - 12, y + 26);
+  ctx.textAlign = 'left'; ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#b9afc9'; fitText(sub, cx - w / 2 + 12, y + 50, w - 24, 400, 10.5);
+  if (frac != null) { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(cx - w / 2 + 12, y + 30, w - 120, 6); ctx.fillStyle = col; ctx.fillRect(cx - w / 2 + 12, y + 30, (w - 120) * Math.max(0, Math.min(1, frac)), 6); }
+  // aviso de evento: cuenta atrás grande
+  if (S.warn) {
+    const t = Math.ceil(S.warn.t), wy = y + h + 8;
+    rrect(cx - 150, wy, 300, 30, 8); ctx.fillStyle = 'rgba(60,20,10,0.9)'; ctx.fill(); ctx.strokeStyle = '#ff8a3d'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.font = '800 14px ' + FONT; ctx.fillStyle = '#ffd54a'; ctx.fillText('Lluvia de fuego en ' + t + ' s · ¡a la zona techada!', cx, wy + 20);
+  } else if (S.rain && S.rain.z === S.cur) {
+    const wy = y + h + 8;
+    rrect(cx - 130, wy, 260, 26, 8); ctx.fillStyle = 'rgba(60,20,10,0.85)'; ctx.fill();
+    ctx.textAlign = 'center'; ctx.font = '700 12px ' + FONT; ctx.fillStyle = '#ff8a3d'; ctx.fillText('Lluvia de fuego · termina en ' + Math.ceil(S.rain.t) + ' s', cx, wy + 17);
+  }
+  ctx.restore();
+}
+function siegeDrawUI() { // panel de estado, zonas y avisos (coordenadas de pantalla, ampliadas con la escala del marcador como el HUD)
   const S = SIEGE; if (!S.cur) return;
+  ctx.save(); ctx.scale(hudS, hudS);
+  const W = LW / hudS, H = LH / hudS, HUD = HUD_PX() / hudS; // tamaños de pantalla en unidades del marcador
   const x = 10, y = HUD + 10;
   ctx.save();
   rrect(x, y, 236, 74, 8); ctx.fillStyle = 'rgba(14,10,22,0.82)'; ctx.fill();
   ctx.textAlign = 'left'; ctx.font = '700 13px ' + FONT; ctx.fillStyle = '#f2eefa';
-  const tt = S.phase === 'prep' ? 'Preparación · ' + Math.ceil(S.phaseT) + ' s' : 'Oleada ' + S.wave + '/' + SG.waves + ' · ' + Math.floor(S.waveT / 60) + ':' + String(Math.floor(S.waveT % 60)).padStart(2, '0');
-  ctx.fillText(tt, x + 10, y + 19);
+  ctx.fillText('Oro del grupo', x + 10, y + 19);
   ctx.textAlign = 'right'; ctx.fillStyle = '#ffd54a'; ctx.fillText(Math.floor(S.gold) + ' oro', x + 226, y + 19);
   ctx.textAlign = 'left'; ctx.font = '600 11px ' + FONT; ctx.fillStyle = '#b9afc9'; ctx.fillText('Estabilidad del frente', x + 10, y + 38);
   const sf = S.stab / 100; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x + 10, y + 44, 216, 8); ctx.fillStyle = sf > 0.5 ? '#7ee0c3' : sf > 0.25 ? '#ffd54a' : '#ff6b6b'; ctx.fillRect(x + 10, y + 44, 216 * sf, 8);
   ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#8f86a0';
-  const ev = S.warn ? '¡Lluvia de fuego en ' + Math.ceil(S.warn.t) + ' s!' : S.rain ? 'Lluvia de fuego (' + S.rain.z.short + ') · ' + Math.ceil(S.rain.t) + ' s' : S.tunnels.length ? 'Túnel de zapadores en ' + S.tunnels.map(t => t.z.short).join(', ') : (S.transit.length ? S.transit.length + ' enemigo(s) de camino al patio' : '');
-  if (ev) { ctx.fillStyle = S.warn || S.rain ? '#ff8a3d' : '#d8cfe6'; ctx.fillText(ev, x + 10, y + 66); }
+  const ev = S.rain && S.rain.z !== S.cur ? 'Lluvia de fuego en ' + S.rain.z.short.toLowerCase() : S.tunnels.length ? 'Túnel de zapadores en ' + S.tunnels.map(t => t.z.short).join(', ') : (S.transit.length ? S.transit.length + ' enemigo(s) de camino al patio' : '');
+  if (ev) { ctx.fillStyle = S.rain && S.rain.z !== S.cur ? '#ff8a3d' : '#d8cfe6'; ctx.fillText(ev, x + 10, y + 66); }
   // zonas: tres casillas con sus objetivos
-  const bw = 150, gap = 8, bx0 = W / 2 - (3 * bw + 2 * gap) / 2, by = H - 64;
+  const bw = 132, gap = 8, bx0 = W / 2 - (3 * bw + 2 * gap) / 2, by = H - 52;
   S.zones.forEach((z, i) => {
     const bx = bx0 + i * (bw + gap), here = z === S.cur, L = sgList(z), n = L ? L.filter(e => !e.dead && !e.sgLeft).length : 0, hit = z.objs.some(o => S.time - o.hitT < 1.5 && !o.destroyed);
-    rrect(bx, by, bw, 54, 7); ctx.fillStyle = here ? 'rgba(47,38,64,0.92)' : 'rgba(14,10,22,0.8)'; ctx.fill();
+    rrect(bx, by, bw, 44, 7); ctx.fillStyle = here ? 'rgba(47,38,64,0.92)' : 'rgba(14,10,22,0.8)'; ctx.fill();
     ctx.lineWidth = here ? 2.5 : 1.5; ctx.strokeStyle = hit && Math.sin(time * 10) > 0 ? '#ff6b6b' : (here ? '#b49bff' : '#3b3349'); ctx.stroke();
     ctx.textAlign = 'left'; ctx.font = '700 12px ' + FONT; ctx.fillStyle = here ? '#f2eefa' : '#b9afc9'; ctx.fillText(z.short + (here ? ' · aquí' : '') + (z.lost ? ' · perdida' : ''), bx + 8, by + 16);
     ctx.textAlign = 'right'; ctx.fillStyle = n ? '#ff8f8f' : '#6f6680'; if (!z.lost) ctx.fillText(n + ' enem.', bx + bw - 8, by + 16);
-    z.objs.forEach((o, k) => { const ox = bx + 8, oy = by + 24 + k * 13; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(ox, oy, bw - 16, 8); ctx.fillStyle = o.destroyed ? '#3b3349' : o.burn ? '#ff8a3d' : '#7ee08a'; ctx.fillRect(ox, oy, (bw - 16) * (o.destroyed ? 1 : o.hp / o.max), 8); });
+    z.objs.forEach((o, k) => { const ox = bx + 8, oy = by + 22 + k * 10; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(ox, oy, bw - 16, 6); ctx.fillStyle = o.destroyed ? '#3b3349' : o.burn ? '#ff8a3d' : '#7ee08a'; ctx.fillRect(ox, oy, (bw - 16) * (o.destroyed ? 1 : o.hp / o.max), 6); });
   });
-  S.log.forEach((l, i) => { const a = Math.max(0, 1 - (S.time - l.t) / 6); if (a <= 0) return; ctx.globalAlpha = a; ctx.textAlign = 'right'; ctx.font = '700 12px ' + FONT; ctx.fillStyle = '#ff8f8f'; ctx.fillText(l.text, W - 12, HUD + 24 + i * 18); });
+  sgDrawTimer(W, HUD);
+  S.log.forEach((l, i) => { const a = Math.max(0, 1 - (S.time - l.t) / 6); if (a <= 0) return; ctx.globalAlpha = a; ctx.textAlign = 'right'; ctx.font = '700 12px ' + FONT; ctx.fillStyle = '#ff8f8f'; ctx.fillText(l.text, W - 12, HUD + 96 + i * 18); });
   ctx.globalAlpha = 1;
+  ctx.restore();
   ctx.restore();
 }
 INTERACTS.unshift({ id: 'siege', label: p => (p.sgIt ? p.sgIt.label : ''), near: p => SIEGE.on && state === 'play' && !!(p.sgIt = siegeInteract(p)), act: p => { if (p.sgIt) p.sgIt.act(p); } });
