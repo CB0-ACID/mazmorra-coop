@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnóstico de mando</title>
+<style>
+body{margin:0;background:#101018;color:#ece6f3;font:18px/1.35 system-ui,sans-serif;padding:16px}
+h1{font-size:26px;margin:0 0 8px}
+.info{background:#1d1a28;border:1px solid #3b3349;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:16px;word-break:break-word}
+.row{margin:2px 0}
+.k{color:#a79cb6}
+#pads{font-family:monospace;font-size:16px;white-space:pre-wrap;background:#1d1a28;border-radius:10px;padding:10px 14px;margin-bottom:12px;min-height:60px}
+#log{font-family:monospace;font-size:15px;white-space:pre-wrap;background:#0a0a10;border-radius:10px;padding:10px 14px;height:45vh;overflow:hidden}
+button{font:700 18px system-ui;background:#2a2440;color:#fff;border:2px solid #b49bff;border-radius:10px;padding:10px 16px;margin:4px 6px 12px 0}
+</style>
+</head>
+<body>
+<h1>Diagnóstico de mando</h1>
+<div class="info" id="env"></div>
+<div class="info">
+  <div class="row"><span class="k">Gamepad API:</span> <span id="gpapi"></span></div>
+  <div class="row"><span class="k">Mandos vistos por el navegador:</span> <span id="gpcount">0</span></div>
+</div>
+<div id="pads">Pulsa un botón del mando o usa el mando de la tele…</div>
+<button id="clr">Limpiar registro</button>
+<div id="log"></div>
+
+<script>
+const log = document.getElementById('log');
+const lines = [];
+function add(msg) {
+  const t = new Date().toLocaleTimeString('es-ES');
+  lines.push(t + '  ' + msg);
+  if (lines.length > 60) lines.shift();
+  log.textContent = lines.join('\n');
+}
+document.getElementById('clr').onclick = () => { lines.length = 0; log.textContent = ''; };
+
+document.getElementById('env').textContent = navigator.userAgent;
+document.getElementById('gpapi').textContent = ('getGamepads' in navigator) ? 'sí' : 'NO';
+
+// Teclado: keydown / keyup (flechas, OK del mando de la tele, botones del mando emulados)
+addEventListener('keydown', e => add('keydown  key=' + JSON.stringify(e.key) + '  code=' + e.code + '  keyCode=' + e.keyCode), true);
+addEventListener('keyup',   e => add('keyup    key=' + JSON.stringify(e.key) + '  code=' + e.code + '  keyCode=' + e.keyCode), true);
+
+// Puntero: ratón, touchpad del mando o táctil
+addEventListener('pointerdown', e => add('pointerdown  type=' + e.pointerType + '  buttons=' + e.buttons + '  x=' + Math.round(e.clientX) + ' y=' + Math.round(e.clientY)), true);
+addEventListener('pointerup',   e => add('pointerup    type=' + e.pointerType), true);
+addEventListener('click',       e => add('click        x=' + Math.round(e.clientX) + ' y=' + Math.round(e.clientY)), true);
+addEventListener('touchstart',  () => add('touchstart'), true);
+
+// Eventos del Gamepad API
+addEventListener('gamepadconnected', e => { add('gamepadconnected  id=' + e.gamepad.id); refreshPads(); });
+addEventListener('gamepaddisconnected', e => { add('gamepaddisconnected  id=' + e.gamepad.id); refreshPads(); });
+
+// Estado en vivo de cada mando que el navegador exponga
+const pads = document.getElementById('pads');
+let lastBtn = '';
+function refreshPads() {
+  const list = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(g => g && g.connected) : [];
+  document.getElementById('gpcount').textContent = list.length;
+  if (!list.length) { pads.textContent = 'Ningún mando expuesto al navegador.'; return; }
+  pads.textContent = list.map(g => {
+    const pressed = g.buttons.map((b, i) => b.pressed ? i : -1).filter(i => i >= 0);
+    const axes = g.axes.map(a => a.toFixed(2)).join(' ');
+    return 'id: ' + g.id + '\nmapping: ' + g.mapping + '\nbotones pulsados: ' + (pressed.join(', ') || '—') + '\nejes: ' + axes;
+  }).join('\n\n');
+}
+// Sondeo continuo: los mandos no siempre disparan eventos al pulsar botones
+function poll() {
+  if (navigator.getGamepads) {
+    const list = Array.from(navigator.getGamepads()).filter(g => g && g.connected);
+    const key = list.map(g => g.buttons.map(b => b.pressed ? 1 : 0).join('') + g.axes.map(a => Math.round(a * 10)).join(',')).join('|');
+    if (key !== lastBtn) { lastBtn = key; refreshPads(); }
+  }
+  requestAnimationFrame(poll);
+}
+poll();
+refreshPads();
+add('Página cargada. Prueba: flechas, OK, botones del mando, touchpad y pulsar en pantalla.');
+</script>
+</body>
+</html>
