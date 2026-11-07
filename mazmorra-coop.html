@@ -137,8 +137,10 @@ body.touch.portrait:not(.rotdismiss) #rotate{display:flex}
 'use strict';
 // ---------- Constantes del mundo ----------
 const T = 40, HUD = 52;
-const W = 21 * T, H = HUD + 24 + 13 * T, OY = HUD + 24; // lienzo fijo: 840 × 596 (la sala ya no tiene por qué caber)
-const VH = H - HUD;                                     // alto de la vista de juego, bajo el marcador
+// Tamaño de diseño: 840 × 596. La escala del juego se calcula siempre a partir de él; si la pantalla tiene otra
+// proporción, el área visible (W × H) se amplía por los lados o por arriba y abajo, sin cambiar la escala del mundo.
+const BW = 21 * T, BH = HUD + 24 + 13 * T, BVH = BH - HUD, OY = HUD + 24;
+let W = BW, H = BH, VH = BVH;                           // área lógica actual del lienzo (la fija resize())
 let LW = W, LH = H; // tamaño lógico del lienzo: en los menús ocupa toda la pantalla y se adapta a su proporción
 // Vista tres cuartos: el suelo se aplasta en vertical (SQUASH) y los muros levantan WH píxeles de pantalla.
 // Con SQUASH = 1 se vuelve a la vista cenital de antes. Todo lo que tiene altura (z) se dibuja sin aplastar.
@@ -445,22 +447,13 @@ function resize() {
   const menu = isMenuState(), dpr = Math.min(2, window.devicePixelRatio || 1);
   document.body.classList.toggle('menu', menu); // primero se oculta el pie, para medir el espacio real
   const r = stage.getBoundingClientRect();
-  if (menu) { // menús: el lienzo ocupa toda la pantalla; el diseño se adapta a su proporción (altura 596, anchura mínima 840)
-    const s = Math.min(r.height / H, r.width / W);
-    LW = r.width / s; LH = r.height / s;
-    cvs.style.width = r.width + 'px'; cvs.style.height = r.height + 'px';
-    cvs.width = Math.floor(r.width * dpr); cvs.height = Math.floor(r.height * dpr);
-    ctx.setTransform(cvs.width / LW, 0, 0, cvs.height / LH, 0, 0);
-  } else { // juego: lienzo fijo 840 × 596 centrado y escalado
-    LW = W; LH = H;
-    const m = isTouchDev ? 0 : 16; // en móvil se aprovecha toda la pantalla
-    const s = Math.max(0.2, Math.min((r.width - m) / W, (r.height - m) / H));
-    cvs.style.width = Math.floor(W * s) + 'px';
-    cvs.style.height = Math.floor(H * s) + 'px';
-    cvs.width = Math.floor(W * s * dpr);
-    cvs.height = Math.floor(H * s * dpr);
-    ctx.setTransform(cvs.width / W, 0, 0, cvs.height / H, 0, 0);
-  }
+  // El lienzo ocupa toda la zona disponible, en menús y en juego. La escala es la de diseño (840 × 596, o la que
+  // quepa si la pantalla es más pequeña); el área lógica se amplía para cubrir la proporción de la pantalla.
+  const s = Math.max(0.2, Math.min(r.width / BW, r.height / BH));
+  W = LW = Math.max(BW, r.width / s); H = LH = Math.max(BH, r.height / s); VH = H - HUD;
+  cvs.style.width = r.width + 'px'; cvs.style.height = r.height + 'px';
+  cvs.width = Math.floor(r.width * dpr); cvs.height = Math.floor(r.height * dpr);
+  ctx.setTransform(cvs.width / W, 0, 0, cvs.height / H, 0, 0);
   lastMenu = menu;
 }
 // ---------- Móvil: orientación y pantalla completa ----------
@@ -4265,7 +4258,7 @@ function drawMenuBg() {
   ctx.fillStyle = g; ctx.fillRect(0, 0, LW, LH);
 }
 // Desplazamiento vertical del menú de número de jugadores (lo centra si la pantalla es más alta)
-function menuOff() { return state === 'count' ? (LH - 596) / 2 : 0; }
+function menuOff() { return state === 'count' ? (LH - BH) / 2 : 0; }
 function drawCount() {
   drawMenuBg();
   const off = menuOff();
@@ -5563,7 +5556,8 @@ function camGoal(zFix) {
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const p of players) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y * K); y1 = Math.max(y1, p.y * K); }
   if (!isFinite(x0)) { x0 = x1 = (MID_X + 0.5) * T; y0 = y1 = (MID_Y + 0.5) * TK; }
-  const z = zFix || Math.max(CAM.zMin, Math.min(CAM.zMax, W / (x1 - x0 + CAM.marginX), VH / (y1 - y0 + CAM.marginY)));
+  // El zoom se calcula con el área de diseño, para no acercar la cámara solo porque la pantalla sea más grande
+  const z = zFix || Math.max(CAM.zMin, Math.min(CAM.zMax, BW / (x1 - x0 + CAM.marginX), BVH / (y1 - y0 + CAM.marginY)));
   return camClamp({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 - 14, z }); // un poco hacia arriba: los cuerpos sobresalen del suelo
 }
 function camClamp(c) {
@@ -5584,7 +5578,7 @@ function updateCamera(dt) {
 function leash() {
   if (players.length < 2) return;
   for (const ax of ['x', 'y']) {
-    const lim = ax === 'x' ? W / CAM.zMin - CAM.marginX : (VH / CAM.zMin - CAM.marginY) / K, prev = ax === 'x' ? 'lx' : 'ly';
+    const lim = ax === 'x' ? BW / CAM.zMin - CAM.marginX : (BVH / CAM.zMin - CAM.marginY) / K, prev = ax === 'x' ? 'lx' : 'ly';
     let lo = Infinity, hi = -Infinity;
     for (const p of players) { lo = Math.min(lo, p[ax]); hi = Math.max(hi, p[ax]); }
     if (hi - lo <= lim) continue;
