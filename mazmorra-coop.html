@@ -300,8 +300,10 @@ const JUMP = {
 // Doble salto de Escarcha: cada pulsación del botón de movimiento salta con una voltereta (dos saltos hasta aterrizar)
 const FLIP = { h1: 50, h2: 40, g: 900, speed: 230, drag: 1.0, spin: 0.42, maxT: 1.6 }; // maxT: ningún salto dura más de esto // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
 // Estalactita de hielo: cae sobre donde estás y explota con daño de área (no te hace daño a ti ni a tus aliados)
-const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 10 };
-const SNOW_FROZEN_DMG = 10; // bono de daño de la bola de nieve contra tier 3-4 y jefes congelados // congelados por el Estallido: tier 1-2 mueren; tier 3-4 reciben daño extra
+// versión anterior (sin efecto): const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 10 };
+const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160 };
+// versión anterior (sin efecto): const SNOW_FROZEN_DMG = 10;
+const FROZEN_BREAK = { bossDmg: 30 }; // congelado que se rompe (estalactita y bola de nieve): los no-jefes mueren de un golpe; los jefes reciben este daño
 // Disparo básico de Escarcha: la habilidad secundaria cambia entre estos tres modos
 const FROST_MODE = [
   { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo; cada tic quita más estamina, hasta el doble. Si aturde, congela' },
@@ -1441,12 +1443,18 @@ function updateStalacs(dt) {
     if (k < 1) continue;
     s.done = true;
     const dmg = STAL.dmg * ABILITY_MUL;
+    // versión anterior (sin efecto):
+    // for (const e of liveTargets()) {
+    // if (Math.hypot(e.x - s.x, e.y - s.y) >= STAL.r + e.r) continue;
+    // const frozen = e.frozenT > 0 && e.frozenBurst;   // congelado por la habilidad 1 de Escarcha
+    // if (frozen && e.type !== 'boss' && e.tier <= 2) { e.hp = 0; killEnemy(e, true); continue; } // tier 1 y 2: la vida a cero
+    // const extra = frozen ? STAL.frozenDmg : 0;       // tier 3 y 4: solo daño extra
+    // damageEnemy(e, s.x, s.y, dmg + extra, dmg * 0.5 + extra, STAL.kb);
+    // }
     for (const e of liveTargets()) {
       if (Math.hypot(e.x - s.x, e.y - s.y) >= STAL.r + e.r) continue;
-      const frozen = e.frozenT > 0 && e.frozenBurst;   // congelado por la habilidad 1 de Escarcha
-      if (frozen && e.type !== 'boss' && e.tier <= 2) { e.hp = 0; killEnemy(e, true); continue; } // tier 1 y 2: la vida a cero
-      const extra = frozen ? STAL.frozenDmg : 0;       // tier 3 y 4: solo daño extra
-      damageEnemy(e, s.x, s.y, dmg + extra, dmg * 0.5 + extra, STAL.kb);
+      if (e.frozenT > 0) { breakFrozen(e, s.x, s.y, STAL.kb); continue; } // cualquier congelado se rompe
+      damageEnemy(e, s.x, s.y, dmg, dmg * 0.5, STAL.kb);
     }
     effects.push({ type: 'ring', x: s.x, y: s.y, r: STAL.r, t: 0, dur: 0.35, color: '#bfeaf5' });
     burst(s.x, s.y - 8, '#bfeaf5', 18); burst(s.x, s.y - 4, '#e8f7ff', 8);
@@ -3876,6 +3884,11 @@ function grantDragonCharge(executor) {
     floatText(q.x, q.y - 62 * q.ch.size, 'Carga de dragón ' + q.dragonCharges + '/' + AB.dragon.max, '#ff8a3d');
   }
 }
+// Congelado que se rompe (estalactita y bola de nieve): muere de un golpe; los jefes reciben FROZEN_BREAK.bossDmg
+function breakFrozen(e, sx, sy, kb) {
+  if (e.type === 'boss') { damageEnemy(e, sx, sy, FROZEN_BREAK.bossDmg, FROZEN_BREAK.bossDmg * 0.5, kb); return; }
+  e.hp = 0; killEnemy(e, true);
+}
 function killEnemy(e, executed) {
   if (e.dead) return;
   e.dead = true;
@@ -4229,10 +4242,16 @@ function update(dt) {
       if (e.dead || e.spawnT > 0) continue;
       if (b.aim && !e.airborne && b.h > 40) continue; // ya va por encima de los enemigos del suelo
       if (Math.hypot(e.x - b.x, e.y - b.y) < e.r + b.r) {
-        if (b.snow && e.frozenT > 0) { // bola de nieve contra congelado: tier 1-2 se rompen; tier 3-4 y jefes reciben daño extra
+        // versión anterior (sin efecto):
+        // if (b.snow && e.frozenT > 0) { // bola de nieve contra congelado: tier 1-2 se rompen; tier 3-4 y jefes reciben daño extra
+        // if (b.hit.has(e)) continue; b.hit.add(e);
+        // if (e.type !== 'boss' && e.tier <= 2) { e.hp = 0; killEnemy(e, true); }
+        // else shotHit(b.owner, e, b.dmg + SNOW_FROZEN_DMG, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
+        // continue;
+        // }
+        if (b.snow && e.frozenT > 0) { // bola de nieve contra congelado: se rompe igual que la estalactita
           if (b.hit.has(e)) continue; b.hit.add(e);
-          if (e.type !== 'boss' && e.tier <= 2) { e.hp = 0; killEnemy(e, true); }
-          else shotHit(b.owner, e, b.dmg + SNOW_FROZEN_DMG, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
+          breakFrozen(e, b.x, b.y, 160);
           continue;
         }
         if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); }
@@ -6147,6 +6166,139 @@ requestAnimationFrame(frame);
 // Gancho de depuración para pruebas automáticas: solo existe si la URL lleva ?debug
 if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS }; }, enterRoom, roomCleared, update };
 })();
+
+// ===== Código retirado, comentado y sin efecto =====
+// Misiles de cristal (retirados: el disparo de Escarcha solo tiene rayo y bola de nieve)
+// const MISSILE = { max: 3, step: 0.4, speed: 460, steer: 11, life: 2.4, lifeFree: 1.0, dmg: 3, sta: 0.05, slow: 2.5, freezeT: 4, seek: 220 };
+// const FROST_MODE = [
+//   { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo; cada tic quita más estamina, hasta el doble' },
+//   { key: 'missile', name: 'Misiles de cristal', icon: 'icemissile', desc: 'Mantén para invocar hasta 3 cristales; al soltar van al objetivo' },
+//   { key: 'snow', name: 'Bola de nieve', icon: 'snowball', desc: 'Mantén para cargar tamaño y alcance; rebota una vez en la pared' }
+// ];
+//     case 'icemissile': // cristal de hielo con estela
+//       L('B', th, [[-1, 0.3], [-0.45, 0.12]], { dash: [0.16, 0.14] }); P('L', [[1, 0], [0, -0.42], [-0.5, 0], [0, 0.42]]); P('B', [[0, -0.42], [-0.5, 0], [0, 0.42]]); C('W', 0.42, -0.1, 0.09); break;
+// function launchMissiles(p, n) {
+//   const tg = frostTarget(p), volley = { hits: new Map() }, base = Math.atan2(p.ay, p.ax);
+//   for (let i = 0; i < n; i++) {
+//     const a = base + (i - (n - 1) / 2) * 0.28, sp = MISSILE.speed * 0.6;
+//     iceMissiles.push({ owner: p, volley, tg, x: p.x + Math.cos(a) * (p.r + 6), y: p.y + Math.sin(a) * (p.r + 6), h: 14 * p.ch.size,
+//       vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: tg ? MISSILE.life : MISSILE.lifeFree, t: 0 });
+//   }
+//   burst(p.x, p.y - 14 * p.ch.size, '#e8f7ff', 10); shake = Math.max(shake, 2); SFX.launch();
+// }
+// function nearestLiveTo(x, y, max) {
+//   let best = null, bd = max;
+//   for (const e of liveTargets()) { const d = Math.hypot(e.x - x, e.y - y); if (d < bd) { bd = d; best = e; } }
+//   return best;
+// }
+// function updateIceMissiles(dt) {
+//   for (const m of iceMissiles) {
+//     m.t += dt; m.life -= dt;
+//     if (m.tg && (m.tg.dead || !enemies.includes(m.tg))) m.tg = nearestLiveTo(m.x, m.y, MISSILE.seek); // el objetivo cayó: busca otro cerca
+//     if (m.tg) { // se dirige al objetivo girando poco a poco
+//       const dx = m.tg.x - m.x, dy = m.tg.y - m.y, d = Math.hypot(dx, dy) || 1, k = Math.min(1, MISSILE.steer * dt);
+//       m.vx += (dx / d * MISSILE.speed - m.vx) * k; m.vy += (dy / d * MISSILE.speed - m.vy) * k;
+//     }
+//     m.x += m.vx * dt; m.y += m.vy * dt;
+//     m.h += ((m.tg ? (m.tg.z || 0) + 12 : 14) - m.h) * Math.min(1, 6 * dt);
+//     if (Math.random() < 0.7) particles.push({ x: m.x, y: m.y - m.h, vx: 0, vy: 0, life: 0.25, max: 0.25, color: '#bfeaf5', s: 3 });
+//     if (isSolid(Math.floor(m.x / T), Math.floor(m.y / T), false)) { m.life = 0; burst(m.x, m.y - m.h, '#e8f7ff', 4); continue; }
+//     const hit = liveTargets().find(e => Math.hypot(e.x - m.x, e.y - m.y) < e.r + 7);
+//     if (hit) { hitIceMissile(m, hit); m.life = 0; }
+//   }
+//   iceMissiles = iceMissiles.filter(m => m.life > 0);
+// }
+// function hitIceMissile(m, e) {
+//   const n = (m.volley.hits.get(e) || 0) + 1; m.volley.hits.set(e, n);
+//   damageEnemy(e, m.x, m.y, MISSILE.dmg, e.maxSta * MISSILE.sta, 90);
+//   if (e.dead) return;
+//   burst(e.x, upY(e.y, 12 + (e.z || 0)), '#bfeaf5', 6);
+//   if (n === 2) { e.slowT = MISSILE.slow; floatText(e.x, upY(e.y, 40 + (e.z || 0)), 'Ralentizado', '#bfeaf5'); }
+//   if (n >= MISSILE.max && !(e.frozenT > 0)) freezeEnemy(e, false, MISSILE.freezeT);
+// }
+// function drawIceMissile(m) {
+//   const y = m.y - m.h, a = Math.atan2(m.vy, m.vx);
+//   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(m.x, m.y, 4, 1.8);
+//   ctx.save(); ctx.translate(m.x, y); ctx.rotate(a);
+//   ctx.fillStyle = '#bfeaf5'; ctx.strokeStyle = '#7fd8ff'; ctx.lineWidth = 1.5;
+//   ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(0, -4); ctx.lineTo(-7, 0); ctx.lineTo(0, 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+//   ctx.fillStyle = '#ffffff'; ctx.fillRect(-1, -1, 3, 2);
+//   ctx.restore();
+// }
+// function updateFrostShot(p, inp, dt) {
+//   const c = p.ch, mode = frostModeOf(p), holding = !!inp.s && !p.shotHold && p.moveT <= 0, was = !!p.charging;
+//   if (holding && !was) { p.chargeT = 0; p.rayT = 0; p.mCrys = 0; p.beamTick = 0; }
+//   p.charging = holding; p.beaming = false;
+//   if (mode === 0) { // rayo: mantener lo mantiene activo; el daño de estamina de cada tic sube con el tiempo
+//     if (!holding) { p.rayT = 0; return; }
+//     p.rayT += dt; p.beamTick -= dt;
+//     if (p.beamTick <= 0) { p.beamTick = c.shotCd; frostBeamTick(p, BEAM_RAMP.base * (1 + (BEAM_RAMP.mul - 1) * Math.min(1, p.rayT / BEAM_RAMP.time))); }
+//     p.beaming = true; return;
+//   }
+//   if (mode === 1) { // misiles: mantener invoca cristales (hasta 3); al soltar salen hacia el objetivo
+//     if (holding) {
+//       p.chargeT = Math.min(MISSILE.max * MISSILE.step, p.chargeT + dt);
+//       const n = Math.min(MISSILE.max, Math.floor(p.chargeT / MISSILE.step + 1e-6));
+//       if (n > (p.mCrys || 0)) { SFX.swing(false); burst(p.x, p.y - 14 * c.size, '#bfeaf5', 4); }
+//       p.mCrys = n;
+//     } else if (was && p.mCrys > 0) { launchMissiles(p, p.mCrys); p.mCrys = 0; }
+//     return;
+//   }
+//   // bola de nieve: mantener la carga la hace más grande y de más alcance; al soltar sale si está a medias o más
+//   if (holding) p.chargeT = Math.min(c.chargeTime, p.chargeT + dt);
+//   else if (was) { const lv = p.chargeT / c.chargeTime; if (lv >= 0.2) throwSnowball(p, lv); }
+// }
+// function drawFrostCharge(p) {
+//   if (p.down || !p.charging) return;
+//   const mode = frostModeOf(p);
+//   if (mode === 1 && p.mCrys > 0) {
+//     const [bx, by] = bookPos(p);
+//     for (let i = 0; i < p.mCrys; i++) {
+//       const a = time * 1.8 + i * Math.PI * 2 / MISSILE.max, x = bx + Math.cos(a) * 11, y = by - 6 + Math.sin(a) * 4;
+//       ctx.save(); ctx.translate(x, y); ctx.rotate(a + Math.PI / 2);
+//       ctx.fillStyle = '#e8f7ff'; ctx.strokeStyle = '#7fd8ff'; ctx.lineWidth = 1.5;
+//       ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(3, 0); ctx.lineTo(0, 6); ctx.lineTo(-3, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+//       ctx.restore();
+//     }
+//   }
+//   if (mode === 2) drawSummonCircle(p);
+// }
+// function castFrostMode(p) {
+//   p.frostMode = (frostModeOf(p) + 1) % FROST_MODE.length;
+//   p.charging = false; p.beaming = false; p.chargeT = 0; p.mCrys = 0; p.rayT = 0;
+//   effects.push({ type: 'ring', x: p.x, y: p.y, r: p.r + 22, t: 0, dur: 0.3, color: '#bfeaf5' });
+//   floatText(p.x, p.y - 46 * p.ch.size, FROST_MODE[frostModeOf(p)].name, '#bfeaf5'); SFX.swing(false);
+// }
+// let players = [], enemies = [], bullets = [], pBullets = [], particles = [], pickups = [], effects = [], texts = [], hazards = [], chains = [], turrets = [], pZones = [], arcOrbs = [], grenades = [], missiles = [], dragonFx = [], stalacs = [], iceMissiles = [];
+//   room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; iceMissiles = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
+//     iceMissiles.push({ owner: p, volley, tg, x: p.x + Math.cos(a) * (p.r + 6), y: p.y + Math.sin(a) * (p.r + 6), h: 14 * p.ch.size,
+// function updateIceMissiles(dt) {
+//   for (const m of iceMissiles) {
+//   iceMissiles = iceMissiles.filter(m => m.life > 0);
+// function drawIceMissile(m) {
+//   updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateStalacs(dt); updateIceMissiles(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
+//   for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles, stalacs, iceMissiles]) for (const o of L) {
+//   for (const m of iceMissiles) list.push({ y: m.y, f: () => drawIceMissile(m) });
+// Intangibilidad (retirada: Escarcha ya no tiene habilidad 2 de intangibilidad)
+// function castPhase(p) {
+//   p.phaseT = AB.phase.time;
+//   effects.push({ type: 'ring', x: p.x, y: p.y, r: p.r + 26, t: 0, dur: 0.35, color: '#bfeaf5' });
+//   floatText(p.x, p.y - 46 * p.ch.size, 'Intangible', '#bfeaf5');
+// }
+//   phase:     { time: 3, speed: 1.5 },                    // Intangible (Escarcha)
+//   p.shieldT = (p.shieldT || 0) - dt; p.tauntT = (p.tauntT || 0) - dt; p.recoilT = (p.recoilT || 0) - dt; p.bubbleT = (p.bubbleT || 0) - dt; p.phaseT = (p.phaseT || 0) - dt; p.overdriveT = (p.overdriveT || 0) - dt; p.overchargeT = (p.overchargeT || 0) - dt;
+//       const spd = c.speed * (p.charging || p.mCharging ? c.chargeMoveMul : 1) * (p.slash ? 0.45 : 1) * (p.blocking ? BLOCK_SPEED : 1) * (p.shieldUp ? AB.wall.speed : 1) * (p.phaseT > 0 ? AB.phase.speed : 1); // cargar frena; golpear compromete; bloquear frena
+//   shield: castShield, pillar: castPillar, taunt: castTaunt, roots: castRoots, vine: castVine, grenade: castGrenade, frostburst: castFrostburst, phase: castPhase, pull: castPull, blink: castBlink, suspend: castSuspend,
+//   p.phaseT = AB.phase.time;
+//     else if (type === 'phase') circle(p.x, p.y, p.r + 20);
+//     case 'phase': C('B', 0, 0, 0.45, { alpha: 0.6 }); C('L', 0, 0, 0.82, { fill: false, w: th, dash: [0.32, 0.28] }); C('W', -0.12, -0.12, 0.13); break;
+//   if (p.down || p.inv > 0 || p.phaseT > 0 || p.jump || p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
+//   phase: ['Intangible', 'Más rápida e inmune al daño unos segundos'],
+//   if (p.phaseT > 0) { ctx.globalAlpha = 0.35 + 0.15 * Math.sin(time * 20); if (Math.random() < 0.5) effects.push({ type: 'ghost', x: p.x, y: p.y - 14 * p.ch.size, r: 12 * p.ch.size, t: 0, dur: 0.2, color: '#bfeaf5' }); } // intangible
+//   { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil, escarcha', priType: 'frostburst', priCd: 7, secType: 'phase', secCd: 10,
+//     shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300, moveType: 'flip', moveCd: 0.1, moveInvuln: false, stalactite: true }, // ondas mágicas continuas; cargando, bola de nieve
+// Intangibilidad y misiles retirados: fin del código comentado
+//   if (c.stalactite && p.bufA > 0 && p.flip && p.flip.stal > 0 && p.flip.z > 8) { p.bufA = 0; dropStalactite(p); } // en pleno salto: una estalactita por salto, en vez de golpear
 </script>
 </body>
 </html>
