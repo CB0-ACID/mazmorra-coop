@@ -455,7 +455,7 @@ const cvs = document.getElementById('game');
 let ctx = cvs.getContext('2d'); // let: los iconos de los botones táctiles lo cambian un instante para pintar en su propio lienzo
 const stage = document.getElementById('stage');
 let lastMenu = null;
-function isMenuState() { return state === 'count' || state === 'select' || state === 'options'; }
+function isMenuState() { return state === 'count' || state === 'select' || state === 'options' || state === 'ideas'; }
 function resize() {
   const menu = isMenuState(), dpr = Math.min(2, window.devicePixelRatio || 1);
   document.body.classList.toggle('menu', menu); // primero se oculta el pie, para medir el espacio real
@@ -804,9 +804,9 @@ function updateCount() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
     const mv = m.dx || m.dy;
-    if (mv) countSel = ((countSel - 1 + mv + 6) % 6) + 1; // 1-5 jugadores, 6 = opciones de control
+    if (mv) countSel = ((countSel - 1 + mv + 7) % 7) + 1; // 1-5 jugadores, 6 = opciones de control, 7 = diario de ideas
     if (m.l) toggleTest();
-    if (m.a) { if (countSel === 6) openOptions('count'); else goSelect(dev); return; }
+    if (m.a) { if (countSel === 6) openOptions('count'); else if (countSel === 7) openIdeas(); else goSelect(dev); return; }
   }
 }
 function goSelect(dev) {
@@ -912,7 +912,7 @@ function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clie
 const insideAt = (x, y, b) => x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3];
 cvs.addEventListener('mousemove', e => {
   const [x, y] = canvasPoint(e);
-  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; }
+  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; if (insideAt(x, y, ideasRect())) countSel = 7; }
   else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i))) pauseSel = i; }
   else if (state === 'options') { for (let r = 1; r <= optList().length + 2; r++) if (insideAt(x, y, optRowRect(r))) OPT.row = r; }
   else if (state === 'over') { for (let i = 0; i < 3; i++) if (insideAt(x, y, overRect(i))) overSel = i; }
@@ -932,7 +932,10 @@ cvs.addEventListener('pointerdown', e => {
   if (state === 'count') {
     if (inside(testRect())) { toggleTest(); return; }
     if (inside(optRect())) { countSel = 6; openOptions('count'); return; }
+    if (inside(ideasRect())) { countSel = 7; openIdeas(); return; }
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
+  } else if (state === 'ideas') {
+    if (inside(ideasBackRect())) state = 'count';
   } else if (state === 'options') {
     if (OPT.cap) { OPT.cap = null; return; } // un toque mientras se espera una tecla cancela la captura
     for (let i = 0; i < OPT_TABS.length; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
@@ -4209,6 +4212,7 @@ function update(dt) {
   if (state === 'select') { updateSelect(dt); return; }
   if (state === 'pause') { updatePause(); return; }
   if (state === 'options') { updateOptions(); return; }
+  if (state === 'ideas') { updateIdeas(); return; }
   if (state === 'tutorial') { updateTutorial(dt); return; }
   if (state === 'over') {
     overT += dt;
@@ -4397,6 +4401,13 @@ function drawCount() {
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
     ctx.fillText('Opciones de control', ox + ow / 2, oy + 19);
+  }
+  { // botón del diario de ideas (opción 7 del menú)
+    const [ix, iy, iw, ih] = ideasRect(), sel = countSel === 7;
+    rrect(ix, iy, iw, ih, 7); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
+    ctx.fillText('Diario de ideas', ix + iw / 2, iy + 18);
   }
   // escaparate: los ocho personajes, con su halo de color, para ir conociéndolos antes de elegir
   const sy = 396, sp = Math.min(118, (LW - 80) / 8);
@@ -6066,6 +6077,7 @@ function draw() {
   if (state === 'count') drawCount();
   else if (state === 'select') drawSelect();
   else if (state === 'options') drawOptions();
+  else if (state === 'ideas') drawIdeas();
   else { drawGame(); if (state === 'pause') drawPause(); if (state === 'tutorial') drawTutorial(); }
 }
 
@@ -6327,6 +6339,80 @@ function drawPause() {
   });
   ctx.fillStyle = '#8f86a0'; ctx.font = '400 11.5px ' + FONT;
   ctx.fillText('Golpe elige; movimiento, Esc o Start vuelven al juego; M silencia el sonido', W / 2, py + ph - 16);
+}
+
+// ---------- Diario de ideas (menú principal, opción 7) ----------
+// Log de texto: cada idea va separada por una línea «---». Para añadir una idea, pégala al final, tras una línea «---».
+const IDEAS_DIARIO = `
+[2026-11-07] Boss: la party inversa
+Encuentro de tier 3 con versiones oscuras de los personajes que juegan: cada enemigo es un personaje de la party en versión oscura.
+Estado: idea que aún considero no viable.
+`;
+const IDEAS = { scroll: 0 };
+function ideasRect() { return [LW / 2 + 182, 334, 172, 26]; } // botón «Diario de ideas» del menú principal (la opción 7)
+function ideasBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; }
+function ideasEntries() { return IDEAS_DIARIO.trim().split(/\n---\n/).map(e => e.trim()).filter(Boolean); }
+// Parte un texto en líneas que caben en maxW (el contexto ya tiene la fuente elegida)
+function ideasWrap(txt, maxW) {
+  const out = [];
+  for (const para of txt.split('\n')) {
+    if (!para.trim()) { out.push(''); continue; }
+    let line = '';
+    for (const w of para.split(' ')) {
+      const t = line ? line + ' ' + w : w;
+      if (line && ctx.measureText(t).width > maxW) { out.push(line); line = w; } else line = t;
+    }
+    out.push(line);
+  }
+  return out;
+}
+function ideasLines(maxW) {
+  ctx.font = '400 15px ' + FONT;
+  const out = [];
+  ideasEntries().forEach((e, i) => {
+    if (i) out.push({ s: '', head: false });
+    const [title, ...body] = e.split('\n');
+    out.push({ s: title, head: true });
+    for (const l of ideasWrap(body.join('\n'), maxW)) out.push({ s: l, head: false });
+  });
+  return out;
+}
+function openIdeas() { state = 'ideas'; IDEAS.scroll = 0; for (const dev of DEVICES) menuInput(dev); } // el botón que abrió el diario no debe activar nada aquí
+function updateIdeas() {
+  let back = escPressed();
+  for (const dev of DEVICES) {
+    const m = menuInput(dev);
+    if (m.dy) IDEAS.scroll += m.dy * 40;
+    if (m.a || m.d) back = true;
+  }
+  if (back) state = 'count';
+}
+cvs.addEventListener('wheel', e => { if (state === 'ideas') { IDEAS.scroll += e.deltaY; e.preventDefault(); } }, { passive: false });
+function drawIdeas() {
+  drawMenuBg();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Diario de ideas', LW / 2, 58);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 14px ' + FONT; ctx.fillText('Ideas que quiero implementar y que aún considero no viables', LW / 2, 80);
+  const pw = Math.min(700, LW - 40), px = (LW - pw) / 2, py = 100, ph = Math.max(120, LH - 180);
+  rrect(px, py, pw, ph, 10); ctx.fillStyle = '#16121e'; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
+  ctx.save(); rrect(px, py, pw, ph, 10); ctx.clip();
+  const lh = 22, top = py + 30, lines = ideasLines(pw - 48);
+  const max = Math.max(0, lines.length * lh - (ph - 50));
+  IDEAS.scroll = Math.min(Math.max(0, IDEAS.scroll), max);
+  ctx.textAlign = 'left';
+  lines.forEach((l, i) => {
+    const y = top + i * lh - IDEAS.scroll;
+    if (y < py - lh || y > py + ph) return;
+    ctx.fillStyle = l.head ? '#ffd54a' : '#d8d0e6'; ctx.font = (l.head ? '700 ' : '400 ') + '15px ' + FONT;
+    ctx.fillText(l.s, px + 24, y);
+  });
+  ctx.restore();
+  const [bx, by, bw, bh] = ideasBackRect();
+  rrect(bx, by, bw, bh, 7); ctx.fillStyle = '#2f2640'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = '#b49bff'; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 13px ' + FONT;
+  ctx.fillText('Volver', bx + bw / 2, by + 20);
 }
 
 // ---------- Opciones de control (desde el menú principal o la pausa) ----------
