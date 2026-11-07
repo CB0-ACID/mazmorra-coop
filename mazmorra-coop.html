@@ -177,6 +177,7 @@ const PALETTES = [
 // Tier 3: amenazas con habilidades especiales · Tier 4: guardián del piso
 const ENEMY = {
   mite:     { tier: 1, hp: 1,  sta: 0,  r: 12, spd: 105, color: '#d9f36b', cost: 0.4 },
+  bat:      { tier: 1, hp: 1,  sta: 0,  r: 12, spd: 95,  color: '#8b7fb8', cost: 0.5, fly: 36 },
   slime:    { tier: 1, hp: 2,  sta: 0,  r: 18, spd: 62,  color: '#5fd068', cost: 0.5 },
   charger:  { tier: 2, hp: 5,  sta: 6,  r: 20, spd: 42,  color: '#ff8a3d', cost: 2 },
   shooter:  { tier: 2, hp: 4,  sta: 5,  r: 17, spd: 72,  color: '#a578ff', cost: 2 },
@@ -191,6 +192,7 @@ const HEAL = { pickup: 40, floor: 40 }; // corazón recogido y curación al baja
 const ENEMY_DMG = {
   mite:     { touch: 10 },
   slime:    { spit: 14 },
+  bat:      { sonic: 12 },
   charger:  { touch: 22, swipe: 26 },
   shooter:  { touch: 12, shot: 16 },
   golem:    { touch: 24, leap: 32, slam: 36 },
@@ -1125,7 +1127,7 @@ function makeEncounter(r) {
   const n2 = Math.max(r.dist > 0 ? 1 : 0, Math.floor(budget * (0.3 + rng() * 0.25) / 2));
   for (let i = 0; i < n2 && budget >= 2; i++) { rest.push({ type: rng() < 0.5 ? 'charger' : 'shooter', elite: false }); budget -= 2; }
   if (rest.length && rng() < 0.12 + 0.06 * depth) rest[0].elite = true;
-  while (budget >= 0.4 && rest.length < 22) { const t = rng() < 0.55 ? 'slime' : 'mite'; rest.push({ type: t, elite: false }); budget -= ENEMY[t].cost; }
+  while (budget >= 0.4 && rest.length < 22) { const t = rng() < 0.25 ? 'bat' : (rng() < 0.5 ? 'slime' : 'mite'); rest.push({ type: t, elite: false }); budget -= ENEMY[t].cost; }
   for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
   if (rest.length + t3.length >= 8 && rng() < 0.6) { const h = Math.ceil(rest.length / 2); return [rest.slice(0, h), rest.slice(h).concat(t3)]; }
   return [rest.concat(t3)];
@@ -1208,7 +1210,7 @@ function makeEnemy(type, x, y, elite) {
     spd: b.spd * (1 + 0.08 * dp), color: b.color, elite,
     spawnT: 0.7, flash: 0, kbx: 0, kby: 0, t: 1 + Math.random() * 1.2, anim: Math.random() * 6, state: 'walk',
     cd: 1 + Math.random(), cd2: 2, rot: 0, phase: Math.random() * 6, dirx: 0, diry: 0, face: 0, dead: false,
-    z: 0, vz: 0, airborne: false, stunT: 0, getup: 0, calm: 0, swipeCd: 0, shots: 0,
+    z: b.fly || 0, vz: 0, airborne: false, flying: !!b.fly, stunT: 0, getup: 0, calm: 0, swipeCd: 0, shots: 0,
     leapCd: 2 + Math.random() * 2, slamCd: 1, leapDur: 0.75, lungeCd: 1 + Math.random() * 1.5, spitCd: 1 + Math.random() * 1.5, windDur: 0, tx: 0, ty: 0, blinkCd: 2 + Math.random() * 2, bombCd: 2 + Math.random()
   };
 }
@@ -2635,7 +2637,7 @@ function applyBurn(e, p) {
 function fireHit(e, p, dmg, kb, sx, sy, o) {
   o = o || {};
   if (e.dead) return;
-  damageEnemy(e, sx, sy, dmg, dmg * (o.sta || 1), kb); applyBurn(e, p);
+  damageEnemy(e, sx, sy, dmg, dmg * (o.sta || 1), kb, !!o.ranged); applyBurn(e, p);
   if (o.fx) fireImpact(e, sx, sy, o.fx === 'heavy');
 }
 // Impacto de fuego: hitstop, sacudida hacia el golpe, chispas y hitstun como un golpe cuerpo a cuerpo, más un estallido de llamas
@@ -2688,7 +2690,7 @@ function dragonBallBoom(f, main) {
   const L1 = AB.dragon.l1, dmg = L1.dmg * ABILITY_MUL;
   for (const e of liveTargets()) {
     if (e !== main && Math.hypot(e.x - f.x, e.y - f.y) > L1.splash + e.r) continue;
-    fireHit(e, f.owner, e === main ? dmg : dmg * 0.5, e === main ? 260 : 140, f.x, f.y, { sta: AB.dragon.sta, fx: e === main ? 'heavy' : 'light' });
+    fireHit(e, f.owner, e === main ? dmg : dmg * 0.5, e === main ? 260 : 140, f.x, f.y, { sta: AB.dragon.sta, fx: e === main ? 'heavy' : 'light', ranged: true }); // explosión de la bola de fuego: proyectil
   }
   effects.push({ type: 'ring', x: f.x, y: f.y, r: L1.splash, t: 0, dur: 0.35, color: '#ff8a3d' });
   burst(f.x, upY(f.y, f.z), '#ff8a3d', 18); burst(f.x, upY(f.y, f.z), '#ffd54a', 8); shake = Math.max(shake, 4);
@@ -2986,7 +2988,7 @@ function updateGrenades(dt) {
     g.done = true;
     const p = g.owner, dmg = AB.grenade.dmg * ABILITY_MUL, L = [];
     for (const e of liveTargets()) if (Math.hypot(e.x - g.x, e.y - g.y) < AB.grenade.r + e.r) {
-      damageEnemy(e, g.x, g.y, dmg, dmg, 0);
+      damageEnemy(e, g.x, g.y, dmg, dmg, 0, true);
       if (e.dead) continue;
       if (e.airborne) e.vz = Math.max(e.vz, LAUNCH_VZ * 0.8); else if (tryLaunch(e, true)) L.push(e);
     }
@@ -3094,7 +3096,7 @@ function updateArcOrbs(dt) {
         o.done = true;
         const p = o.owner, L = [];
         // for (const e of liveTargets()) if (Math.hypot(e.x - o.x, e.y - o.y) < o.R + e.r) { damageEnemy(e, o.x, o.y, o.dmg, o.dmg, 280); impactFx(p, e, true); launchOrBump(e, false, L); } // antes los lanzaba
-        for (const e of liveTargets()) if (Math.hypot(e.x - o.x, e.y - o.y) < o.R + e.r) { damageEnemy(e, o.x, o.y, o.dmg, o.dmg, 60); impactFx(p, e, true); L.push(e); } // atrae y estalla sin lanzar
+        for (const e of liveTargets()) if (Math.hypot(e.x - o.x, e.y - o.y) < o.R + e.r) { damageEnemy(e, o.x, o.y, o.dmg, o.dmg, 60, true); impactFx(p, e, true); L.push(e); } // atrae y estalla sin lanzar
         if (!p.down) lockNearestOf(p, L);
         effects.push({ type: 'ring', x: o.x, y: o.y, r: o.R, t: 0, dur: 0.35, color: p.color });
         effects.push({ type: 'ring', x: o.x, y: o.y, r: o.R * 0.6, t: 0, dur: 0.25, color: '#ffffff' });
@@ -3856,8 +3858,9 @@ function applyHitstun(e, heavy) {
   e.state = 'walk'; e.t = Math.max(e.t || 0, 0.3); // cancela cargas, zarpazos y golpes en preparación
 }
 // Daño: el cuerpo a cuerpo quita vida y estamina a partes iguales; el disparo quita sobre todo estamina
-function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase) {
+function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   if (e.dead || e.spawnT > 0) return;
+  if (e.flying && !ranged) return; // volador: solo le hacen daño los ataques a distancia (disparos y proyectiles)
   if (e.stunT > 0 && e.type !== 'boss') hpDmg *= STUN_DMG_MUL; // aturdido: recibe más daño
   if (e.frozenAir && e.frozenT > 0) { shatterEnemy(e); return; } // congelado en el aire: cualquier golpe lo rompe
   e.hp -= hpDmg; e.flash = 0.1; e.calm = 0; e.squash = 1; // aplastamiento al recibir el golpe
@@ -3886,9 +3889,9 @@ function shotHit(p, e, dmg, kb, sx, sy, ability, staMul) {
   const mul = ability ? ABILITY_MUL : SHOT_MUL * (e.airborne ? AIR_SHOT_MUL : SHOT_GROUND_MUL);
   if (e.maxSta > 0) { // cada disparo quita una fracción fija de la barra; la carga la multiplica
     const sta = e.maxSta * p.ch.shotStagger * (dmg / p.ch.shot) * (e.type === 'boss' ? 0.3 : 1) * mul * (staMul || 1);
-    damageEnemy(e, sx, sy, dmg * 0.4 * mul, sta, kb);
+    damageEnemy(e, sx, sy, dmg * 0.4 * mul, sta, kb, true);
   }
-  else damageEnemy(e, sx, sy, dmg * mul, 0, kb); // tier 1: sin estamina, el disparo quita vida normal
+  else damageEnemy(e, sx, sy, dmg * mul, 0, kb, true); // tier 1: sin estamina, el disparo quita vida normal
   if (!e.dead && e.airborne && !bossStunnedAir(e)) e.vz = Math.max(e.vz, JUGGLE_VZ); // lo mantiene flotando
 }
 function stunEnemy(e) {
@@ -4015,6 +4018,8 @@ function nearestPlayer(e) {
   return [best, bd];
 }
 function fire(x, y, ang, spd, dmg) { bullets.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r: 5, life: 4, dmg: dmg || 16 }); }
+const SONIC = { spd: 190, life: 2.6, r: 9 }; // onda de sonido del murciélago
+function fireSonic(x, y, ang, dmg) { bullets.push({ x, y, vx: Math.cos(ang) * SONIC.spd, vy: Math.sin(ang) * SONIC.spd, r: SONIC.r, life: SONIC.life, dmg, sonic: true }); }
 function randomFloorNear(px, py, minD, maxD) {
   for (let i = 0; i < 30; i++) {
     const a = Math.random() * Math.PI * 2, d = minD + Math.random() * (maxD - minD);
@@ -4026,6 +4031,7 @@ function randomFloorNear(px, py, minD, maxD) {
 
 // Cada IA devuelve su velocidad deseada [vx, vy]
 const ENEMY_AI = {
+  // [desactivado] slime original, sustituido por el escupitajo: slime(e, p, d, nx, ny) { const s = e.spd * (0.7 + 0.3 * Math.sin(e.anim * 6)); return [nx * s, ny * s]; },
   slime(e, p, d, nx, ny, dt) { // no hace daño al tocarte: su ataque es un escupitajo con aviso en el suelo
     e.spitCd -= dt;
     if (e.state === 'walk') {
@@ -4123,6 +4129,21 @@ const ENEMY_AI = {
     const want = d < 140 ? -1 : (d > 220 ? 1 : 0), st = Math.sin(e.anim * 1.1 + e.phase);
     return [nx * want * e.spd - ny * e.spd * 0.7 * st, ny * want * e.spd + nx * e.spd * 0.7 * st];
   },
+  bat(e, p, d, nx, ny, dt) { // tier 1 volador: se mantiene a distancia dando vueltas y lanza una onda de sonido
+    e.cd -= dt;
+    if (e.state === 'walk') {
+      if (e.cd <= 0 && d < 280) { e.state = 'wind'; e.windDur = e.t = 0.8; e.cd = 2.4 + Math.random() * 1.2; return [0, 0]; }
+      const want = d < 150 ? -1 : (d > 230 ? 1 : 0), st = Math.sin(e.anim * 2.2 + e.phase);
+      return [(nx * want - ny * st * 0.9) * e.spd, (ny * want + nx * st * 0.9) * e.spd];
+    }
+    if (e.state === 'wind') { // se recoge y abre las alas: la onda sale hacia donde apunta
+      e.t -= dt;
+      if (e.t <= 0) { fireSonic(e.x, e.y, e.face, edmg(e, 'sonic')); e.state = 'recover'; e.t = 0.4; }
+      return [0, 0];
+    }
+    e.t -= dt; if (e.t <= 0) e.state = 'walk';
+    return [0, 0];
+  },
   boss(e, p, d, nx, ny, dt) {
     const rage = e.hp < e.maxHp / 2;
     e.cd -= dt; e.cd2 -= dt;
@@ -4152,6 +4173,7 @@ function updateEnemy(e, dt) {
   if (e.frozenT > 0 && !e.frozenAir) e.frozenT -= dt; // congelado en el aire: dura hasta que cae o recibe un disparo
   if (e.tauntT > 0) e.tauntT -= dt;
   if (e.grabbed) return; // lo lleva un Brawler en la caída Izuna
+  // [desactivado] antes el slime hacía daño al tocarte: // if (e.type === 'slime' && (e.z || 0) < 30) for (const pl of players) if (!pl.down && Math.hypot(pl.x - e.x, pl.y - e.y) < pl.r + e.r) hurtPlayer(pl, e.x, e.y, e);
   e.flash -= dt; e.anim += dt; e.calm += dt;
   const dec = Math.max(0, 1 - 10 * dt);
   if (e.airborne) { // lanzado: indefenso mientras está en el aire
@@ -5611,6 +5633,13 @@ function enemyPath(e, x, y, r) {
   } else if (e.type === 'shooter') {
     for (let i = 0; i < 3; i++) { const a = e.face + i * Math.PI * 2 / 3, rr = r * 1.3; ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
     ctx.closePath();
+  } else if (e.type === 'bat') { // silueta de murciélago con alas que aletean
+    const f = Math.sin(e.anim * 14) * r * 0.55;
+    ctx.moveTo(x, y - r * 0.4);
+    ctx.lineTo(x - r * 1.6, y - r * 0.5 + f); ctx.lineTo(x - r * 0.9, y + r * 0.1);
+    ctx.lineTo(x, y + r * 0.5);
+    ctx.lineTo(x + r * 0.9, y + r * 0.1); ctx.lineTo(x + r * 1.6, y - r * 0.5 + f);
+    ctx.closePath();
   } else if (e.type === 'charger') {
     ctx.moveTo(x, y - r * 1.25); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r * 1.25); ctx.lineTo(x - r, y); ctx.closePath();
   } else if (e.type === 'golem') {
@@ -5659,6 +5688,7 @@ function attackWarn(e) {
   if (e.airborne || e.stunT > 0 || e.hitstun > 0 || e.spawnT > 0) return false;
   switch (e.type) {
     case 'mite': case 'slime': return e.state === 'wind';
+    case 'bat': return e.state === 'wind';
     case 'charger': return e.state === 'wind' || e.state === 'swipeWind';
     case 'shooter': return e.cd < 0.6;
     case 'golem': return e.state === 'leapWind' || e.state === 'slamWind';
@@ -5715,6 +5745,8 @@ function drawEnemy(e) {
   let alpha = 1;
   if (e.state === 'blinkOut') alpha = Math.max(0.08, e.t / 0.4); else if (e.state === 'blinkIn') alpha = Math.max(0.08, 1 - e.t / 0.3);
   ctx.globalAlpha = alpha;
+  // [desactivado] brillo verde del slime (ya no quema al tocarlo):
+  // if (e.type === 'slime') { const glow = 0.35 + 0.15 * Math.sin(time * 5 + e.phase), g = ctx.createRadialGradient(x, y, r * 0.3, x, y, r * 2.1); g.addColorStop(0, `rgba(120,255,140,${glow})`); g.addColorStop(1, 'rgba(120,255,140,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.1, 0, Math.PI * 2); ctx.fill(); }
   ctx.fillStyle = fill; ctx.strokeStyle = e.elite ? '#ffd54a' : (e.tier === 3 ? '#16121e' : 'rgba(0,0,0,0.45)');
   ctx.lineWidth = e.elite || e.tier === 3 ? 3 : 2;
   if (e.airborne && z > 2 && !e.frozenAir) { // halo dorado alrededor del cuerpo mientras vuela
@@ -5762,7 +5794,7 @@ function drawEnemy(e) {
     ctx.beginPath(); ctx.moveTo(x, y - r - 9); ctx.lineTo(x + r + 9, y); ctx.lineTo(x, y + r + 9); ctx.lineTo(x - r - 9, y); ctx.closePath();
     ctx.globalAlpha = 0.18; ctx.fill(); ctx.globalAlpha = 0.9; ctx.stroke(); ctx.restore();
   }
-  if (e.type === 'shooter' && wk > 0) { // línea de puntos que marca hacia dónde va el disparo
+  if ((e.type === 'shooter' || e.type === 'bat') && wk > 0) { // línea de puntos que marca hacia dónde va el disparo
     ctx.save(); ctx.strokeStyle = 'rgba(255,107,138,' + (0.3 + 0.6 * wk) + ')'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(e.face) * (30 + 120 * wk), y + Math.sin(e.face) * (30 + 120 * wk)); ctx.stroke(); ctx.restore();
   }
@@ -5785,6 +5817,15 @@ function drawHazards() {
 }
 
 function drawBullet(b) {
+  if (b.sonic) { // onda de sonido: arcos concéntricos que siguen la dirección del disparo
+    const a = Math.atan2(b.vy, b.vx), fade = Math.min(1, b.life);
+    ctx.save(); ctx.translate(b.x, b.y - 12); ctx.rotate(a); ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      ctx.globalAlpha = fade * (0.95 - i * 0.28); ctx.strokeStyle = '#c9b8ff'; ctx.lineWidth = 2.5 - i * 0.5;
+      ctx.beginPath(); ctx.arc(0, 0, 6 + i * 6, -0.9, 0.9); ctx.stroke();
+    }
+    ctx.restore(); return;
+  }
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(b.x, b.y, 4, 2);
   ctx.fillStyle = 'rgba(255,90,122,0.35)'; ellipse(b.x, b.y - 12, 8, 8);
   ctx.fillStyle = '#ffb3c3'; ellipse(b.x, b.y - 12, b.r, b.r);
