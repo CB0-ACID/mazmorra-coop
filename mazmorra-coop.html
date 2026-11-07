@@ -296,7 +296,7 @@ const JUMP = {
   fallSpeed: 320                       // velocidad de caída al soltarte
 };
 // Doble salto de Escarcha: cada pulsación del botón de movimiento salta con una voltereta (dos saltos hasta aterrizar)
-const FLIP = { h1: 50, h2: 40, g: 900, speed: 230, drag: 1.0, spin: 0.42 }; // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
+const FLIP = { h1: 50, h2: 40, g: 900, speed: 230, drag: 1.0, spin: 0.42, maxT: 1.6 }; // maxT: ningún salto dura más de esto // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
 // Estalactita de hielo: cae sobre donde estás y explota con daño de área (no te hace daño a ti ni a tus aliados)
 const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 20 }; // congelados por el Estallido: tier 1-2 mueren; tier 3-4 reciben daño extra
 // Disparo básico de Escarcha: la habilidad secundaria cambia entre estos tres modos
@@ -1006,7 +1006,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
   useRoom(r);
-  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; iceMissiles = [];
+  room = r; r.visited = true; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; iceMissiles = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
   const entry = dir ? OPP[dir] : null;
@@ -1342,7 +1342,7 @@ function updateFlip(p, dt) {
   const k = Math.exp(-FLIP.drag * dt); f.vx *= k; f.vy *= k;
   p.x += f.vx * dt; p.y += f.vy * dt; collide(p, true);
   f.vz -= FLIP.g * dt; f.z += f.vz * dt;
-  if (f.z <= 0) { // aterriza: asiento con un pequeño rebote, y se reabren los dos saltos
+  if (f.z <= 0 || f.jt > FLIP.maxT) { // aterriza (o corta por tiempo): asiento con un pequeño rebote, y se reabren los dos saltos
     p.z = 0; p.flip = null; p.flipAng = 0; p.moveT = 0;
     p.sqv = (p.sqv || 0) - (WEIGHT[p.ch.weight] || WEIGHT.medium).stopKick;
     burst(p.x, p.y, '#bfeaf5', 6);
@@ -1432,7 +1432,7 @@ function updatePlayer(p, dt) {
   p.revHolding = !p.down && !!(inp.a || inp.s); // para levantar a un caído cercano
   if (p.down) {
     p.cast = null; p.charging = false; p.fan = null; p.burst = null; p.mCharging = false; p.mHold = null; p.flurry = null; p.shieldUp = false; p.shieldOn = false; p.blocking = false;
-    if (p.flip) { p.flip = null; p.flipAng = 0; p.moveT = 0; } // caído en pleno salto: el vuelo se cancela
+    if (p.flip) { p.flip = null; p.flipAng = 0; p.moveT = 0; p.z = 0; } // caído en pleno salto: el vuelo se cancela y aterriza
     const k = (p.ghost ? REVIVE.ghostSpeed : REVIVE.crawl) * c.speed;
     let cx = inp.x || 0, cy = inp.y || 0; const cm = Math.hypot(cx, cy); if (cm > 1) { cx /= cm; cy /= cm; }
     p.x += cx * k * dt; p.y += cy * k * dt; collide(p, true);
@@ -1440,6 +1440,7 @@ function updatePlayer(p, dt) {
   }
   p.reviving = players.find(q => q !== p && q.down && p.revHolding && Math.hypot(q.x - p.x, q.y - p.y) < REVIVE.r) || null;
   p.inv = Math.max(0, p.inv - dt); p.atkCd -= dt; p.moveCd -= dt; p.shotCd -= dt;
+  if (c.moveType === 'flip' && !p.flip && (p.z || 0) > 0) p.z = 0; // red de seguridad: sin salto activo no puede quedarse en el aire
   if (c.moveCharges) { // cargas de movimiento acumulables
     if (p.mCh == null || p.mChCh !== c) { p.mCh = c.moveCharges; p.mChT = 0; p.mChCh = c; }
     if (p.mCh < c.moveCharges) { p.mChT -= dt; if (p.mChT <= 0) { p.mCh++; p.mChT = p.mCh < c.moveCharges ? c.moveRecharge : 0; } }
