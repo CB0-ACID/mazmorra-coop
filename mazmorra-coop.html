@@ -844,8 +844,8 @@ function npcInput(p) {
 }
 function toggleTest() { testMode = !testMode; document.body.classList.toggle('test', testMode); }
 // ---------- Dev Options (menú principal): autosalto por los aires, selección de nivel y diario de ideas ----------
-let devStartDepth = 1, devSel = 0, levelSel = 0, ideasFrom = 'count'; // nivel con el que empieza la próxima partida
-function devRect() { return [24, 20, 190, 64]; } // botón grande «Dev Options» del menú principal (la opción 8)
+let devStartDepth = 1, devSel = 0, levelSel = 0; // nivel con el que empieza la próxima partida
+function devRect() { return [24, LH - 100, 196, 76]; } // botón grande «Dev Options» del menú principal, abajo a la izquierda (la opción 7)
 function devRow(i) { const w = Math.min(520, LW - 80); return [(LW - w) / 2, 140 + i * 78, w, 62]; }
 function levelRect(n) { const cols = 4, w = 200, h = 120, gap = 16, x0 = (LW - (cols * w + (cols - 1) * gap)) / 2, r = Math.floor((n - 1) / cols), c = (n - 1) % cols; return [x0 + c * (w + gap), 130 + r * (h + gap), w, h]; }
 function devBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; }
@@ -853,7 +853,7 @@ function openDev() { state = 'dev'; devSel = 0; for (const dev of DEVICES) menuI
 function devAct(i) {
   if (i === 0) toggleTest();
   else if (i === 1) { levelSel = devStartDepth - 1; state = 'levels'; }
-  else if (i === 2) openIdeas('dev');
+  else if (i === 2) openIdeas();
   else state = 'count';
 }
 function updateDev() {
@@ -927,8 +927,8 @@ function updateCount() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
     const mv = m.dx || m.dy;
-    if (mv) countSel = ((countSel - 1 + mv + 8) % 8) + 1; // 1-5 jugadores, 6 = opciones de control, 7 = diario de ideas, 8 = Dev Options
-    if (m.a) { if (countSel === 6) openOptions('count'); else if (countSel === 7) openIdeas('count'); else if (countSel === 8) openDev(); else goSelect(dev); return; }
+    if (mv) countSel = ((countSel - 1 + mv + 7) % 7) + 1; // 1-5 jugadores, 6 = opciones de control, 7 = Dev Options
+    if (m.a) { if (countSel === 6) openOptions('count'); else if (countSel === 7) openDev(); else goSelect(dev); return; }
   }
 }
 function goSelect(dev) {
@@ -1034,7 +1034,7 @@ function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clie
 const insideAt = (x, y, b) => x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3];
 cvs.addEventListener('mousemove', e => {
   const [x, y] = canvasPoint(e);
-  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; if (insideAt(x, y, ideasRect())) countSel = 7; if (insideAt(x, y, devRect())) countSel = 8; }
+  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; if (insideAt(x, y, devRect())) countSel = 7; }
   else if (state === 'dev') { for (let i = 0; i < 3; i++) if (insideAt(x, y, devRow(i))) devSel = i; }
   else if (state === 'levels') { for (let n = 1; n <= 8; n++) if (insideAt(x, y, levelRect(n))) levelSel = n - 1; }
   else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i))) pauseSel = i; }
@@ -1054,9 +1054,8 @@ cvs.addEventListener('pointerdown', e => {
   const dev = e.pointerType === 'touch' ? 'touch' : 'kb1';
   if (state === 'select' && detailChar >= 0) { detailChar = -1; return; } // cualquier toque cierra la ficha completa
   if (state === 'count') {
-    if (inside(devRect())) { countSel = 8; openDev(); return; }
+    if (inside(devRect())) { countSel = 7; openDev(); return; }
     if (inside(optRect())) { countSel = 6; openOptions('count'); return; }
-    if (inside(ideasRect())) { countSel = 7; openIdeas('count'); return; }
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
   } else if (state === 'dev') {
     if (inside(devBackRect())) { state = 'count'; return; }
@@ -1065,7 +1064,7 @@ cvs.addEventListener('pointerdown', e => {
     if (inside(devBackRect())) { state = 'dev'; return; }
     for (let n = 1; n <= 8; n++) if (inside(levelRect(n))) { devStartDepth = n; levelSel = n - 1; state = 'count'; return; }
   } else if (state === 'ideas') {
-    if (inside(ideasBackRect())) state = ideasFrom;
+    if (inside(ideasBackRect())) state = 'dev';
   } else if (state === 'options') {
     if (OPT.cap) { OPT.cap = null; return; } // un toque mientras se espera una tecla cancela la captura
     for (let i = 0; i < OPT_TABS.length; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
@@ -4743,7 +4742,7 @@ function drawCount() {
     ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT; ctx.fillText(ia ? 'con aliado' : (n === 1 ? 'jugador' : 'jugadores'), x + w / 2, yy + 112);
   }
   { // botón grande «Dev Options» (esquina superior izquierda): autosalto, nivel inicial y diario de ideas
-    const [dx, dy, dw, dh] = devRect(), sel = countSel === 8;
+    const [dx, dy, dw, dh] = devRect(), sel = countSel === 7;
     rrect(dx, dy, dw, dh, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 17px ' + FONT;
@@ -4756,13 +4755,6 @@ function drawCount() {
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
     ctx.fillText('Opciones de control', ox + ow / 2, oy + 19);
-  }
-  { // botón del diario de ideas (opción 7 del menú)
-    const [ix, iy, iw, ih] = ideasRect(), sel = countSel === 7;
-    rrect(ix, iy, iw, ih, 7); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
-    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
-    ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
-    ctx.fillText('Diario de ideas', ix + iw / 2, iy + 18);
   }
   // escaparate: los ocho personajes, con su halo de color, para ir conociéndolos antes de elegir
   const sy = 396, sp = Math.min(118, (LW - 80) / 8);
@@ -6951,7 +6943,6 @@ Encuentro de tier 3 con versiones oscuras de los personajes que juegan: cada ene
 Estado: idea que aún considero no viable.
 `;
 const IDEAS = { scroll: 0 };
-function ideasRect() { return [LW / 2 + 182, 334, 172, 26]; } // botón «Diario de ideas» del menú principal (la opción 7)
 function ideasBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; }
 function ideasEntries() { return IDEAS_DIARIO.trim().split(/\n---\n/).map(e => e.trim()).filter(Boolean); }
 // Parte un texto en líneas que caben en maxW (el contexto ya tiene la fuente elegida)
@@ -6979,7 +6970,7 @@ function ideasLines(maxW) {
   });
   return out;
 }
-function openIdeas(from = 'count') { ideasFrom = from; state = 'ideas'; IDEAS.scroll = 0; for (const dev of DEVICES) menuInput(dev); } // el botón que abrió el diario no debe activar nada aquí
+function openIdeas() { state = 'ideas'; IDEAS.scroll = 0; for (const dev of DEVICES) menuInput(dev); } // el botón que abrió el diario no debe activar nada aquí
 function updateIdeas() {
   let back = escPressed();
   for (const dev of DEVICES) {
@@ -6987,7 +6978,7 @@ function updateIdeas() {
     if (m.dy) IDEAS.scroll += m.dy * 40;
     if (m.a || m.d) back = true;
   }
-  if (back) state = ideasFrom;
+  if (back) state = 'dev';
 }
 cvs.addEventListener('wheel', e => { if (state === 'ideas') { IDEAS.scroll += e.deltaY; e.preventDefault(); } }, { passive: false });
 function drawIdeas() {
