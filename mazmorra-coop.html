@@ -768,20 +768,45 @@ const HURT = {
 const BLOCK_ARC = 1.3, BLOCK_SPEED = 0.4, BLOCK_PERFECT = 0.2; // ángulo cubierto, velocidad, ventana de bloqueo perfecto // reacción del enemigo: interrumpe su acción
 
 // ---------- Sonido sintetizado (sin archivos); M lo silencia ----------
-let actx = null, master = null, noiseBuf = null, muted = false;
+let actx = null, master = null, sfxNode = null, musicNode = null, noiseBuf = null, muted = false;
 const lastSfx = {};
+// Ajustes de sonido (Opciones > Sonido), guardados en localStorage mz-audio. Volúmenes de 0 a 1 en pasos de 0,1.
+// Los valores por defecto reproducen la mezcla original (general 0,35 de ganancia, música a la mitad, efectos tal cual).
+const AUD_DEF = { on: true, vol: 0.8, musOn: true, musVol: 0.7, sfxOn: true, sfxVol: 1 };
+const AUD = (() => {
+  const a = { ...AUD_DEF };
+  try {
+    Object.assign(a, JSON.parse(localStorage.getItem('mz-audio') || '{}'));
+    if (localStorage.getItem('mz-music') === '0' && !localStorage.getItem('mz-audio')) a.musOn = false; // ajuste antiguo de General
+  } catch (_) {}
+  return a;
+})();
+muted = !AUD.on;
+function saveAudio() { try { localStorage.setItem('mz-audio', JSON.stringify(AUD)); } catch (_) {} }
+// Curva cuadrática: el oído percibe mejor así los pasos del 10 %
+function applyAudio() {
+  muted = !AUD.on;
+  if (!actx) return;
+  const t = actx.currentTime, set = (node, v) => node.gain.setTargetAtTime(v, t, 0.03);
+  set(master, AUD.on ? 0.35 * Math.pow(AUD.vol / 0.8, 2) : 0);
+  set(sfxNode, AUD.sfxOn ? Math.pow(AUD.sfxVol, 2) : 0);
+  set(musicNode, AUD.musOn ? Math.pow(AUD.musVol / 0.7, 2) : 0);
+}
+function setAudio(k, v) { AUD[k] = v; saveAudio(); applyAudio(); }
 function initAudio() {
   if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return;
-  actx = new AC(); master = actx.createGain(); master.gain.value = 0.35; master.connect(actx.destination);
+  actx = new AC(); master = actx.createGain(); master.connect(actx.destination);
+  sfxNode = actx.createGain(); sfxNode.connect(master); musicNode = actx.createGain(); musicNode.connect(master);
+  master.gain.value = 0; applyAudio();
   noiseBuf = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.5), actx.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
 }
-addEventListener('keydown', e => { initAudio(); if (e.code === 'KeyM') { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.35; } });
+addEventListener('keydown', e => { initAudio(); if (e.code === 'KeyM' && !(state === 'options' && OPT.cap)) setAudio('on', !AUD.on); }); // M: activa o silencia todo el sonido
 addEventListener('pointerdown', initAudio);
 function sfxOk(name, gap) {
-  if (!actx || muted) return false;
+  if (!actx || muted || !AUD.sfxOn) return false;
   const t = actx.currentTime;
   if (lastSfx[name] && t - lastSfx[name] < gap) return false;
   lastSfx[name] = t; return true;
@@ -791,13 +816,13 @@ function noise(dur, f0, f1, gain, type, q) {
   src.buffer = noiseBuf; flt.type = type; flt.Q.value = q;
   flt.frequency.setValueAtTime(f0, t); flt.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  src.connect(flt); flt.connect(g); g.connect(master); src.start(t); src.stop(t + dur + 0.02);
+  src.connect(flt); flt.connect(g); g.connect(sfxNode); src.start(t); src.stop(t + dur + 0.02);
 }
 function tone(dur, f0, f1, gain, type) {
   const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g); g.connect(sfxNode); o.start(t); o.stop(t + dur + 0.02);
 }
 const SFX = {
   swing(heavy) { if (sfxOk('swing', 0.04)) noise(heavy ? 0.16 : 0.09, heavy ? 900 : 1800, heavy ? 300 : 600, heavy ? 0.5 : 0.35, 'bandpass', 1.2); },
@@ -818,7 +843,7 @@ const SFX = {
     if (!sfxOk('ready' + slot, 0.25)) return;
     const [a, b] = slot === 'sec' ? [880, 1319] : [698, 1047];
     tone(0.16, a, a, 0.09, 'sine'); tone(0.12, a * 2, a * 2, 0.018, 'sine');
-    setTimeout(() => { if (actx && !muted) { tone(0.26, b, b, 0.075, 'sine'); tone(0.2, b * 2, b * 2, 0.014, 'sine'); } }, 75);
+    setTimeout(() => { if (actx && !muted && AUD.sfxOn) { tone(0.26, b, b, 0.075, 'sine'); tone(0.2, b * 2, b * 2, 0.014, 'sine'); } }, 75);
   },
   hurt() { if (sfxOk('hurt', 0.1)) tone(0.2, 300, 90, 0.45, 'square'); },
   beam() { if (sfxOk('beam', 0.1)) tone(0.08, 880 + Math.random() * 120, 1200, 0.05, 'sine'); },
@@ -837,7 +862,7 @@ const SFX = {
 // En bajo y arpegio también valen fichas relativas al acorde del compás: R/1 raíz, 3 tercera, 5 quinta, O/8 octava.
 // Batería: k bombo, s caja, h charles, t tom, c platillo (combinables con '+').
 // Un patrón más corto que la pista se repite (p. ej., un compás de batería para todos).
-// La música se apaga desde Opciones de control > General (localStorage mz-music); M sigue silenciándolo todo.
+// La música se activa, desactiva y ajusta en Opciones > Sonido (AUD); M silencia todo.
 const MUSIC_VOL = 0.5; // volumen de la música respecto al general (los efectos suenan por encima)
 const restBars = n => Array(n * 16).fill('.').join(' ');
 const MUSIC_DEF = {
@@ -929,9 +954,8 @@ function compileMusic(def) {
   return { bpm: def.bpm, loop: def.loop, fadeIn: def.fadeIn || 0.3, len, steps };
 }
 let MUSIC = null; // pistas compiladas (al primer uso)
-const MUS = { mode: null, track: null, bus: null, step: 0, next: 0, fanUntil: 0, duck: 1,
-  on: (() => { try { return localStorage.getItem('mz-music') !== '0'; } catch (_) { return true; } })() };
-function setMusicOn(v) { MUS.on = v; try { localStorage.setItem('mz-music', v ? '1' : '0'); } catch (_) {} }
+const MUS = { mode: null, track: null, bus: null, step: 0, next: 0, fanUntil: 0, duck: 1, get on() { return AUD.on && AUD.musOn; } };
+// function setMusicOn(v) { MUS.on = v; try { localStorage.setItem('mz-music', v ? '1' : '0'); } catch (_) {} } // sustituido por Opciones > Sonido
 function mVoice(bus, t, midi, dur, wave, gain, cut) {
   const o = actx.createOscillator(), g = actx.createGain(), end = t + dur, rel = Math.min(0.15, 0.04 + dur * 0.3);
   o.type = wave; o.frequency.value = mf(midi);
@@ -982,7 +1006,7 @@ function musicSwitch(mode) {
   }
   MUS.mode = mode; MUS.bus = null; MUS.track = null;
   if (!mode) return;
-  MUS.track = MUSIC[mode]; MUS.bus = actx.createGain(); MUS.bus.connect(master);
+  MUS.track = MUSIC[mode]; MUS.bus = actx.createGain(); MUS.bus.connect(musicNode);
   MUS.bus.gain.setValueAtTime(0, t); MUS.bus.gain.linearRampToValueAtTime(MUSIC_VOL * MUS.duck, t + MUS.track.fadeIn);
   MUS.step = 0; MUS.next = t + 0.08;
 }
@@ -1010,7 +1034,7 @@ function musicFanfare(kind) {
   MUS.fanUntil = t + tr.len * sd + (kind === 'boss' ? 0.4 : 0.1);
   musicSwitch(null);
   if (muted) return;
-  const bus = actx.createGain(); bus.gain.value = MUSIC_VOL * 1.15; bus.connect(master);
+  const bus = actx.createGain(); bus.gain.value = MUSIC_VOL * 1.15; bus.connect(musicNode);
   for (let i = 0; i < tr.len; i++) playMusicStep(tr, i, t + i * sd, sd, bus);
   setTimeout(() => bus.disconnect(), (tr.len * sd + 2) * 1000);
 }
@@ -1301,7 +1325,7 @@ cvs.addEventListener('pointerdown', e => {
   } else if (state === 'options') {
     if (OPT.cap) { OPT.cap = null; return; } // un toque mientras se espera una tecla cancela la captura
     for (let i = 0; i < OPT_TABS.length; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
-    for (let r = 1; r <= optList().length + 2; r++) if (inside(optRowRect(r))) { OPT.row = r; activateOptRow(); return; }
+    for (let r = 1; r <= optList().length + 2; r++) if (inside(optRowRect(r))) { OPT.row = r; activateOptRow(x); return; }
   } else if (state === 'tutorial') {
     TUT.input = e.pointerType === 'touch' ? 'touch' : (TUT.input === 'touch' ? 'kb' : TUT.input);
     const g = tutGeo();
@@ -5705,7 +5729,7 @@ function drawCount() {
     rrect(ox, oy, ow, oh, 7); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
-    ctx.fillText('Opciones de control', ox + ow / 2, oy + 19);
+    ctx.fillText('Controles y sonido', ox + ow / 2, oy + 19);
   }
   { // botón de diagnóstico de mandos, debajo de Opciones
     const [gx, gy, gw, gh] = diagRect();
@@ -7896,7 +7920,7 @@ function drawTutorial() {
 }
 
 // ---------- Pausa ----------
-const PAUSE_OPTS = () => ['Continuar', showGuide ? 'Ocultar guía de controles' : 'Mostrar guía de controles', 'Modo de prueba: ' + (testMode ? 'activado' : 'desactivado'), 'Opciones de control', 'Volver al menú'];
+const PAUSE_OPTS = () => ['Continuar', showGuide ? 'Ocultar guía de controles' : 'Mostrar guía de controles', 'Modo de prueba: ' + (testMode ? 'activado' : 'desactivado'), 'Controles y sonido', 'Volver al menú'];
 function pauseRect(i) { return [W / 2 - 130, H / 2 - 83 + i * 48, 260, 40]; }
 function enterPause() {
   state = 'pause'; pauseSel = 0; shake = 0;
@@ -8015,13 +8039,25 @@ function drawIdeas() {
 // ---------- Opciones de control (desde el menú principal o la pausa) ----------
 // Pestañas: Teclado A, Teclado B y Mandos (la asignación de mandos vale para todos). Fila 0 = pestañas;
 // filas 1..n = acciones; luego «Restaurar» y «Volver».
-const OPT_TABS = [['kb1', 'Teclado A'], ['kb2', 'Teclado B'], ['pad', 'Mandos'], ['gen', 'General']];
-const GEN_OPTS = [{ id: 'tut', label: 'Tutorial al empezar cada personaje', get: () => TUT.on, set: setTutOn },
-  { id: 'music', label: 'Música de fondo', get: () => MUS.on, set: setMusicOn }]; // pestaña General: interruptores de juego
+const OPT_TABS = [['kb1', 'Teclado A'], ['kb2', 'Teclado B'], ['pad', 'Mandos'], ['snd', 'Sonido'], ['gen', 'General']];
+const GEN_OPTS = [{ id: 'tut', label: 'Tutorial al empezar cada personaje', get: () => TUT.on, set: setTutOn }]; // pestaña General: interruptores de juego
+// { id: 'music', label: 'Música de fondo', get: () => MUS.on, set: setMusicOn } // pasado a la pestaña Sonido
+// Pestaña Sonido: interruptores (on) y volúmenes (vol, con barra). Golpe o clic cambia; ← → ajustan el volumen de 10 en 10
+const SND_OPTS = [
+  { id: 'on', label: 'Sonido', kind: 'on' },
+  { id: 'vol', label: '   Volumen general', kind: 'vol' },
+  { id: 'musOn', label: 'Música', kind: 'on' },
+  { id: 'musVol', label: '   Volumen de la música', kind: 'vol' },
+  { id: 'sfxOn', label: 'Efectos', kind: 'on' },
+  { id: 'sfxVol', label: '   Volumen de los efectos', kind: 'vol' }
+];
+function sndBar(r) { const [x, y, w] = optRowRect(r); return [x + w - 232, y + 6, 160, 10]; }
+function sndPreview(id) { if (id.startsWith('sfx') || id === 'vol') { initAudio(); lastSfx.hit = 0; SFX.hit(false); } } // al tocar efectos o general, un golpe de muestra
+function sndStep(o, d) { setAudio(o.id, Math.round(Math.min(1, Math.max(0, AUD[o.id] + d * 0.1)) * 10) / 10); sndPreview(o.id); }
 const OPT = { tab: 0, row: 0, from: 'count', cap: null, key: null, capT: 0, capIgnore: new Set() };
 // Mientras se espera una tecla nueva, la primera pulsación (sin repetición) se guarda para la asignación
 addEventListener('keydown', e => { if (state === 'options' && OPT.cap && !e.repeat) { OPT.key = e.code; e.preventDefault(); } });
-function optList() { const dev = OPT_TABS[OPT.tab][0]; if (dev === 'gen') return GEN_OPTS; return BIND_DEF.filter(a => dev === 'pad' ? a.pad : true); }
+function optList() { const dev = OPT_TABS[OPT.tab][0]; if (dev === 'gen') return GEN_OPTS; if (dev === 'snd') return SND_OPTS; return BIND_DEF.filter(a => dev === 'pad' ? a.pad : true); }
 function optTabRect(i) { const n = OPT_TABS.length, w = 130, g = 8; return [LW / 2 - (n * w + (n - 1) * g) / 2 + i * (w + g), 96, w, 34]; }
 function optRowRect(r) { return r < 1 ? [0, 0, 0, 0] : [LW / 2 - 270, 140 + (r - 1) * 26, 540, 22]; }
 function openOptions(from) {
@@ -8054,9 +8090,21 @@ function padCaptureButton() {
   });
   return found;
 }
-function activateOptRow() {
+function activateOptRow(px) {
   const dev = OPT_TABS[OPT.tab][0], L = optList().length, r = OPT.row;
   if (r === 0) { OPT.tab = (OPT.tab + 1) % OPT_TABS.length; return; }
+  if (dev === 'snd') {
+    if (r <= L) {
+      const o = SND_OPTS[r - 1];
+      if (o.kind === 'on') { setAudio(o.id, !AUD[o.id]); if (AUD[o.id]) sndPreview(o.id); return; }
+      const [bx, , bw] = sndBar(r);
+      if (px !== undefined && px >= bx - 14 && px <= bx + bw + 14) { setAudio(o.id, Math.round(Math.min(1, Math.max(0, (px - bx) / bw)) * 10) / 10); sndPreview(o.id); }
+      else sndStep(o, AUD[o.id] >= 1 ? -10 : 1); // golpe sin puntero: sube 10 %; desde el 100 % vuelve a 0
+      return;
+    }
+    if (r === L + 1) { Object.assign(AUD, AUD_DEF); saveAudio(); applyAudio(); return; }
+    closeOptions(); return;
+  }
   if (dev === 'gen') { if (r <= L) { const o = GEN_OPTS[r - 1]; o.set(!o.get()); } else if (r === L + 1) GEN_OPTS.forEach(o => o.set(true)); else closeOptions(); return; }
   if (r <= L) { startCapture(dev, optList()[r - 1].id); return; }
   if (r === L + 1) { BINDS[dev] = defaultFor(dev); saveBinds(); return; }
@@ -8086,6 +8134,10 @@ function updateOptions() {
     const m = menuInput(dev);
     if (m.dy) OPT.row = (OPT.row + m.dy + R) % R;
     if (m.dx && OPT.row === 0) OPT.tab = (OPT.tab + m.dx + OPT_TABS.length) % OPT_TABS.length;
+    else if (m.dx && OPT_TABS[OPT.tab][0] === 'snd' && OPT.row >= 1 && OPT.row <= SND_OPTS.length) { // ← → en la pestaña Sonido
+      const o = SND_OPTS[OPT.row - 1];
+      if (o.kind === 'vol') sndStep(o, m.dx); else { setAudio(o.id, m.dx > 0); if (AUD[o.id]) sndPreview(o.id); }
+    }
     if (m.a) { activateOptRow(); if (state !== 'options') return; if (OPT.cap) return; }
   }
   if (back) closeOptions();
@@ -8093,8 +8145,9 @@ function updateOptions() {
 function drawOptions() {
   drawMenuBg();
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Opciones de control', LW / 2, 58);
-  ctx.fillStyle = '#b9afc9'; ctx.font = '400 14px ' + FONT; ctx.fillText('Elige una acción y pulsa la tecla o el botón que quieras usar', LW / 2, 80);
+  const snd = OPT_TABS[OPT.tab][0] === 'snd';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText(snd ? 'Opciones de sonido' : 'Opciones de control', LW / 2, 58);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 14px ' + FONT; ctx.fillText(snd ? 'Activa o silencia cada parte y ajusta su volumen' : 'Elige una acción y pulsa la tecla o el botón que quieras usar', LW / 2, 80);
   OPT_TABS.forEach(([, label], i) => {
     const [x, y, w, h] = optTabRect(i), sel = i === OPT.tab, foc = sel && OPT.row === 0;
     rrect(x, y, w, h, 8); ctx.fillStyle = sel ? '#2f2640' : '#16121e'; ctx.fill();
@@ -8112,7 +8165,17 @@ function drawOptions() {
     if (value !== null) { ctx.textAlign = 'right'; ctx.fillStyle = OPT.cap && sel ? '#ffd54a' : '#b9afc9'; ctx.fillText(value, x + w - 14, y + 16); }
     ctx.textAlign = 'center';
   };
-  list.forEach((a, i) => {
+  if (dev === 'snd') list.forEach((o, i) => { // interruptores y barras de volumen
+    const r = i + 1, off = (o.kind === 'vol' && (!AUD.on || (o.id === 'musVol' && !AUD.musOn) || (o.id === 'sfxVol' && !AUD.sfxOn))) || (o.id !== 'on' && !AUD.on);
+    if (o.kind === 'on') { row(r, o.label, AUD[o.id] ? 'Activado' : 'Silenciado'); return; }
+    row(r, o.label, Math.round(AUD[o.id] * 100) + ' %');
+    const [bx, by, bw, bh] = sndBar(r), sel = OPT.row === r;
+    rrect(bx, by, bw, bh, 5); ctx.fillStyle = '#120f18'; ctx.fill();
+    if (AUD[o.id] > 0) { rrect(bx, by, Math.max(bh, bw * AUD[o.id]), bh, 5); ctx.fillStyle = off ? '#4a4256' : sel ? '#b49bff' : '#8a76c4'; ctx.fill(); }
+    for (let k = 1; k < 10; k++) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(bx + bw * k / 10 - 0.5, by + 2, 1, bh - 4); }
+    if (sel) { ctx.fillStyle = '#b9afc9'; ctx.font = '700 12px ' + FONT; ctx.fillText('◀', bx - 12, by + 9); ctx.fillText('▶', bx + bw + 12, by + 9); }
+  });
+  else list.forEach((a, i) => {
     const capping = OPT.cap && OPT.cap.id === a.id && OPT.cap.dev === dev;
     row(i + 1, a.label, capping ? (dev === 'pad' ? 'pulsa un botón…' : 'pulsa una tecla…') : dev === 'gen' ? (a.get() ? 'Activado' : 'Desactivado') : bindName(dev, a.id));
   });
@@ -8120,8 +8183,9 @@ function drawOptions() {
   row(L + 2, 'Volver', null);
   ctx.textAlign = 'center'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
   ctx.fillText(OPT.cap ? (dev === 'pad' ? 'Pulsa un botón del mando (Esc cancela; sin pulsar en 8 s se cancela solo)' : 'Pulsa la tecla nueva (Esc cancela)')
+    : snd ? '← → ajustan el volumen o activan y silencian; golpe o clic también (clic en la barra la fija); Esc o Start vuelven'
     : 'Golpe o clic cambia; ← → cambian de pestaña (fila superior); Esc o Start vuelven', LW / 2, LH - 36);
-  ctx.fillText('Si la tecla ya es de otra acción, se intercambian. Esc siempre pausa; el ratón del Teclado A (clic y rueda) es fijo.', LW / 2, LH - 16);
+  ctx.fillText(snd ? 'La tecla M activa o silencia todo el sonido en cualquier momento.' : 'Si la tecla ya es de otra acción, se intercambian. Esc siempre pausa; el ratón del Teclado A (clic y rueda) es fijo.', LW / 2, LH - 16);
 }
 
 // ---------- Guía de controles (esquina superior izquierda) ----------
@@ -8182,7 +8246,7 @@ function frame(now) {
 resize();
 requestAnimationFrame(frame);
 // Gancho de depuración para pruebas automáticas: solo existe si la URL lleva ?debug
-if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS }; }, enterRoom, roomCleared, update, MUS, musicFanfare };
+if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS }; }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD };
 })();
 
 // ===== Código retirado, comentado y sin efecto =====
