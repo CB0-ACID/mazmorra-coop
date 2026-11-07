@@ -963,6 +963,7 @@ function drawLevels() {
 // ---------- Menú: número de jugadores ----------
 function countBox(n) { const bw = 120, gap = 12, x0 = (LW - (5 * bw + 4 * gap)) / 2; return [x0 + (n - 1) * (bw + gap), 150, bw, 130]; } // la 5.ª es 1 jugador + aliado IA
 function optRect() { return [LW / 2 + 182, 300, 172, 28]; } // botón «Opciones» del menú principal (la opción 6)
+function diagRect() { const [ox, oy, ow, oh] = optRect(); return [ox, oy + oh + 6, ow, 24]; } // acceso por botón a la página de diagnóstico de mandos (diagnostico-mando.html)
 function updateCount() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
@@ -1096,6 +1097,7 @@ cvs.addEventListener('pointerdown', e => {
   if (state === 'count') {
     if (inside(devRect())) { countSel = 7; openDev(); return; }
     if (inside(optRect())) { countSel = 6; openOptions('count'); return; }
+    if (inside(diagRect())) { location.href = 'diagnostico-mando.html'; return; }
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
   } else if (state === 'dev') {
     if (inside(devBackRect())) { state = 'count'; return; }
@@ -5512,6 +5514,13 @@ function drawCount() {
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
     ctx.fillText('Opciones de control', ox + ow / 2, oy + 19);
+  }
+  { // botón de diagnóstico de mandos, debajo de Opciones
+    const [gx, gy, gw, gh] = diagRect();
+    rrect(gx, gy, gw, gh, 7); ctx.fillStyle = '#1c1726'; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = '#d8d0e6'; ctx.font = '700 12px ' + FONT;
+    ctx.fillText('Diagnóstico de mando', gx + gw / 2, gy + 16);
   }
   // escaparate: los ocho personajes, con su halo de color, para ir conociéndolos antes de elegir
   const sy = 396, sp = Math.min(118, (LW - 80) / 8);
