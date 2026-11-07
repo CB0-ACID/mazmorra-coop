@@ -170,9 +170,19 @@ const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const OPP = { up: 'down', down: 'up', left: 'right', right: 'left' };
 const PALETTES = [
   { f1: '#2b2735', f2: '#302b3b', top: '#574e68', front: '#38314b', rockTop: '#6d6380', rockFront: '#463e57' },
-  { f1: '#22302b', f2: '#27362f', top: '#4b6458', front: '#2f4139', rockTop: '#627b6e', rockFront: '#3c5147' },
-  { f1: '#352829', f2: '#3b2d2e', top: '#6c4d49', front: '#47332f', rockTop: '#835f58', rockFront: '#5a3f3a' }
+  { f1: '#2d2b1e', f2: '#322f22', top: '#6a5b36', front: '#4a3f25', rockTop: '#7b6a42', rockFront: '#55492c' }, // bosque otoñal
+  { f1: '#1e2a31', f2: '#22303a', top: '#3d5563', front: '#29404e', rockTop: '#4e6b7c', rockFront: '#33495a' }, // gruta acuática
+  { f1: '#2e2a33', f2: '#332f39', top: '#5c5462', front: '#3f3946', rockTop: '#736a7c', rockFront: '#4a4353' }  // catedral
 ];
+// Temas por piso: el piso 1 es la mazmorra de siempre; después van bosque, gruta y catedral y se repiten.
+// Solo cambian paleta y motivos decorativos; la estructura de salas, muros y puertas es la misma.
+const THEMES = [
+  { name: 'Mazmorra', pal: PALETTES[0], motif: null },
+  { name: 'Bosque otoñal', pal: PALETTES[1], motif: 'bosque' },
+  { name: 'Gruta acuática', pal: PALETTES[2], motif: 'gruta' },
+  { name: 'Catedral gótica', pal: PALETTES[3], motif: 'catedral' }
+];
+const themeOf = depth => THEMES[(depth - 1) % THEMES.length];
 // Tier 1: simples, poca vida, sin estamina, en manada · Tier 2: estándar, varios ataques
 // Tier 3: amenazas con habilidades especiales · Tier 4: guardián del piso
 const ENEMY = {
@@ -1066,7 +1076,7 @@ function genFloor(seed, depth) {
     const sizes = ROOM_SIZES[r.type] || ROOM_SIZES.normal, sz = sizes[mulberry32(r.rng ^ 0x51ed)() * sizes.length | 0];
     r.cols = sz[0]; r.rows = sz[1];
     r.tiles = genTiles(r);
-    r.decor = genDecor(r);
+    r.decor = genDecor(r, depth);
   }
   return { rooms, start, boss, depth };
 }
@@ -5274,13 +5284,19 @@ const MOTIFS = {
   cueva:     { floor: ['musgo', 'musgo', 'cristal', 'charco'], walls: [], nWall: 0, nFloor: [6, 9] },
   inicio:    { floor: ['grieta'], walls: ['estandarte', 'antorcha'], nWall: 2, nFloor: [2, 3], color: '#41526a' },
   tesoro:    { floor: ['moneda', 'moneda', 'grieta'], walls: ['antorcha'], nWall: 2, nFloor: [5, 6] },
-  trono:     { floor: ['hueso', 'grieta'], walls: ['estandarte', 'antorcha'], nWall: 4, nFloor: [3, 4], color: '#6a4343' }
+  trono:     { floor: ['hueso', 'grieta'], walls: ['estandarte', 'antorcha'], nWall: 4, nFloor: [3, 4], color: '#6a4343' },
+  // Temas por piso (salas normales). Misma estructura de salas; solo cambian los motivos.
+  bosque:    { floor: ['hoja', 'hoja', 'seta', 'bellota'], walls: ['hiedra'], nWall: 1, nFloor: [6, 9] },
+  gruta:     { floor: ['charco', 'charco', 'grieta'], walls: ['reflejo'], nWall: 3, nFloor: [3, 5], water: [1, 2] },
+  catedral:  { floor: ['luz', 'luz', 'grieta'], walls: ['vidriera', 'vela'], nWall: 2, nFloor: [3, 5] }
 };
-function genDecor(r) {
+function genDecor(r, depth) {
   const rnd = mulberry32(r.rng ^ 0x7e57), ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
   const C = r.cols, R = r.rows, mx = Math.floor(C / 2), my = Math.floor(R / 2);
-  const key = r.type === 'boss' ? 'trono' : r.type === 'start' ? 'inicio' : r.type === 'treasure' ? 'tesoro' : ['antorchas', 'cripta', 'cueva'][ri(0, 2)];
-  const M = MOTIFS[key], out = { motif: key, floor: [], wall: [] };
+  // En el piso 1 las salas normales eligen motivo al azar; en los demás pisos lo marca el tema
+  const th = themeOf(depth).motif;
+  const key = r.type === 'boss' ? 'trono' : r.type === 'start' ? 'inicio' : r.type === 'treasure' ? 'tesoro' : th || ['antorchas', 'cripta', 'cueva'][ri(0, 2)];
+  const M = MOTIFS[key], out = { motif: key, floor: [], wall: [], water: [] };
   // muro de arriba: solo donde la cara frontal da a la sala y lejos del hueco de la puerta
   const picks = [];
   for (let tries = 0; tries < 60 && picks.length < M.nWall; tries++) {
@@ -5298,6 +5314,16 @@ function genDecor(r) {
     placed.push({ x, y, kind: M.floor[ri(0, M.floor.length - 1)], ox: (rnd() - 0.5) * T * 0.5, oy: (rnd() - 0.5) * TK * 0.4, s: 0.8 + rnd() * 0.5, pts: Array.from({ length: 4 }, () => [(rnd() - 0.5) * 16, (rnd() - 0.5) * 10]) });
   }
   out.floor = placed;
+  // lagos (solo en la gruta): manchas de agua en zonas libres; no bloquean el paso, son dibujo
+  const nW = M.water ? ri(M.water[0], M.water[1]) : 0;
+  for (let tries = 0; tries < 200 && out.water.length < nW; tries++) {
+    const x = ri(3, C - 4), y = ri(3, R - 4);
+    if (Math.abs(x - mx) <= 2 || Math.abs(y - my) <= 2) continue;
+    let ok = true;
+    for (let dy = -1; dy <= 1 && ok; dy++) for (let dx = -1; dx <= 1; dx++) if (r.tiles[y + dy][x + dx] !== 0) { ok = false; break; }
+    if (!ok || out.water.some(w => Math.abs(w.x - x) + Math.abs(w.y - y) < 6)) continue;
+    out.water.push({ x, y, rx: T * (0.8 + rnd() * 0.4), ph: rnd() * 6 });
+  }
   return out;
 }
 function drawFloorDecal(dc) {
@@ -5309,9 +5335,25 @@ function drawFloorDecal(dc) {
     case 'hueso': ctx.fillStyle = '#9b968b'; ctx.fillRect(-7 * s, -1.5, 14 * s, 3); ctx.beginPath(); ctx.arc(-7 * s, -2, 2.4 * s, 0, Math.PI * 2); ctx.arc(7 * s, -2, 2.4 * s, 0, Math.PI * 2); ctx.fill(); break;
     case 'musgo': ctx.fillStyle = 'rgba(74,92,74,0.3)'; for (const p of dc.pts) { ctx.beginPath(); ctx.arc(p[0] * s, p[1] * s, 3.5 * s, 0, Math.PI * 2); ctx.fill(); } break;
     case 'cristal': ctx.fillStyle = 'rgba(130,160,168,0.1)'; ctx.beginPath(); ctx.arc(0, 0, 11 * s, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(138,164,172,0.55)'; ctx.beginPath(); ctx.moveTo(0, -7 * s); ctx.lineTo(3 * s, 0); ctx.lineTo(0, 5 * s); ctx.lineTo(-3 * s, 0); ctx.closePath(); ctx.fill(); break;
+    case 'hoja': { const cs = ['#8a5a33', '#a57a3a', '#6e5a36']; for (let i = 0; i < 3; i++) { const p = dc.pts[i]; ctx.fillStyle = cs[(i + Math.round(s * 10)) % 3]; ctx.beginPath(); ctx.ellipse(p[0] * 0.8 * s, p[1] * 0.6 * s, 4 * s, 2 * s, i * 1.1, 0, Math.PI * 2); ctx.fill(); } break; }
+    case 'seta': ctx.fillStyle = '#c9bfa8'; ctx.fillRect(-1.2 * s, -1, 2.4 * s, 5 * s); ctx.fillStyle = '#8c4f3c'; ctx.beginPath(); ctx.ellipse(0, -1, 4 * s, 2.6 * s, 0, Math.PI, 0); ctx.fill(); break;
+    case 'bellota': ctx.fillStyle = '#7a5a34'; ctx.beginPath(); ctx.ellipse(0, 1, 2.4 * s, 3 * s, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#4e3a22'; ctx.fillRect(-2.6 * s, -2.6 * s, 5.2 * s, 2 * s); break;
+    case 'luz': { ctx.fillStyle = 'rgba(200,170,210,0.14)'; ctx.beginPath(); ctx.arc(0, 0, 20 * s, 0, Math.PI * 2); ctx.fill(); const lc = ['rgba(176,128,196,0.3)', 'rgba(204,184,112,0.26)', 'rgba(128,160,190,0.26)']; for (let i = 0; i < 3; i++) { const px = dc.pts[i][0] * 2.2 * s, py = dc.pts[i][1] * 2 * s; ctx.fillStyle = lc[i]; ctx.beginPath(); ctx.moveTo(px, py - 5 * s); ctx.lineTo(px + 5 * s, py); ctx.lineTo(px, py + 5 * s); ctx.lineTo(px - 5 * s, py); ctx.closePath(); ctx.fill(); } break; }
     case 'moneda': ctx.fillStyle = '#7d6e4f'; for (const p of dc.pts.slice(0, 3)) { ctx.beginPath(); ctx.arc(p[0] * 0.6 * s, p[1] * 0.6 * s, 2.6 * s, 0, Math.PI * 2); ctx.fill(); } break;
   }
   ctx.restore();
+}
+// Lagos de la gruta: fondo azulado, brillo que respira y reflejos que se desplazan. Se dibujan cada frame sobre el suelo.
+function drawWater(list) {
+  for (const w of list) {
+    const x = w.x * T + T / 2, y = w.y * TK + TK / 2, sh = 0.5 + 0.5 * Math.sin(time * 1.6 + w.ph);
+    ctx.save(); ctx.translate(x, y); ctx.scale(1, K);
+    ctx.fillStyle = 'rgba(40,70,88,0.5)'; ctx.beginPath(); ctx.arc(0, 0, w.rx, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(120,170,190,${0.14 + 0.08 * sh})`; ctx.beginPath(); ctx.arc(0, 0, w.rx * 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(210,240,246,${0.18 + 0.12 * sh})`;
+    for (let i = 0; i < 2; i++) { const dx = Math.sin(time * 0.9 + w.ph + i * 2.1) * w.rx * 0.45; ctx.fillRect(dx - 5, -w.rx * 0.2 + i * w.rx * 0.4, 10, 1.4); }
+    ctx.restore();
+  }
 }
 // Antorcha (llama que parpadea con halo cálido) o estandarte colgado, sobre la cara frontal del muro de arriba
 function drawWallProp(wp) {
@@ -5322,6 +5364,42 @@ function drawWallProp(wp) {
     ctx.fillStyle = c; ctx.fillRect(cx - 6, top, 12, 20); ctx.beginPath(); ctx.moveTo(cx - 6, top + 20); ctx.lineTo(cx, top + 26); ctx.lineTo(cx + 6, top + 20); ctx.closePath(); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(cx - 6, top, 2, 20);
     ctx.fillStyle = shade(c, 0.35); ctx.fillRect(cx - 2, top + 6, 4, 8);
+    return;
+  }
+  if (wp.kind === 'hiedra') { // enredadera que cuelga del borde superior del muro
+    const top = TK - WH + 6;
+    for (let i = -1; i <= 1; i++) {
+      const x0 = cx + i * 9 + Math.sin(time * 1.2 + wp.ph + i) * 1.2, len = 14 + ((i + 2) * 5) % 9;
+      ctx.strokeStyle = 'rgba(70,88,52,0.9)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(x0, top); ctx.lineTo(x0 + Math.sin(i + wp.ph) * 2, top + len); ctx.stroke();
+      ctx.fillStyle = i % 2 ? '#5f6b44' : '#7a6a3c';
+      for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.ellipse(x0 + (k % 2 ? 2.5 : -2.5), top + k * len / 4, 2.2, 1.2, k, 0, Math.PI * 2); ctx.fill(); }
+    }
+    return;
+  }
+  if (wp.kind === 'reflejo') { // luz del agua reflejada en la roca: líneas onduladas que se desplazan
+    ctx.save(); ctx.strokeStyle = 'rgba(170,215,230,0.2)'; ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const y = TK - WH + 12 + i * 6, ph = time * 1.4 + i * 0.9 + wp.ph;
+      ctx.beginPath(); for (let x = -16; x <= 16; x += 4) { const yy = y + Math.sin(x * 0.5 + ph) * 1.2; if (x === -16) ctx.moveTo(cx + x, yy); else ctx.lineTo(cx + x, yy); } ctx.stroke();
+    }
+    ctx.restore(); return;
+  }
+  if (wp.kind === 'vidriera') { // ventana de arco con vidrieras de colores apagados
+    const top = TK - WH + 5, bot = TK - 12, w = 7;
+    ctx.fillStyle = '#2a2530'; ctx.beginPath(); ctx.moveTo(cx - w - 2, bot); ctx.lineTo(cx - w - 2, top + 8); ctx.arc(cx, top + 8, w + 2, Math.PI, 0); ctx.lineTo(cx + w + 2, bot); ctx.closePath(); ctx.fill();
+    const cs = ['#5c4a6e', '#6e5a3e', '#3f5a66', '#6a4a4a'];
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = cs[(i + Math.round(wp.ph)) % cs.length]; ctx.fillRect(cx - w + i * 4.6, top + 8, 4, bot - top - 8); }
+    ctx.fillStyle = 'rgba(214,190,140,0.1)'; ctx.fillRect(cx - w - 6, bot, 2 * w + 12, 8); // luz que cae sobre el suelo
+    return;
+  }
+  if (wp.kind === 'vela') { // vela sobre una repisa, con llama pequeña
+    const f = Math.sin(time * 10 + wp.ph) * 0.6, top = TK - WH + 14;
+    ctx.fillStyle = '#2a2530'; ctx.fillRect(cx - 4, top + 14, 8, 2);
+    ctx.fillStyle = '#d8cdb5'; ctx.fillRect(cx - 2, top + 4, 4, 10);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(cx, top + 2, 1, cx, top + 2, 22); g.addColorStop(0, 'rgba(230,200,150,0.14)'); g.addColorStop(1, 'rgba(230,200,150,0)');
+    ctx.fillStyle = g; ctx.fillRect(cx - 22, top - 20, 44, 44); ctx.restore();
+    ctx.fillStyle = '#d9a25a'; ctx.beginPath(); ctx.ellipse(cx, top + 2 - f, 1.6, 3 + f * 0.4, 0, 0, Math.PI * 2); ctx.fill();
     return;
   }
   const f = Math.sin(time * 9 + wp.ph) * 1.2 + Math.sin(time * 4.3 + wp.ph * 2) * 0.8;
@@ -6241,7 +6319,7 @@ function drawOffscreen() {
 
 function drawGame() {
   layoutHud(); // depende del número de jugadores
-  pal = PALETTES[(floor.depth - 1) % PALETTES.length];
+  pal = themeOf(floor.depth).pal;
   ctx.fillStyle = '#0a0810'; ctx.fillRect(0, 0, W, H);
   ctx.save();
   ctx.beginPath(); ctx.rect(0, HUD, W, VH); ctx.clip();
@@ -6249,6 +6327,7 @@ function drawGame() {
   ctx.scale(cam.z, cam.z);
   ctx.translate(-cam.x, -cam.y);
   drawFloor();
+  if (room.decor && room.decor.water) drawWater(room.decor.water);
   if (room.stairs) drawPortal();
   // Capa del suelo: zonas, avisos y previsualizaciones se dibujan en el plano aplastado (círculos → elipses)
   ctx.save(); ctx.scale(1, K);
