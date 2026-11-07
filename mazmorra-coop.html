@@ -172,12 +172,12 @@ const PALETTES = [
 // Tier 1: simples, poca vida, sin estamina, en manada · Tier 2: estándar, varios ataques
 // Tier 3: amenazas con habilidades especiales · Tier 4: guardián del piso
 const ENEMY = {
-  mite:     { tier: 1, hp: 1,  sta: 0,  r: 8,  spd: 105, color: '#d9f36b', cost: 0.4 },
-  slime:    { tier: 1, hp: 2,  sta: 0,  r: 12, spd: 62,  color: '#5fd068', cost: 0.5 },
-  charger:  { tier: 2, hp: 5,  sta: 6,  r: 14, spd: 42,  color: '#ff8a3d', cost: 2 },
-  shooter:  { tier: 2, hp: 4,  sta: 5,  r: 12, spd: 72,  color: '#a578ff', cost: 2 },
-  golem:    { tier: 3, hp: 18, sta: 14, r: 22, spd: 34,  color: '#b08a5a', cost: 6 },
-  splitter: { tier: 3, hp: 14, sta: 10, r: 17, spd: 52,  color: '#5eead4', cost: 6 },
+  mite:     { tier: 1, hp: 1,  sta: 0,  r: 12, spd: 105, color: '#d9f36b', cost: 0.4 },
+  slime:    { tier: 1, hp: 2,  sta: 0,  r: 18, spd: 62,  color: '#5fd068', cost: 0.5 },
+  charger:  { tier: 2, hp: 5,  sta: 6,  r: 20, spd: 42,  color: '#ff8a3d', cost: 2 },
+  shooter:  { tier: 2, hp: 4,  sta: 5,  r: 17, spd: 72,  color: '#a578ff', cost: 2 },
+  golem:    { tier: 3, hp: 18, sta: 14, r: 30, spd: 34,  color: '#b08a5a', cost: 6 },
+  splitter: { tier: 3, hp: 14, sta: 10, r: 23, spd: 52,  color: '#5eead4', cost: 6 },
   boss:     { tier: 4, hp: 40, sta: 24, r: 30, spd: 36,  color: '#e5484d', cost: 0 }
 };
 // ---------- Vida de los personajes (en puntos, ya no en corazones) ----------
@@ -186,7 +186,7 @@ const HEAL = { pickup: 40, floor: 40 }; // corazón recogido y curación al baja
 // Daño de cada ataque enemigo a los jugadores, en puntos (los élite pegan un 30 % más)
 const ENEMY_DMG = {
   mite:     { touch: 10 },
-  slime:    { touch: 14 },
+  slime:    { spit: 14 },
   charger:  { touch: 22, swipe: 26 },
   shooter:  { touch: 12, shot: 16 },
   golem:    { touch: 24, leap: 32, slam: 36 },
@@ -1066,7 +1066,7 @@ function makeEnemy(type, x, y, elite) {
     spawnT: 0.7, flash: 0, kbx: 0, kby: 0, t: 1 + Math.random() * 1.2, anim: Math.random() * 6, state: 'walk',
     cd: 1 + Math.random(), cd2: 2, rot: 0, phase: Math.random() * 6, dirx: 0, diry: 0, face: 0, dead: false,
     z: 0, vz: 0, airborne: false, stunT: 0, getup: 0, calm: 0, swipeCd: 0, shots: 0,
-    leapCd: 2 + Math.random() * 2, slamCd: 1, leapDur: 0.75, blinkCd: 2 + Math.random() * 2, bombCd: 2 + Math.random()
+    leapCd: 2 + Math.random() * 2, slamCd: 1, leapDur: 0.75, lungeCd: 1 + Math.random() * 1.5, spitCd: 1 + Math.random() * 1.5, windDur: 0, tx: 0, ty: 0, blinkCd: 2 + Math.random() * 2, bombCd: 2 + Math.random()
   };
 }
 
@@ -3867,20 +3867,43 @@ function randomFloorNear(px, py, minD, maxD) {
 
 // Cada IA devuelve su velocidad deseada [vx, vy]
 const ENEMY_AI = {
-  slime(e, p, d, nx, ny) { const s = e.spd * (0.7 + 0.3 * Math.sin(e.anim * 6)); return [nx * s, ny * s]; },
-  mite(e, p, d, nx, ny) { const w = Math.sin(e.anim * 9 + e.phase) * 0.7; return [(nx - ny * w) * e.spd, (ny + nx * w) * e.spd]; },
+  slime(e, p, d, nx, ny, dt) { // no hace daño al tocarte: su ataque es un escupitajo con aviso en el suelo
+    e.spitCd -= dt;
+    if (e.state === 'walk') {
+      if (d < 210 && e.spitCd <= 0) { e.state = 'wind'; e.windDur = e.t = 0.7; e.tx = p.x; e.ty = p.y; e.spitCd = 3 + Math.random() * 1.5; return [0, 0]; }
+      const s = e.spd * (0.7 + 0.3 * Math.sin(e.anim * 6)); return [nx * s, ny * s];
+    }
+    if (e.state === 'wind') { // se estira hacia arriba y la mancha aparece en el punto marcado
+      e.t -= dt;
+      if (e.t <= 0) { hazards.push({ x: e.tx, y: e.ty, r: 40, t: 0, delay: 0.8, owner: e, dmg: edmg(e, 'spit') }); e.state = 'spit'; e.t = 0.4; }
+      return [0, 0];
+    }
+    e.t -= dt; if (e.t <= 0) e.state = 'walk';
+    return [0, 0];
+  },
+  mite(e, p, d, nx, ny, dt) { // se encoge, avisa con «!» y se lanza en línea recta; solo hace daño en la embestida
+    e.lungeCd -= dt;
+    if (e.state === 'walk') {
+      if (d < 170 && e.lungeCd <= 0) { e.state = 'wind'; e.windDur = e.t = 0.6; e.dirx = nx; e.diry = ny; e.lungeCd = 2.4 + Math.random() * 0.8; return [0, 0]; }
+      const w = Math.sin(e.anim * 9 + e.phase) * 0.7; return [(nx - ny * w) * e.spd, (ny + nx * w) * e.spd];
+    }
+    if (e.state === 'wind') { e.t -= dt; if (e.t <= 0) { e.state = 'dash'; e.t = 0.4; } return [0, 0]; }
+    e.t -= dt; if (e.t <= 0) { e.state = 'walk'; e.t = 0.5; }
+    return [e.dirx * 320, e.diry * 320];
+  },
   charger(e, p, d, nx, ny, dt) { // dos ataques: carga a distancia y zarpazo de cerca
     e.swipeCd -= dt;
     if (e.state === 'walk') {
       e.t -= dt;
-      if (d < 58 && e.swipeCd <= 0) {
-        e.state = 'swipe'; e.t = 0.45; e.swipeCd = 1.6;
-        hazards.push({ x: e.x, y: e.y, r: 62, ang: e.face, arc: 1.1, t: 0, delay: 0.4, owner: e, follow: true, dmg: edmg(e, 'swipe') });
+      if (d < 58 && e.swipeCd <= 0) { // zarpazo: el arco aparece antes de golpear
+        e.state = 'swipeWind'; e.windDur = e.t = 0.5; e.swipeCd = 1.6;
+        hazards.push({ x: e.x, y: e.y, r: 62, ang: e.face, arc: 1.1, t: 0, delay: 0.5, owner: e, follow: true, dmg: edmg(e, 'swipe') });
         return [0, 0];
       }
-      if (e.t <= 0 && d < 330) { e.state = 'wind'; e.t = 0.5; e.dirx = nx; e.diry = ny; return [0, 0]; }
+      if (e.t <= 0 && d < 330) { e.state = 'wind'; e.windDur = e.t = 0.8; e.dirx = nx; e.diry = ny; return [0, 0]; }
       return [nx * e.spd, ny * e.spd];
     }
+    if (e.state === 'swipeWind') { e.t -= dt; if (e.t <= 0) { e.state = 'swipe'; e.t = 0.45; } return [0, 0]; }
     if (e.state === 'swipe') { e.t -= dt; if (e.t <= 0) { e.state = 'walk'; e.t = 0.8; } return [0, 0]; }
     if (e.state === 'wind') { e.t -= dt; if (e.t <= 0) { e.state = 'dash'; e.t = 0.5; } return [0, 0]; }
     e.t -= dt;
@@ -3907,17 +3930,21 @@ const ENEMY_AI = {
       if (k >= 1) { e.z = 0; e.state = 'walk'; shake = Math.max(shake, 6); }
       return [0, 0];
     }
-    if (e.state === 'leapWind') {
+    if (e.state === 'leapWind') { // se agacha; el punto de caída queda marcado desde el principio
       e.t -= dt;
-      if (e.t <= 0) {
-        e.state = 'leap'; e.t = 0; e.lx0 = e.x; e.ly0 = e.y; e.lx1 = p.x; e.ly1 = p.y;
-        hazards.push({ x: p.x, y: p.y, r: 80, t: 0, delay: e.leapDur, owner: e, dmg: edmg(e, 'leap') });
-      }
+      if (e.t <= 0) { e.state = 'leap'; e.t = 0; e.lx0 = e.x; e.ly0 = e.y; }
       return [0, 0];
     }
+    if (e.state === 'slamWind') { e.t -= dt; if (e.t <= 0) { e.state = 'slam'; e.t = 0.5; } return [0, 0]; }
     if (e.state === 'slam') { e.t -= dt; if (e.t <= 0) e.state = 'walk'; return [0, 0]; }
-    if (d < 95 && e.slamCd <= 0) { e.state = 'slam'; e.t = 0.9; e.slamCd = 3.2; hazards.push({ x: e.x, y: e.y, r: 105, t: 0, delay: 0.85, owner: e, dmg: edmg(e, 'slam') }); return [0, 0]; }
-    if (d > 160 && e.leapCd <= 0) { e.state = 'leapWind'; e.t = 0.55; e.leapCd = 4.5; return [0, 0]; }
+    if (d < 95 && e.slamCd <= 0) { // golpe de área: el aviso del suelo dura toda la preparación
+      e.state = 'slamWind'; e.windDur = e.t = 0.9; e.slamCd = 3.2;
+      hazards.push({ x: e.x, y: e.y, r: 105, t: 0, delay: 0.9, owner: e, dmg: edmg(e, 'slam') }); return [0, 0];
+    }
+    if (d > 160 && e.leapCd <= 0) { // salto: el aviso sale ya con el punto de aterrizaje y estalla al caer
+      e.state = 'leapWind'; e.windDur = e.t = 0.55; e.leapCd = 4.5; e.lx1 = p.x; e.ly1 = p.y;
+      hazards.push({ x: p.x, y: p.y, r: 80, t: 0, delay: 0.55 + e.leapDur, owner: e, dmg: edmg(e, 'leap') }); return [0, 0];
+    }
     return [nx * e.spd, ny * e.spd];
   },
   splitter(e, p, d, nx, ny, dt) { // tier 3: se teletransporta, siembra áreas explosivas y se divide al morir
@@ -3950,6 +3977,13 @@ const ENEMY_AI = {
   }
 };
 
+// Solo hacen daño de contacto durante la embestida que avisan (el jefe conserva el suyo)
+function isHot(e) {
+  if (e.type === 'boss') return true;
+  if (e.type === 'mite' || e.type === 'charger') return e.state === 'dash';
+  return false;
+}
+
 function updateEnemy(e, dt) {
   if (e.spawnT > 0) { e.spawnT -= dt; return; }
   e.squash = Math.max(0, (e.squash || 0) - dt * 7);
@@ -3959,8 +3993,6 @@ function updateEnemy(e, dt) {
   if (e.frozenT > 0 && !e.frozenAir) e.frozenT -= dt; // congelado en el aire: dura hasta que cae o recibe un disparo
   if (e.tauntT > 0) e.tauntT -= dt;
   if (e.grabbed) return; // lo lleva un Brawler en la caída Izuna
-  // el slime hace daño al tocarte en cualquier estado (salvo si está muy alto en el aire)
-  if (e.type === 'slime' && (e.z || 0) < 30) for (const pl of players) if (!pl.down && Math.hypot(pl.x - e.x, pl.y - e.y) < pl.r + e.r) hurtPlayer(pl, e.x, e.y, e);
   e.flash -= dt; e.anim += dt; e.calm += dt;
   const dec = Math.max(0, 1 - 10 * dt);
   if (e.airborne) { // lanzado: indefenso mientras está en el aire
@@ -3997,8 +4029,8 @@ function updateEnemy(e, dt) {
   const slowK = e.slowT > 0 ? AB.vine.slow : 1; // ralentizado por la liana
   e.x += (mv[0] * slowK + e.kbx) * dt; e.y += (mv[1] * slowK + e.kby) * dt; e.kbx *= dec; e.kby *= dec;
   const hit = collide(e, false);
-  if (hit && e.type === 'charger' && e.state === 'dash') { e.state = 'walk'; e.t = 1.2; shake = Math.max(shake, 3); burst(e.x, e.y - 12, '#d8cfe6', 8); }
-  if (e.z <= 8 && e.state !== 'blinkOut') {
+  if (hit && (e.type === 'charger' || e.type === 'mite') && e.state === 'dash') { e.state = 'walk'; e.t = 1.2; shake = Math.max(shake, 3); burst(e.x, e.y - 12, '#d8cfe6', 8); }
+  if (e.z <= 8 && e.state !== 'blinkOut' && isHot(e)) {
     for (const pl of players) if (!pl.down && Math.hypot(pl.x - e.x, pl.y - e.y) < pl.r + e.r) hurtPlayer(pl, e.x, e.y, e);
     for (const t of turrets) if (Math.hypot(t.x - e.x, t.y - e.y) < 10 + e.r) hurtTurret(t, 1); // también golpean a la torreta
   }
@@ -5248,13 +5280,23 @@ function drawWindIcon(x, y, s, col) {
   }
   ctx.stroke(); ctx.restore();
 }
-// ¿Está a punto de atacar? (solo enemigos con ataques; los de contacto no avisan)
+// Progreso 0 → 1 de la preparación de un ataque (0 si no está preparando nada)
+function windK(e) {
+  if (e.airborne || e.stunT > 0) return 0;
+  const clamp = (v) => Math.min(1, Math.max(0, v));
+  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind') return clamp(1 - e.t / e.windDur);
+  if (e.type === 'shooter' && e.cd < 0.6) return clamp(1 - e.cd / 0.6);
+  if (e.type === 'splitter' && e.bombCd < 0.6) return clamp(1 - e.bombCd / 0.6);
+  return 0;
+}
+// ¿Está a punto de atacar? (todos los enemigos de tier 1-3 avisan antes de hacer daño)
 function attackWarn(e) {
   if (e.airborne || e.stunT > 0 || e.hitstun > 0 || e.spawnT > 0) return false;
   switch (e.type) {
-    case 'charger': return e.state === 'wind' || e.state === 'swipe';
-    case 'shooter': return e.cd < 0.45;
-    case 'golem': return e.state === 'leapWind' || e.state === 'slam';
+    case 'mite': case 'slime': return e.state === 'wind';
+    case 'charger': return e.state === 'wind' || e.state === 'swipeWind';
+    case 'shooter': return e.cd < 0.6;
+    case 'golem': return e.state === 'leapWind' || e.state === 'slamWind';
     case 'splitter': return e.bombCd < 0.5;
     case 'boss': return e.cd < 0.55 || e.cd2 < 0.4;
     default: return false;
@@ -5299,19 +5341,15 @@ function drawEnemy(e) {
   }
   const stun = e.stunT > 0, r = e.r, y = e.y - base - z;
   let x = e.x, fill = e.color;
-  if (e.type === 'charger' && e.state === 'wind') { x += (Math.random() - 0.5) * 4; if (Math.floor(time * 20) % 2) fill = '#fff3c4'; }
-  if (e.type === 'golem' && (e.state === 'leapWind' || e.state === 'slam') && Math.floor(time * 16) % 2) fill = '#fff3c4';
+  const wk = windK(e); // 0 → 1 durante la preparación del ataque
+  if (e.type === 'charger' && e.state === 'wind') x += (Math.random() - 0.5) * 4 * wk; // temblor del cargador al cargar
+  if (wk > 0 && Math.floor(time * (6 + 18 * wk)) % 2) fill = '#fff3c4'; // parpadeo que se acelera conforme se carga
   if (e.type === 'boss' && e.hp < e.maxHp / 2) fill = '#ff5c5c';
   if (stun) x += Math.sin(time * 24) * 1.2;
   if (e.flash > 0) fill = '#ffffff';
   let alpha = 1;
   if (e.state === 'blinkOut') alpha = Math.max(0.08, e.t / 0.4); else if (e.state === 'blinkIn') alpha = Math.max(0.08, 1 - e.t / 0.3);
   ctx.globalAlpha = alpha;
-  if (e.type === 'slime') { // brillo verde que avisa de que quema al tocarlo
-    const glow = 0.35 + 0.15 * Math.sin(time * 5 + e.phase), g = ctx.createRadialGradient(x, y, r * 0.3, x, y, r * 2.1);
-    g.addColorStop(0, `rgba(120,255,140,${glow})`); g.addColorStop(1, 'rgba(120,255,140,0)');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.1, 0, Math.PI * 2); ctx.fill();
-  }
   ctx.fillStyle = fill; ctx.strokeStyle = e.elite ? '#ffd54a' : (e.tier === 3 ? '#16121e' : 'rgba(0,0,0,0.45)');
   ctx.lineWidth = e.elite || e.tier === 3 ? 3 : 2;
   if (e.airborne && z > 2 && !e.frozenAir) { // halo dorado alrededor del cuerpo mientras vuela
@@ -5319,7 +5357,9 @@ function drawEnemy(e) {
     ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r * 1.25, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
   }
   const sq = e.squash || 0; // se aplasta y estira un instante al recibir el golpe
-  ctx.save(); ctx.translate(x, y + r); ctx.scale(1 + 0.28 * sq, 1 - 0.22 * sq); ctx.translate(-x, -(y + r));
+  // preparación: se encoge y ensancha (el slime se estira hacia arriba) para que se vea venir el golpe
+  const cwx = wk * (e.type === 'slime' ? -0.2 : 0.22), cwy = wk * (e.type === 'slime' ? 0.35 : -0.3);
+  ctx.save(); ctx.translate(x, y + r); ctx.scale((1 + 0.28 * sq) * (1 + cwx), (1 - 0.22 * sq) * (1 + cwy)); ctx.translate(-x, -(y + r));
   enemyPath(e, x, y, r); ctx.fill(); ctx.stroke();
   if (e.type === 'splitter') { ctx.fillStyle = '#c0267a'; ellipse(x, y, r * 0.32, r * 0.32); }
   ctx.fillStyle = '#16121e';
@@ -5331,7 +5371,7 @@ function drawEnemy(e) {
     }
   } else if (e.type === 'shooter' || e.type === 'mite') {
     const er = e.type === 'mite' ? 2 : 3; ellipse(x, y, er, er);
-    if (e.type === 'shooter' && e.cd < 0.35) { ctx.fillStyle = 'rgba(255,107,138,0.85)'; ellipse(x + Math.cos(e.face) * r * 1.3, y + Math.sin(e.face) * r * 1.3, 5, 5); }
+    if (e.type === 'shooter' && wk > 0) { ctx.fillStyle = 'rgba(255,107,138,' + (0.4 + 0.5 * wk) + ')'; ellipse(x + Math.cos(e.face) * r * 1.3, y + Math.sin(e.face) * r * 1.3, 3 + 3 * wk, 3 + 3 * wk); }
   } else {
     const er = Math.max(2, r * 0.13);
     ellipse(x - r * 0.32, y - r * 0.15, er, er * 1.2); ellipse(x + r * 0.32, y - r * 0.15, er, er * 1.2);
@@ -5356,6 +5396,10 @@ function drawEnemy(e) {
     ctx.save(); ctx.strokeStyle = '#bfeaf5'; ctx.fillStyle = '#bfeaf5'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x, y - r - 9); ctx.lineTo(x + r + 9, y); ctx.lineTo(x, y + r + 9); ctx.lineTo(x - r - 9, y); ctx.closePath();
     ctx.globalAlpha = 0.18; ctx.fill(); ctx.globalAlpha = 0.9; ctx.stroke(); ctx.restore();
+  }
+  if (e.type === 'shooter' && wk > 0) { // línea de puntos que marca hacia dónde va el disparo
+    ctx.save(); ctx.strokeStyle = 'rgba(255,107,138,' + (0.3 + 0.6 * wk) + ')'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(e.face) * (30 + 120 * wk), y + Math.sin(e.face) * (30 + 120 * wk)); ctx.stroke(); ctx.restore();
   }
   const top = y - r - 10;
   drawEnemyBars(e, top);
