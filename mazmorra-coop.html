@@ -4931,16 +4931,19 @@ function paintFloor(x0, x1, y0, y1) {
     if (solidAt(x + 1, y)) { const g = ctx.createLinearGradient(px + T, 0, px + T - 10, 0); g.addColorStop(0, 'rgba(0,0,0,0.3)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(px + T - 10, py, 10, TK); }
     if (room.tiles[y + 1] && room.tiles[y + 1][x] === 2) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(px + 3, py + TK - 5, T - 6, 5); } // sombra que proyecta la roca hacia atrás
   }
-  if (!room.cleared) return;
+  // Huecos de puerta: pozo que se funde con la oscuridad del fondo y un umbral de piedra en el borde de la sala.
+  // Abiertas, el umbral es más claro; cerradas, el hueco queda más apagado (la reja se dibuja aparte).
   for (const [d, [cx, cy]] of Object.entries(DOORPOS)) {
     if (!room.doors[d]) continue;
+    const hz = d === 'up' || d === 'down', thr = room.cleared ? '#a396bd' : '#4a4256';
     for (let i = -1; i <= 1; i++) {
-      const tx = d === 'up' || d === 'down' ? cx + i : cx, ty = d === 'up' || d === 'down' ? cy : cy + i;
+      const tx = hz ? cx + i : cx, ty = hz ? cy : cy + i;
       const x = tx * T, y = ty * TK; let g;
-      if (d === 'up') { g = ctx.createLinearGradient(0, y + TK, 0, y - WH); g.addColorStop(0, pal.f1); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y - WH, T, TK + WH); }
-      if (d === 'down') { g = ctx.createLinearGradient(0, y, 0, y + TK); g.addColorStop(0, pal.f1); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); }
-      if (d === 'left') { g = ctx.createLinearGradient(x + T, 0, x, 0); g.addColorStop(0, pal.f1); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); }
-      if (d === 'right') { g = ctx.createLinearGradient(x, 0, x + T, 0); g.addColorStop(0, pal.f1); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); }
+      const inner = room.cleared ? pal.f1 : shade(pal.f1, -0.4);
+      if (d === 'up') { g = ctx.createLinearGradient(0, y + TK, 0, y - WH); g.addColorStop(0, inner); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y - WH, T, TK + WH); ctx.fillStyle = thr; ctx.fillRect(x, y + TK - 5, T, 5); }
+      if (d === 'down') { g = ctx.createLinearGradient(0, y, 0, y + TK); g.addColorStop(0, inner); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x, y, T, 5); }
+      if (d === 'left') { g = ctx.createLinearGradient(x + T, 0, x, 0); g.addColorStop(0, inner); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x + T - 5, y, 5, TK); }
+      if (d === 'right') { g = ctx.createLinearGradient(x, 0, x + T, 0); g.addColorStop(0, inner); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x, y, 5, TK); }
     }
   }
 }
@@ -4967,6 +4970,12 @@ function drawBlock(tx, ty, v, lockedDoor) {
   }
   if (!solidAt(tx - 1, ty) && !low) { ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(x, y - h, 2, TK); }
   if (!solidAt(tx + 1, ty) && !low) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(x + T - 2, y - h, 2, TK + (below ? 0 : h)); }
+  // Remate junto a un hueco de puerta: el muro acaba en un pilar de piedra (cara clara + arista), no en un corte
+  if (!low && !rock) {
+    const dl = doorAt(tx - 1, ty), dr = doorAt(tx + 1, ty);
+    if (dl && room.doors[dl]) { ctx.fillStyle = shade(pal.top, 0.16); ctx.fillRect(x, y - h, 4, TK + h); ctx.fillStyle = shade(pal.front, -0.45); ctx.fillRect(x + 4, y - h, 2, TK + h); }
+    if (dr && room.doors[dr]) { ctx.fillStyle = shade(pal.top, 0.16); ctx.fillRect(x + T - 4, y - h, 4, TK + h); ctx.fillStyle = shade(pal.front, -0.45); ctx.fillRect(x + T - 6, y - h, 2, TK + h); }
+  }
   if (rock) {
     ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.fillRect(x + 4, y - h + 4, T - 8, 4);
     ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y - h + 0.5, T - 1, TK + h - 1);
@@ -4975,6 +4984,37 @@ function drawBlock(tx, ty, v, lockedDoor) {
     ctx.fillStyle = '#d4464f';
     const yy = y - h, hh = TK + h;
     for (let i = 0; i < 3; i++) ctx.fillRect(x + 8 + i * 10, yy + 4, 4, hh - 8);
+  }
+}
+// Puertas: arco de piedra con dintel y clave cuando la sala está limpia; reja de hierro mientras no lo está.
+// Se dibuja una vez por puerta, sobre el hueco del suelo (paintFloor) y junto a los pilares de remate (drawBlock).
+function drawDoorway(d) {
+  const [cx, cy] = DOORPOS[d], locked = !room.cleared;
+  const st = shade(pal.top, 0.16), sd = shade(pal.front, -0.45), key = locked ? '#d4464f' : '#f5c542';
+  const iron = '#b9c1d3', ironDk = '#3d4252';
+  if (d === 'up') { // muro de arriba: dintel de piedra encima del hueco
+    const x0 = (cx - 1) * T, y = cy * TK, w = 3 * T;
+    ctx.fillStyle = st; ctx.fillRect(x0 - 3, y - WH, w + 6, 10);
+    ctx.fillStyle = sd; ctx.fillRect(x0 - 3, y - WH + 10, w + 6, 3);
+    ctx.fillStyle = key; ctx.fillRect(cx * T + T / 2 - 5, y - WH - 3, 10, 9); // clave del arco, del color de la puerta
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(cx * T + T / 2 - 5, y - WH - 3, 10, 2);
+    if (locked) {
+      for (let i = 0; i <= 4; i++) { const bx = x0 + 4 + i * (w - 8) / 4; ctx.fillStyle = iron; ctx.fillRect(bx - 1, y - WH + 13, 2, TK + WH - 17); }
+      ctx.fillStyle = ironDk; ctx.fillRect(x0, y - WH + 17, w, 3); ctx.fillRect(x0, y + TK - 9, w, 3);
+    }
+  } else if (d === 'down') { // muro de abajo, bajo: solo barrotes en la cara frontal
+    const x0 = (cx - 1) * T, y = cy * TK, w = 3 * T;
+    if (locked) {
+      for (let i = 0; i <= 4; i++) { const bx = x0 + 4 + i * (w - 8) / 4; ctx.fillStyle = iron; ctx.fillRect(bx - 1, y + TK - LOW_WALL - 6, 2, LOW_WALL + 6); }
+      ctx.fillStyle = ironDk; ctx.fillRect(x0, y + TK - LOW_WALL - 6, w, 3);
+    }
+  } else { // muros laterales: la reja cruza el hueco y el umbral queda en la sala
+    const x = d === 'left' ? 0 : (COLS - 1) * T, y0 = (cy - 1) * TK, h = 3 * TK;
+    if (locked) {
+      for (let i = 0; i <= 4; i++) { const by = y0 + 4 + i * (h - 8) / 4; ctx.fillStyle = iron; ctx.fillRect(x, by - 1, T, 2); }
+      ctx.fillStyle = ironDk; ctx.fillRect(d === 'left' ? T - 5 : x, y0, 5, h);
+    }
+    ctx.fillStyle = st; ctx.fillRect(x, y0 - 3, T, 3); ctx.fillRect(x, y0 + h, T, 3); // jambas de piedra arriba y abajo
   }
 }
 function shade(hex, k) { // aclara (k > 0) u oscurece (k < 0) un color #rrggbb
@@ -5793,9 +5833,13 @@ function drawGame() {
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const v = room.tiles[y][x]; if (v === 0) continue;
     const d = doorAt(x, y);
-    if (d && room.doors[d] && room.cleared) continue;
-    const locked = !!(d && room.doors[d]);
-    list.push({ y: (y + 1) * T - 0.5 + (y === ROWS - 1 ? 1e5 : 0), f: () => drawBlock(x, y, v, locked) });
+    if (d && room.doors[d]) continue; // las puertas se dibujan como marco completo (drawDoorway)
+    list.push({ y: (y + 1) * T - 0.5 + (y === ROWS - 1 ? 1e5 : 0), f: () => drawBlock(x, y, v, false) });
+  }
+  for (const d of Object.keys(DOORPOS)) {
+    if (!room.doors[d]) continue;
+    const [cx, cy] = DOORPOS[d];
+    list.push({ y: (cy + 1) * T - 0.5 + (cy === ROWS - 1 ? 1e5 : 0), f: () => drawDoorway(d) });
   }
   for (const h of pickups) list.push({ y: h.y, f: () => drawPickup(h) });
   for (const e of enemies) list.push({ y: e.y, f: () => drawEnemy(e) });
