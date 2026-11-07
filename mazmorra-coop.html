@@ -473,7 +473,7 @@ const cvs = document.getElementById('game');
 let ctx = cvs.getContext('2d'); // let: los iconos de los botones táctiles lo cambian un instante para pintar en su propio lienzo
 const stage = document.getElementById('stage');
 let lastMenu = null;
-function isMenuState() { return state === 'count' || state === 'select' || state === 'options' || state === 'ideas'; }
+function isMenuState() { return state === 'count' || state === 'select' || state === 'options' || state === 'ideas' || state === 'dev' || state === 'levels'; }
 // ---------- Tamaño del marcador en partida ----------
 // Se diseña a escala 1 (pantalla de escritorio) y se amplía cuando el lienzo se ve pequeño, para que en el móvil
 // lo importante no baje de unos mínimos en píxeles reales (CSS): iconos ≈ 26 px, texto ≥ 12 px, barra de vida ≈ 15 px.
@@ -843,7 +843,82 @@ function npcInput(p) {
   return out;
 }
 function toggleTest() { testMode = !testMode; document.body.classList.toggle('test', testMode); }
-function testRect() { return [LW / 2 - 170, 300, 340, 28]; }
+// ---------- Dev Options (menú principal): autosalto por los aires, selección de nivel y diario de ideas ----------
+let devStartDepth = 1, devSel = 0, levelSel = 0, ideasFrom = 'count'; // nivel con el que empieza la próxima partida
+function devRect() { return [24, 20, 190, 64]; } // botón grande «Dev Options» del menú principal (la opción 8)
+function devRow(i) { const w = Math.min(520, LW - 80); return [(LW - w) / 2, 140 + i * 78, w, 62]; }
+function levelRect(n) { const cols = 4, w = 200, h = 120, gap = 16, x0 = (LW - (cols * w + (cols - 1) * gap)) / 2, r = Math.floor((n - 1) / cols), c = (n - 1) % cols; return [x0 + c * (w + gap), 130 + r * (h + gap), w, h]; }
+function devBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; }
+function openDev() { state = 'dev'; devSel = 0; for (const dev of DEVICES) menuInput(dev); } // el botón que abrió el menú no debe activar nada aquí
+function devAct(i) {
+  if (i === 0) toggleTest();
+  else if (i === 1) { levelSel = devStartDepth - 1; state = 'levels'; }
+  else if (i === 2) openIdeas('dev');
+  else state = 'count';
+}
+function updateDev() {
+  let back = escPressed();
+  for (const dev of DEVICES) {
+    const m = menuInput(dev);
+    if (m.dy) devSel = (devSel + m.dy + 4) % 4; // 0-2 filas, 3 = volver
+    if (m.a) { devAct(devSel); return; }
+    if (m.d) back = true;
+  }
+  if (back) state = 'count';
+}
+function updateLevels() {
+  let back = escPressed();
+  for (const dev of DEVICES) {
+    const m = menuInput(dev);
+    if (m.dx || m.dy) levelSel = (((levelSel + m.dx + 4 * m.dy) % 8) + 8) % 8;
+    if (m.a) { devStartDepth = levelSel + 1; state = 'count'; return; }
+    if (m.d) back = true;
+  }
+  if (back) state = 'dev';
+}
+function drawDev() {
+  drawMenuBg();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Dev Options', LW / 2, 70);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Herramientas para probar y revisar el juego', LW / 2, 98);
+  const names = ['Autosaltar enemigos por los aires', 'Selección de nivel', 'Diario de ideas'];
+  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Ideas que quiero implementar y que aún considero no viables'];
+  for (let i = 0; i < 3; i++) {
+    const [x, y, w, h] = devRow(i), sel = devSel === i;
+    rrect(x, y, w, h, 9); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#f2eefa'; ctx.font = '700 16px ' + FONT; ctx.fillText(names[i], x + 18, y + 26);
+    ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText(descs[i], x + 18, y + 46);
+    ctx.textAlign = 'right'; ctx.font = '700 13px ' + FONT;
+    if (i === 0) { ctx.fillStyle = testMode ? '#ffd54a' : '#8f86a0'; ctx.fillText(testMode ? 'Activado' : 'Desactivado', x + w - 18, y + 26); }
+    else if (i === 1) { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + devStartDepth + ' · ' + themeOf(devStartDepth).name, x + w - 18, y + 26); }
+    else { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Abrir ›', x + w - 18, y + 26); }
+  }
+  const [bx, by, bw, bh] = devBackRect(), sel = devSel === 3;
+  rrect(bx, by, bw, bh, 7); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+  ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT; ctx.fillText('Volver', bx + bw / 2, by + 20);
+}
+function drawLevels() {
+  drawMenuBg();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Selección de nivel', LW / 2, 70);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Elige el piso con el que empieza la próxima partida', LW / 2, 98);
+  for (let n = 1; n <= 8; n++) {
+    const [x, y, w, h] = levelRect(n), sel = levelSel === n - 1, th = themeOf(n);
+    rrect(x, y, w, h, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
+    rrect(x + 12, y + 12, w - 24, 10, 4); ctx.fillStyle = th.pal.top; ctx.fill();
+    ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Piso ' + n, x + w / 2, y + 62);
+    ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT; ctx.fillText(th.name, x + w / 2, y + 86);
+    if (devStartDepth === n) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('inicio actual', x + w / 2, y + 108); }
+  }
+  ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText('Esc o el botón Volver regresan a Dev Options', LW / 2, LH - 74);
+  const [bx, by, bw, bh] = devBackRect();
+  rrect(bx, by, bw, bh, 7); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
+  ctx.fillStyle = '#d8d0e6'; ctx.font = '700 13px ' + FONT; ctx.fillText('Volver', bx + bw / 2, by + 20);
+}
 
 // ---------- Menú: número de jugadores ----------
 function countBox(n) { const bw = 120, gap = 12, x0 = (LW - (5 * bw + 4 * gap)) / 2; return [x0 + (n - 1) * (bw + gap), 150, bw, 130]; } // la 5.ª es 1 jugador + aliado IA
@@ -852,9 +927,8 @@ function updateCount() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
     const mv = m.dx || m.dy;
-    if (mv) countSel = ((countSel - 1 + mv + 7) % 7) + 1; // 1-5 jugadores, 6 = opciones de control, 7 = diario de ideas
-    if (m.l) toggleTest();
-    if (m.a) { if (countSel === 6) openOptions('count'); else if (countSel === 7) openIdeas(); else goSelect(dev); return; }
+    if (mv) countSel = ((countSel - 1 + mv + 8) % 8) + 1; // 1-5 jugadores, 6 = opciones de control, 7 = diario de ideas, 8 = Dev Options
+    if (m.a) { if (countSel === 6) openOptions('count'); else if (countSel === 7) openIdeas('count'); else if (countSel === 8) openDev(); else goSelect(dev); return; }
   }
 }
 function goSelect(dev) {
@@ -960,7 +1034,9 @@ function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clie
 const insideAt = (x, y, b) => x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3];
 cvs.addEventListener('mousemove', e => {
   const [x, y] = canvasPoint(e);
-  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; if (insideAt(x, y, ideasRect())) countSel = 7; }
+  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; if (insideAt(x, y, ideasRect())) countSel = 7; if (insideAt(x, y, devRect())) countSel = 8; }
+  else if (state === 'dev') { for (let i = 0; i < 3; i++) if (insideAt(x, y, devRow(i))) devSel = i; }
+  else if (state === 'levels') { for (let n = 1; n <= 8; n++) if (insideAt(x, y, levelRect(n))) levelSel = n - 1; }
   else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i))) pauseSel = i; }
   else if (state === 'options') { for (let r = 1; r <= optList().length + 2; r++) if (insideAt(x, y, optRowRect(r))) OPT.row = r; }
   else if (state === 'over') { for (let i = 0; i < 3; i++) if (insideAt(x, y, overRect(i))) overSel = i; }
@@ -978,12 +1054,18 @@ cvs.addEventListener('pointerdown', e => {
   const dev = e.pointerType === 'touch' ? 'touch' : 'kb1';
   if (state === 'select' && detailChar >= 0) { detailChar = -1; return; } // cualquier toque cierra la ficha completa
   if (state === 'count') {
-    if (inside(testRect())) { toggleTest(); return; }
+    if (inside(devRect())) { countSel = 8; openDev(); return; }
     if (inside(optRect())) { countSel = 6; openOptions('count'); return; }
-    if (inside(ideasRect())) { countSel = 7; openIdeas(); return; }
+    if (inside(ideasRect())) { countSel = 7; openIdeas('count'); return; }
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
+  } else if (state === 'dev') {
+    if (inside(devBackRect())) { state = 'count'; return; }
+    for (let i = 0; i < 3; i++) if (inside(devRow(i))) { devSel = i; devAct(i); return; }
+  } else if (state === 'levels') {
+    if (inside(devBackRect())) { state = 'dev'; return; }
+    for (let n = 1; n <= 8; n++) if (inside(levelRect(n))) { devStartDepth = n; levelSel = n - 1; state = 'count'; return; }
   } else if (state === 'ideas') {
-    if (inside(ideasBackRect())) state = 'count';
+    if (inside(ideasBackRect())) state = ideasFrom;
   } else if (state === 'options') {
     if (OPT.cap) { OPT.cap = null; return; } // un toque mientras se espera una tecla cancela la captura
     for (let i = 0; i < OPT_TABS.length; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
@@ -1241,13 +1323,13 @@ function roomCleared() {
 
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
-  floor = genFloor(seed, 1);
+  floor = genFloor(seed, devStartDepth);
   for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
   enterRoom(floor.start, null);
-  showBanner(isTouch ? 'Piso 1. Pausa con el botón II' : 'Piso 1. Pausa con Esc o Start');
+  showBanner(isTouch ? 'Piso ' + devStartDepth + '. Pausa con el botón II' : 'Piso ' + devStartDepth + '. Pausa con Esc o Start');
 }
 function nextFloor() {
   const d = floor.depth + 1;
@@ -4477,6 +4559,8 @@ function update(dt) {
   if (state === 'pause') { updatePause(); return; }
   if (state === 'options') { updateOptions(); return; }
   if (state === 'ideas') { updateIdeas(); return; }
+  if (state === 'dev') { updateDev(); return; }
+  if (state === 'levels') { updateLevels(); return; }
   if (state === 'tutorial') { updateTutorial(dt); return; }
   if (state === 'over') {
     overT += dt;
@@ -4658,15 +4742,13 @@ function drawCount() {
     ctx.fillStyle = '#f2eefa'; ctx.font = '700 ' + (ia ? 30 : 40) + 'px ' + FONT; ctx.fillText(ia ? '1 + IA' : String(n), x + w / 2, yy + 86);
     ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT; ctx.fillText(ia ? 'con aliado' : (n === 1 ? 'jugador' : 'jugadores'), x + w / 2, yy + 112);
   }
-  { // casilla del modo de prueba
-    const [tx, ty, tw, th] = testRect();
-    rrect(tx, ty, tw, th, 7); ctx.fillStyle = testMode ? '#2e2a18' : '#1c1726'; ctx.fill();
-    ctx.lineWidth = 1.5; ctx.strokeStyle = testMode ? '#ffd54a' : '#3b3349'; ctx.stroke();
-    rrect(tx + 10, ty + 6, 16, 16, 3); ctx.fillStyle = testMode ? '#ffd54a' : '#16121e'; ctx.fill(); ctx.strokeStyle = testMode ? '#ffd54a' : '#6b5e86'; ctx.stroke();
-    if (testMode) { ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(tx + 13, ty + 14); ctx.lineTo(tx + 17, ty + 18); ctx.lineTo(tx + 23, ty + 10); ctx.stroke(); }
-    ctx.textAlign = 'left'; ctx.fillStyle = testMode ? '#ffd54a' : '#d8d0e6'; ctx.font = '700 13px ' + FONT; ctx.fillText('Modo de prueba', tx + 36, ty + 19);
-    ctx.textAlign = 'right'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT; ctx.fillText('clic o botón de fijar', tx + tw - 12, ty + 19);
-    ctx.textAlign = 'center';
+  { // botón grande «Dev Options» (esquina superior izquierda): autosalto, nivel inicial y diario de ideas
+    const [dx, dy, dw, dh] = devRect(), sel = countSel === 8;
+    rrect(dx, dy, dw, dh, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 17px ' + FONT;
+    ctx.fillText('Dev Options', dx + dw / 2, dy + 28);
+    ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT; ctx.fillText('Piso inicial ' + devStartDepth + (testMode ? ' · autosalto' : ''), dx + dw / 2, dy + 48);
   }
   { // botón de opciones de control (opción 6 del menú)
     const [ox, oy, ow, oh] = optRect(), sel = countSel === 6;
@@ -6500,6 +6582,8 @@ function draw() {
   else if (state === 'select') drawSelect();
   else if (state === 'options') drawOptions();
   else if (state === 'ideas') drawIdeas();
+  else if (state === 'dev') drawDev();
+  else if (state === 'levels') drawLevels();
   else { drawGame(); if (state === 'pause') drawPause(); if (state === 'tutorial') drawTutorial(); }
 }
 
@@ -6895,7 +6979,7 @@ function ideasLines(maxW) {
   });
   return out;
 }
-function openIdeas() { state = 'ideas'; IDEAS.scroll = 0; for (const dev of DEVICES) menuInput(dev); } // el botón que abrió el diario no debe activar nada aquí
+function openIdeas(from = 'count') { ideasFrom = from; state = 'ideas'; IDEAS.scroll = 0; for (const dev of DEVICES) menuInput(dev); } // el botón que abrió el diario no debe activar nada aquí
 function updateIdeas() {
   let back = escPressed();
   for (const dev of DEVICES) {
@@ -6903,7 +6987,7 @@ function updateIdeas() {
     if (m.dy) IDEAS.scroll += m.dy * 40;
     if (m.a || m.d) back = true;
   }
-  if (back) state = 'count';
+  if (back) state = ideasFrom;
 }
 cvs.addEventListener('wheel', e => { if (state === 'ideas') { IDEAS.scroll += e.deltaY; e.preventDefault(); } }, { passive: false });
 function drawIdeas() {
