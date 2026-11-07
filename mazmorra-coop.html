@@ -256,7 +256,8 @@ const AB = {
   grenade:   { range: 320, r: 55, dmg: 1, fly: 0.55 },
   ricochet:  { chargeTime: 1, maxMul: 2, groundHops: 2, firstMul: 1.6 }, // el primer objetivo siempre recibe ×1,6 // Disparo rebotante (Marea): mantener carga hasta ×2 de daño; en el suelo salta a dos más
   frostburst: { range: 360, r: 50, dmg: 1, time: 2.5, chargeTime: 1.2, maxMul: 1.6 }, // Estallido helado (Escarcha): congela; en el aire, se rompe
-  roots:     { dist: 160, r: 80, delay: 0.3, time: 2.5, sta: 0.3 }, // Raíces (Musgo): inmovilizan
+  // roots:  { dist: 160, r: 80, delay: 0.3, time: 2.5, sta: 0.3 }, // versión anterior: zona a distancia
+  roots:     { r0: 110, r1: 220, charge: 1.0, delay: 0.12, time: 2, sta: 0.3, staMul: 1.6 }, // Raíces (Musgo): se cargan manteniendo; área a su alrededor que crece de r0 a r1; staMul: estamina extra que pierden mientras están enredados
   pull:      { r: 190, sta: 0.2 },
   blink:     { dist: 180, width: 34, sta: 0.3, dmg: 1 },
   suspend:   { time: 2.5 },
@@ -2416,8 +2417,14 @@ function castTaunt(p) {
   floatText(p.x, p.y - 46 * p.ch.size, 'Provocación', '#ff8f8f'); shake = Math.max(shake, 4);
 }
 // Raíces (Musgo): brotan en una zona a distancia e inmovilizan a los enemigos, quitándoles estamina
-function rootsPoint(p) { const d = beamLength(p.x, p.y, p.ax, p.ay, AB.roots.dist); return [p.x + p.ax * d, p.y + p.ay * d]; }
-function castRoots(p) { const [x, y] = rootsPoint(p); pZones.push({ x, y, r: AB.roots.r, t: 0, delay: AB.roots.delay, owner: p, kind: 'roots' }); }
+// function rootsPoint(p) { const d = beamLength(p.x, p.y, p.ax, p.ay, AB.roots.dist); return [p.x + p.ax * d, p.y + p.ay * d]; } // versión anterior
+// function castRoots(p) { const [x, y] = rootsPoint(p); pZones.push({ x, y, r: AB.roots.r, t: 0, delay: AB.roots.delay, owner: p, kind: 'roots' }); }
+// Ahora se cargan: mientras mantienes el botón, el área a tu alrededor crece; al soltar, brotan en toda ella
+function rootsR(p) { const R = AB.roots, k = Math.min(1, (p.castT || 0) / R.charge); return R.r0 + (R.r1 - R.r0) * k; }
+function castRoots(p) {
+  pZones.push({ x: p.x, y: p.y, r: rootsR(p), t: 0, delay: AB.roots.delay, owner: p, kind: 'roots' });
+  floatText(p.x, p.y - 46 * p.ch.size, 'Enredaderas', p.slotColor);
+}
 function updatePZones(dt) {
   for (const z of pZones) {
     z.t += dt;
@@ -3247,10 +3254,15 @@ function drawPreviews() {
       ctx.beginPath(); ctx.moveTo(p.x, upY(p.y, 20)); ctx.quadraticCurveTo((p.x + x) / 2, Math.min(p.y, y) - 100 / K, x, y); ctx.stroke(); ctx.setLineDash([]);
       circle(x, y, AB.grenade.r);
     }
-    else if (type === 'roots') {
-      const [x, y] = rootsPoint(p);
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(x, y); ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]);
-      circle(x, y, AB.roots.r);
+    else if (type === 'roots') { // área a su alrededor que crece mientras se carga
+      // const [x, y] = rootsPoint(p); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(x, y); ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); circle(x, y, AB.roots.r); // versión anterior
+      const R = rootsR(p), full = R >= AB.roots.r1;
+      ctx.save(); ctx.globalAlpha = 0.35; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(p.x, p.y, AB.roots.r1, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); // tamaño máximo
+      ctx.save(); ctx.fillStyle = '#5fd068'; ctx.globalAlpha = full ? 0.2 + 0.08 * Math.sin(time * 12) : 0.14; ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.strokeStyle = '#5fd068'; ctx.lineWidth = full ? 3 : 2; ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.strokeStyle = '#7fd86a'; ctx.lineWidth = 2; ctx.lineCap = 'round'; // brotes que asoman por el borde
+      for (let i = 0; i < 12; i++) { const a = i * 0.5236 + time * 0.6, w = Math.sin(time * 5 + i) * 0.12; ctx.beginPath(); ctx.moveTo(p.x + Math.cos(a) * R, p.y + Math.sin(a) * R); ctx.quadraticCurveTo(p.x + Math.cos(a + w) * (R - 10), p.y + Math.sin(a + w) * (R - 10) - 8, p.x + Math.cos(a - w) * (R - 16), p.y + Math.sin(a - w) * (R - 16) - 4); ctx.stroke(); }
+      ctx.restore();
     }
     else if (type === 'pillar') {
       const [x, y] = pillarPoint(p);
@@ -3849,6 +3861,7 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase) {
   if (e.stunT > 0 && e.type !== 'boss') hpDmg *= STUN_DMG_MUL; // aturdido: recibe más daño
   if (e.frozenAir && e.frozenT > 0) { shatterEnemy(e); return; } // congelado en el aire: cualquier golpe lo rompe
   e.hp -= hpDmg; e.flash = 0.1; e.calm = 0; e.squash = 1; // aplastamiento al recibir el golpe
+  if (e.rootT > 0) staDmg *= AB.roots.staMul; // enredado por las raíces de Musgo: pierde más estamina
   if (e.maxSta > 0 && !(e.stunT > 0)) { e.sta = Math.max(0, e.sta - staDmg); if (e.sta <= 0) stunEnemy(e); }
   const dx = e.x - sx, dy = e.y - sy, d = Math.hypot(dx, dy) || 1;
   let kb = e.type === 'boss' ? 30 : (e.elite ? kbBase * 0.6 : kbBase);
@@ -4540,7 +4553,8 @@ const ABILITY_TEXT = {
   grenade: ['Granada', 'En arco al fijado: explota y lo lanza'],
   frostburst: ['Estallido helado', 'Mantén para ampliar el área; congela a los que están dentro; en el aire, se rompe'],
   frostMode: ['Cambio de disparo', 'Cambia entre rayo, misiles de cristal y bola de nieve'],
-  roots: ['Raíces', 'Inmovilizan a los enemigos de una zona'],
+  // roots: ['Raíces', 'Inmovilizan a los enemigos de una zona'],
+  roots: ['Enredaderas', 'Mantén para ampliar el área a tu alrededor; inmoviliza y los enredados pierden más estamina'],
   reaper: ['Puño ejecutor', 'Salta al ejecutable más cercano y lo ejecuta; si no hay, golpea al más cercano'],
   dragon: ['Poder del dragón', 'Nivel 1: bola de fuego · 2: dragón que gira · 3: forma de dragón']
 };
@@ -6345,7 +6359,7 @@ function tutTabAbilities(c, x, y, w, h) {
 }
 const TUT_STRAT = {
   'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2) atrae a los enemigos cercanos hacia ti; úsala para proteger a un compañero herido.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
-  'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Raíces (2) inmovilizan.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
+  'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
   'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
   'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
   'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.'],
