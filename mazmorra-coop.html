@@ -534,6 +534,10 @@ cvs.addEventListener('contextmenu', e => e.preventDefault());
 cvs.addEventListener('wheel', e => { e.preventDefault(); wheelSteps += Math.sign(e.deltaY); }, { passive: false });
 let pads = [];
 function pollPads() { pads = navigator.getGamepads ? Array.from(navigator.getGamepads()) : []; }
+// Hasta 4 mandos (slots pad0..pad3). Los eventos refrescan la lista en cuanto se conecta o desconecta uno.
+function padsConnected() { return Math.min(4, pads.filter(gp => gp && gp.connected).length); }
+addEventListener('gamepadconnected', pollPads);
+addEventListener('gamepaddisconnected', pollPads);
 const touch = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
 const ZERO = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
 // ---------- Controles configurables (Teclado A, Teclado B y mandos) ----------
@@ -4377,6 +4381,13 @@ function drawCount() {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 36px ' + FONT; ctx.fillText('Mazmorra cooperativa', LW / 2, 70);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 17px ' + FONT; ctx.fillText('¿Cuántos vais a jugar?', LW / 2, 108);
+  { // estado de los mandos: cuántos se han detectado (máximo 4)
+    const nPads = padsConnected();
+    ctx.textAlign = 'right'; ctx.font = '600 13px ' + FONT;
+    ctx.fillStyle = nPads ? '#7ee0c3' : '#8f86a0';
+    ctx.fillText(nPads ? 'Mandos detectados: ' + nPads + ' de 4' : 'Sin mandos: pulsa un botón de cada mando para activarlo', LW - 24, 30);
+    ctx.textAlign = 'center';
+  }
   for (let n = 1; n <= 5; n++) {
     const [x, y, w, h] = countBox(n), sel = n === countSel, yy = sel ? y - 6 : y, ia = n === 5, dots = ia ? 2 : n;
     rrect(x, yy, w, h, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
