@@ -353,6 +353,23 @@ const JUMP = {
   hangFall: 14,                        // el enemigo apenas cae mientras le pegas
   fallSpeed: 320                       // velocidad de caída al soltarte
 };
+// Furia de Ámbar: la barra se llena con el daño que hace; llena, entra en modo furia unos segundos (humo, más velocidad
+// de movimiento y de ataque) y sus habilidades cambian: la 1 pasa a Garra taladro y la 2 a Izuna de furia (sin necesidad de lanzar)
+const FURY = {
+  max: 50,            // daño necesario para llenar la barra
+  execGain: 8,        // cada ejecución suma esto a la barra
+  idle: 2.5, drain: 10, // segundos sin pegar antes de que la barra empiece a vaciarse, y cuánto pierde por segundo
+  time: 6.5,          // duración del modo furia
+  speed: 1.3,         // velocidad de movimiento
+  atk: 1.45,          // recuperación entre golpes (más alto = golpea más seguido)
+  anim: 1.3,          // los golpes salen más rápidos
+  move: 1.3,          // el salto se recarga antes
+  color: '#ff8c1a',   // Ámbar se tiñe de naranja mientras dura
+  // Garra taladro (habilidad 1 en furia): se lanza girando hacia delante; atrapa a los que toca, los arrastra con muchos golpes y al final los lanza
+  drill: { dist: 300, speed: 560, catchR: 10, tick: 0.06, dmg: 0.32, sta: 0.6, endDmg: 1.6, endKb: 420, cd: 2.2 },
+  // Izuna de furia (habilidad 2 en furia): agarra al enemigo más cercano (no al guardián), suben juntos muy alto y caen en picado
+  grab: { range: 220, dash: 0.14, rise: 0.42, h: 190, hang: 0.14, fall: 0.17, dmgMul: 1.6, sta: 1, radius: 95, areaDmg: 2, kb: 360, getup: 0.9, cd: 2.5 }
+};
 // Doble salto de Escarcha: cada pulsación del botón de movimiento salta con una voltereta (dos saltos hasta aterrizar)
 const FLIP = { h1: 50, h2: 40, g: 900, speed: 230, drag: 1.0, spin: 0.42, maxT: 1.6 }; // maxT: ningún salto dura más de esto // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
 // Estalactita de hielo: cae sobre donde estás y explota con daño de área (no te hace daño a ti ni a tus aliados)
@@ -486,7 +503,7 @@ const CHARS = [
     moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
   { name: 'Ámbar',    color: '#f5c542', mark: 'star',    family: 'golpe', chargedMelee: 'starfall', role: 'Brawler · Sombra',
     meleeKit: CLAW_KIT, meleeStyle: 'claw', finisher: 'heavy',
-    moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
+    moveType: 'jump', moveCd: 0.75, fury: true }, // salta en vez de esquivar; con la barra de furia llena entra en modo furia (FURY)
   { name: 'Marea',    color: '#3f8ff5', mark: 'ring',    family: 'tirador', role: 'Tirador · Rebote',
     priType: 'grenade', priCd: 5,                                      // granada en arco al objetivo fijado
     shotStyle: 'revolver', shotCd: 0.08, shot: 2.7, shotKb: 2.5,        // revólver: dispara a cada pulsación, contundente y con empuje
@@ -1846,7 +1863,7 @@ function enterRoom(r, dir) {
   players.forEach((p, i) => {
     const off = (i - (n - 1) / 2) * 30;
     if (entry === 'left' || entry === 'right') { p.x = bx; p.y = by + off; } else { p.x = bx + off; p.y = by; }
-    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.z = 0; p.jump = null; p.flip = null; p.flipAng = 0; p.leap = null; p.dragonRush = null; p.reapDash = null; p.shieldCharge = null; p.shieldOn = false; p.shieldOut = null; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
+    p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.drill = null; p.z = 0; p.jump = null; p.flip = null; p.flipAng = 0; p.leap = null; p.dragonRush = null; p.reapDash = null; p.shieldCharge = null; p.shieldOn = false; p.shieldOut = null; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
   });
   if (!r.cleared) { if (!r.waves) r.waves = makeEncounter(r); r.wave = 0; spawnWave(); }
   if (r.type === 'treasure' && !r.looted) {
@@ -2271,6 +2288,7 @@ function updatePlayer(p, dt) {
   if (p.shotHold && !inp.s) p.shotHold = false; // tras la pausa, hay que soltar antes de volver a disparar
   p.revHolding = !p.down && !!(inp.a || inp.s); // para levantar a un caído cercano
   if (p.down) {
+    if (p.furyT > 0) endFury(p); // caer apaga la furia
     p.cast = null; p.charging = false; p.fan = null; p.burst = null; p.mCharging = false; p.mHold = null; p.flurry = null; p.shieldUp = false; p.shieldOn = false; p.blocking = false;
     if (p.flip) { p.flip = null; p.flipAng = 0; p.moveT = 0; p.z = 0; } // caído en pleno salto: el vuelo se cancela y aterriza
     const k = (p.ghost ? REVIVE.ghostSpeed : REVIVE.crawl) * c.speed;
@@ -2279,13 +2297,15 @@ function updatePlayer(p, dt) {
     return;
   }
   p.reviving = players.find(q => q !== p && q.down && p.revHolding && Math.hypot(q.x - p.x, q.y - p.y) < REVIVE.r) || null;
-  p.inv = Math.max(0, p.inv - dt); p.atkCd -= dt; p.moveCd -= dt; p.shotCd -= dt; p.auraT = Math.max(0, (p.auraT || 0) - dt);
+  const furyK = p.furyT > 0; // modo furia de Ámbar: golpea y recupera el salto más rápido
+  p.inv = Math.max(0, p.inv - dt); p.atkCd -= dt * (furyK ? FURY.atk : 1); p.moveCd -= dt * (furyK ? FURY.move : 1); p.shotCd -= dt; p.auraT = Math.max(0, (p.auraT || 0) - dt);
   if (c.moveType === 'flip' && !p.flip && (p.z || 0) > 0) p.z = 0; // red de seguridad: sin salto activo no puede quedarse en el aire
   if (c.moveCharges) { // cargas de movimiento acumulables
     if (p.mCh == null || p.mChCh !== c) { p.mCh = c.moveCharges; p.mChT = 0; p.mChCh = c; }
     if (p.mCh < c.moveCharges) { p.mChT -= dt; if (p.mChT <= 0) { p.mCh++; p.mChT = p.mCh < c.moveCharges ? c.moveRecharge : 0; } }
   }
   p.priCd -= dt; p.secCd -= dt; p.stickT -= dt; p.postMoveT -= dt;
+  if (c.fury) updateFury(p, dt);
   if (c.secType === 'dragon') { // Poder del dragón: el nivel 1 se recarga solo
     if ((p.dragonCharges || 0) < 1 && !p.down) {
       p.dragonRegenT = (p.dragonRegenT || 0) + dt;
@@ -2369,7 +2389,7 @@ function updatePlayer(p, dt) {
   if (tgt && mm > 0.2) { const dx = tgt.x - p.x, dy = tgt.y - p.y, d = Math.hypot(dx, dy) || 1; radial = (inp.x * dx + inp.y * dy) / (d * mm); }
 
   // desplazamiento: habilidad de movimiento > impulso del golpe > órbita > libre
-  const special = (p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) ? updateSpecial(p, dt) : false;
+  const special = (p.rush || p.drop || p.drill || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) ? updateSpecial(p, dt) : false;
   if (moveOf(c).hold) { // el botón de movimiento sube la guardia mientras se mantiene
     const want = !!inp.d && !special && !p.flurry;
     if (want && !p.blocking) { p.blocking = true; p.blockT = 0; p.perfectUsed = false; p.slash = null; p.mHold = null; p.mCharging = false; }
@@ -2384,7 +2404,7 @@ function updatePlayer(p, dt) {
       const close = s.def.lunge > 0 && !s.def.pass && tgt && Math.hypot(tgt.x - p.x, tgt.y - p.y) < tgt.r + p.r + 8;
       if (!close) { p.x += Math.cos(s.ang) * s.def.lunge * dt; p.y += Math.sin(s.ang) * s.def.lunge * dt; }
     } else {
-      const spd = c.speed * (p.charging || p.mCharging ? c.chargeMoveMul : 1) * (p.slash ? 0.45 : 1) * (p.blocking ? BLOCK_SPEED : 1) * (p.shieldUp ? AB.wall.speed : 1); // cargar frena; golpear compromete; bloquear frena
+      const spd = c.speed * (p.charging || p.mCharging ? c.chargeMoveMul : 1) * (p.slash ? 0.45 : 1) * (p.blocking ? BLOCK_SPEED : 1) * (p.shieldUp ? AB.wall.speed : 1) * (p.furyT > 0 ? FURY.speed : 1); // cargar frena; golpear compromete; bloquear frena; la furia acelera
       // aceleración: la dirección real se acerca poco a poco a la pedida
       // inercia según el peso: arrancar, frenar y dar la vuelta cuestan distinto
       const wt = WEIGHT[c.weight] || WEIGHT.medium, vx0 = p.mvx || 0, vy0 = p.mvy || 0;
@@ -2430,7 +2450,7 @@ function updatePlayer(p, dt) {
   } else if (p.stickT <= 0) { p.ax = p.fx; p.ay = p.fy; }
 
   if (p.reviving) { p.charging = false; p.beaming = false; p.slash = null; p.bufA = 0; p.shotHold = true; return; } // levantando a un aliado: no ataca
-  if (p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) return; // durante embestida, caída Izuna o salto no se ataca
+  if (p.rush || p.drop || p.drill || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) return; // durante embestida, caída Izuna, taladro o salto no se ataca
 
   // golpe: el tipo depende de si acabas de moverte o de cómo te mueves respecto al objetivo
   const wantAtk = p.bufA > 0 && p.atkCd <= 0; // la pulsación guardada en el búfer se ejecuta en cuanto se puede
@@ -2476,7 +2496,7 @@ function updatePlayer(p, dt) {
     }
   }
   if (p.slash) {
-    const s = p.slash; s.t += dt;
+    const s = p.slash; s.t += dt * (p.furyT > 0 ? FURY.anim : 1); // en furia, los golpes salen más rápidos
     for (const e of enemies) {
       if (e.dead || e.spawnT > 0 || s.hit.has(e)) continue;
       if (slashHits(p, s, e.x, e.y, e.r) && Math.abs((e.airborne ? e.z : 0) - (p.z || 0)) < ((p.jump || (p.z || 0) > 8) ? AIR_SLASH_Z : 70)) { s.hit.add(e); meleeHit(p, e, s); }
@@ -2724,6 +2744,7 @@ function testLaunch(p) {
   else floatText(e.x, e.y - 40, 'No se puede lanzar', '#ff8f8f');
 }
 function abilityType(p, slot) {
+  if (p.ch.fury && p.furyT > 0) return slot === 'pri' ? 'drill' : 'furyDrop'; // Ámbar en furia: habilidades cambiadas
   if (slot === 'pri') return p.ch.priType;
   // [sustituido] if (p.ch.secAlt && !p.shieldUp) return p.ch.secAlt; // Ceniza: con el escudo bajado, la habilidad 2 lanza el escudo
   if (p.ch.secAlt && (p.ch.secAltBy === 'heat' ? p.hotMode : !p.shieldUp)) return p.ch.secAlt; // Ceniza: escudo bajado → Lanzar escudo; Coral: Al rojo → Detonar
@@ -2732,8 +2753,9 @@ function abilityType(p, slot) {
 // Algunas habilidades necesitan un objetivo: si no lo hay, aparecen deshabilitadas
 function abilityReady(p, slot) {
   const t = abilityType(p, slot);
-  if (p.jump) return t === 'drop' && p.jump.phase === 'air' && !!dropTarget(p); // en el aire solo golpes básicos, salvo la Caída Izuna
+  if (p.jump) return (t === 'drop' && p.jump.phase === 'air' && !!dropTarget(p)) || (t === 'furyDrop' && !!furyGrabTarget(p)); // en el aire solo golpes básicos, salvo la Caída Izuna
   if (t === 'drop') return !!dropTarget(p);
+  if (t === 'furyDrop') return !!furyGrabTarget(p); // agarra al más cercano, esté o no en el aire
   if (t === 'ricochet') return !!ricochetTarget(p)[0];
   if (t === 'suspend') return liveTargets().some(e => e.airborne);
   if (t === 'frostburst') return !!frostTarget(p); // necesita a alguien a tiro
@@ -2821,9 +2843,187 @@ function startDrop(p) {
   e.grabbed = true;
   floatText(p.x, p.y - 46 * p.ch.size, 'Caída Izuna', p.slotColor);
 }
+// ---------- Furia de Ámbar ----------
+let furyBy = null; // jugador que se está actualizando: el daño que se haga ahora es suyo
+function furyGain(p, v) {
+  if (!p.ch.fury || p.down || p.furyT > 0 || !(v > 0)) return;
+  p.fury = Math.min(FURY.max, (p.fury || 0) + v); p.furyIdle = 0;
+}
+function updateFury(p, dt) {
+  const c = p.ch;
+  p.furyIdle = (p.furyIdle || 0) + dt;
+  if (p.furyT > 0) {
+    p.furyT -= dt;
+    p.smokeT = (p.smokeT || 0) - dt;
+    if (p.smokeT <= 0) { // humo que sale de Ámbar, con alguna brasa de su color
+      p.smokeT = 0.045;
+      const r = Math.random;
+      effects.push({ type: 'smoke', x: p.x + (r() - 0.5) * p.r * 1.6, y: upY(p.y, 4 + r() * 22 * c.size + (p.z || 0)), r: 5 + r() * 4, dx: (r() - 0.5) * 18, rise: 26 + r() * 18,
+        t: 0, dur: 0.55 + r() * 0.35, color: r() < 0.22 ? FURY.color : (r() < 0.5 ? '#3d3646' : '#5a5264') });
+    }
+    if (p.furyT <= 0) endFury(p);
+    return;
+  }
+  if (p.furyIdle > FURY.idle && p.fury > 0) p.fury = Math.max(0, p.fury - FURY.drain * dt); // un rato sin pegar: se vacía
+  if ((p.fury || 0) >= FURY.max) startFury(p);
+}
+function startFury(p) {
+  const c = p.ch;
+  p.furyT = FURY.time; p.fury = FURY.max; p.cast = null;
+  p.priCd = 0; p.secCd = 0; // las habilidades de furia salen listas
+  floatText(p.x, p.y - 62 * c.size, '¡Furia!', FURY.color);
+  effects.push({ type: 'ring', x: p.x, y: p.y, r: 70, t: 0, dur: 0.4, color: FURY.color });
+  burst(p.x, p.y - 14, FURY.color, 26); burst(p.x, p.y - 14, '#3d3646', 18);
+  shake = Math.max(shake, 7); hitstop = Math.max(hitstop, 0.06); SFX.launch(); SFX.claw(true);
+}
+function endFury(p) {
+  p.furyT = 0; p.fury = 0; p.furyIdle = 0; p.cast = null;
+  if (!p.down) floatText(p.x, p.y - 62 * p.ch.size, 'Furia agotada', '#b9afc9');
+  burst(p.x, p.y - 14, '#5a5264', 16);
+}
+// Garra taladro: se lanza girando hacia delante; los que toca quedan atrapados delante, reciben muchos golpes y al final salen lanzados
+function startDrill(p) {
+  const D = FURY.drill;
+  p.drill = { dx: p.ax, dy: p.ay, left: beamLength(p.x, p.y, p.ax, p.ay, D.dist), t: 0, tick: 0, caught: [] };
+  p.slash = null; p.flurry = null; p.mHold = null; p.mCharging = false; p.kbx = p.kby = 0;
+  floatText(p.x, p.y - 46 * p.ch.size, 'Garra taladro', p.slotColor);
+  SFX.launch(); shake = Math.max(shake, 4);
+}
+function updateDrill(p, dt) {
+  const R = p.drill, D = FURY.drill, c = p.ch, step = D.speed * dt;
+  R.t += dt;
+  p.x += R.dx * step; p.y += R.dy * step; R.left -= step; p.ax = R.dx; p.ay = R.dy;
+  effects.push({ type: 'ghost', x: p.x - R.dx * 6, y: upY(p.y, 14 * c.size), r: 12 * c.size, t: 0, dur: 0.18, color: FURY.color });
+  if (Math.random() < 0.6) particles.push({ x: p.x - R.dx * 12, y: p.y - 4, vx: -R.dx * 60 + (Math.random() - 0.5) * 60, vy: -R.dy * 60 + (Math.random() - 0.5) * 60, life: 0.3, max: 0.3, color: '#d8cfe6', s: 4 });
+  for (const e of liveTargets()) { // atrapa a los que toca
+    if (e.grabbed || R.caught.includes(e) || Math.hypot(e.x - p.x, e.y - p.y) > e.r + p.r + D.catchR) continue;
+    R.caught.push(e); e.flash = 0.12; burst(e.x, upY(e.y, 12 + (e.z || 0)), '#ffffff', 8);
+    if (R.caught.length === 1) { p.lockOn = true; p.target = e; }
+  }
+  const px = -R.dy, py = R.dx;
+  for (const e of R.caught) { // los lleva por delante (al guardián solo lo atraviesa)
+    if (e.dead || e.type === 'boss') continue;
+    const lat = Math.max(-(p.r + 8), Math.min(p.r + 8, (e.x - p.x) * px + (e.y - p.y) * py)), fd = p.r + e.r + 2;
+    e.x += (p.x + R.dx * fd + px * lat - e.x) * 0.6; e.y += (p.y + R.dy * fd + py * lat - e.y) * 0.6;
+    e.kbx = e.kby = 0; e.hitstun = Math.max(e.hitstun || 0, 0.2);
+    collide(e, false);
+  }
+  R.tick -= dt;
+  if (R.tick <= 0) { // ráfaga de golpes del taladro
+    R.tick = D.tick;
+    const dmg = c.melee * D.dmg * MELEE_MUL * ABILITY_MUL;
+    let any = false;
+    for (const e of R.caught) {
+      if (e.dead) continue;
+      if (e.type === 'boss' && Math.hypot(e.x - p.x, e.y - p.y) > e.r + p.r + D.catchR + 10) continue;
+      damageEnemy(e, p.x, p.y, dmg, dmg * D.sta, 0, true); any = true;
+      burst(e.x, upY(e.y, 12 + (e.z || 0)), Math.random() < 0.5 ? FURY.color : '#ffffff', 3);
+    }
+    if (any) { SFX.claw(false); shake = Math.max(shake, 3); }
+  }
+  if (collide(p, true) || R.left <= 0) endDrill(p);
+  return true;
+}
+function endDrill(p) {
+  const R = p.drill, D = FURY.drill, c = p.ch;
+  p.drill = null;
+  if (!R) return;
+  const dmg = c.melee * D.endDmg * MELEE_MUL * ABILITY_MUL;
+  let n = 0;
+  for (const e of R.caught) { // remate: los suelta lanzándolos por los aires
+    if (e.dead) continue;
+    damageEnemy(e, p.x, p.y, dmg, dmg, D.endKb, true); n++;
+    if (e.dead) continue;
+    impactFx(p, e, true);
+    if (e.type !== 'boss') { if (e.airborne) e.vz = Math.max(e.vz, LAUNCH_VZ); else tryLaunch(e, true); }
+  }
+  effects.push({ type: 'ring', x: p.x + p.ax * 16, y: p.y + p.ay * 16, r: 46, t: 0, dur: 0.3, color: FURY.color });
+  burst(p.x + p.ax * 16, p.y - 12, FURY.color, 14);
+  if (n) { shake = Math.max(shake, 7); hitstop = Math.max(hitstop, 0.06); SFX.hit(true); }
+  p.inv = Math.max(p.inv || 0, 0.25); p.kbx = p.kby = 0;
+}
+// Izuna de furia: el objetivo es el enemigo más cercano a su alcance (no el guardián)
+function furyGrabTarget(p) {
+  let best = null, bd = 1e9;
+  for (const e of liveTargets()) {
+    if (e.grabbed || e.type === 'boss' || e.frozenAir) continue;
+    const d = Math.hypot(e.x - p.x, e.y - p.y) - e.r;
+    if (d < FURY.grab.range && d < bd) { bd = d; best = e; }
+  }
+  return best;
+}
+function startFuryDrop(p) {
+  const e = furyGrabTarget(p);
+  if (!e) return false;
+  p.lockOn = true; p.target = e;
+  const z0 = p.z || 0; p.jump = null; p.slash = null; p.flurry = null; p.mHold = null; p.mCharging = false;
+  p.drop = { e, fury: true, phase: 'dash', t: 0, x0: p.x, y0: p.y, zs: z0, ez: e.z || 0, spin: 0, trail: 0 };
+  e.grabbed = true; e.vz = 0; e.kbx = e.kby = 0;
+  floatText(p.x, p.y - 46 * p.ch.size, 'Izuna de furia', FURY.color); SFX.launch();
+}
+function updateFuryDrop(p, dt) {
+  const d = p.drop, e = d.e, G = FURY.grab, c = p.ch;
+  if (e.dead || !enemies.includes(e)) { e.grabbed = false; p.drop = null; p.z = 0; return false; }
+  d.t += dt;
+  const trail = () => { // siluetas de los dos mientras vuelan
+    d.trail -= dt; if (d.trail > 0) return; d.trail = 0.03;
+    effects.push({ type: 'ghost', x: p.x, y: upY(p.y, 14 * c.size + p.z), r: 12 * c.size, t: 0, dur: 0.22, color: FURY.color });
+    effects.push({ type: 'ghost', x: e.x, y: upY(e.y, 12 + e.z), r: e.r, t: 0, dur: 0.22, color: e.color || '#ffffff' });
+  };
+  if (d.phase === 'dash') { // se lanza a por él
+    const k = Math.min(1, d.t / G.dash);
+    p.x = d.x0 + (e.x - d.x0) * k; p.y = d.y0 + (e.y + 2 - d.y0) * k; p.z = d.zs + (d.ez - d.zs) * k;
+    effects.push({ type: 'ghost', x: p.x, y: upY(p.y, 14 * c.size + p.z), r: 12 * c.size, t: 0, dur: 0.16, color: FURY.color });
+    if (k >= 1) {
+      d.phase = 'rise'; d.t = 0; d.z0 = e.z || 0;
+      e.flash = 0.15; burst(e.x, upY(e.y, 12 + d.z0), FURY.color, 14);
+      effects.push({ type: 'ring', x: e.x, y: e.y, r: 40, t: 0, dur: 0.3, color: '#ffffff' });
+      shake = Math.max(shake, 5); hitstop = Math.max(hitstop, 0.05); SFX.hit(true);
+    }
+    return true;
+  }
+  if (d.phase === 'rise') { // suben juntos girando
+    const k = Math.min(1, d.t / G.rise), ease = 1 - Math.pow(1 - k, 3);
+    e.z = d.z0 + (G.h - d.z0) * ease; p.z = e.z + 8; p.x = e.x; p.y = e.y + 2;
+    d.spin += dt * 26; trail();
+    if (Math.random() < 0.7) { const a = d.spin * 1.3; particles.push({ x: e.x + Math.cos(a) * (e.r + 10), y: upY(e.y, e.z * 0.6), vx: 0, vy: 0, life: 0.4, max: 0.4, color: Math.random() < 0.5 ? FURY.color : '#3d3646', s: 5 }); }
+    if (k >= 1) { d.phase = 'hang'; d.t = 0; }
+    return true;
+  }
+  if (d.phase === 'hang') { // un instante arriba, del revés
+    e.z = G.h; p.z = G.h + 8; p.x = e.x; p.y = e.y + 2; d.spin += dt * 6;
+    if (d.t >= G.hang) { d.phase = 'fall'; d.t = 0; SFX.swing(true); }
+    return true;
+  }
+  const k = Math.min(1, d.t / G.fall), z = G.h * (1 - k * k); // caen en picado
+  e.z = z; p.z = z + 8 * (1 - k); p.x = e.x; p.y = e.y + 2; d.spin += dt * 34; trail();
+  for (let i = 0; i < 2; i++) particles.push({ x: e.x + (Math.random() - 0.5) * e.r * 2.4, y: upY(e.y, z + 20 + Math.random() * 40), vx: 0, vy: -260, life: 0.16, max: 0.16, color: '#ffffff', s: 3 });
+  if (k < 1) return true;
+  // impacto
+  e.z = 0; e.vz = 0; e.airborne = false; e.getup = G.getup; e.grabbed = false;
+  p.z = 0; p.drop = null; p.inv = Math.max(p.inv, 0.5);
+  damageEnemy(e, e.x, e.y - 1, c.dropDmg * ABILITY_MUL * G.dmgMul, e.maxSta * G.sta, 0);
+  scorchLand(e);
+  for (const o of liveTargets()) { // la onda del impacto daña y lanza a los de alrededor
+    if (o === e || o.airborne || Math.hypot(o.x - e.x, o.y - e.y) > G.radius + o.r) continue;
+    damageEnemy(o, e.x, e.y, G.areaDmg * ABILITY_MUL, G.areaDmg * ABILITY_MUL, G.kb);
+    if (!o.dead && o.type !== 'boss') tryLaunch(o, true);
+  }
+  effects.push({ type: 'ring', x: e.x, y: e.y, r: G.radius, t: 0, dur: 0.45, color: FURY.color });
+  effects.push({ type: 'ring', x: e.x, y: e.y, r: G.radius * 0.55, t: 0, dur: 0.3, color: '#ffffff' });
+  effects.push({ type: 'ring', x: e.x, y: e.y, r: G.radius * 1.35, t: 0, dur: 0.6, color: '#3d3646' });
+  for (let i = 0; i < 28; i++) { const a = Math.random() * Math.PI * 2, sp = 140 + Math.random() * 320; particles.push({ x: e.x, y: e.y - 4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6, life: 0.5, max: 0.5, color: i % 3 ? '#d8cfe6' : FURY.color, s: 4 + Math.random() * 3 }); }
+  burst(e.x, e.y - 12, FURY.color, 20); burst(e.x, e.y - 6, '#ffffff', 14);
+  shake = Math.max(shake, 16); hitstop = 0.15; flashT = Math.max(flashT, 0.15); SFX.hit(true); SFX.exec();
+  floatText(e.x, e.y - 44, '¡IZUNA!', FURY.color);
+  p.x = e.x - p.ax * (e.r + p.r + 4); p.y = e.y - p.ay * (e.r + p.r + 4); collide(p, true);
+  return true;
+}
 // Devuelve true mientras la embestida o la caída controlan al personaje
 function updateSpecial(p, dt) {
   const c = p.ch;
+  if (p.drill) return updateDrill(p, dt);
+  if (p.drop && p.drop.fury) return updateFuryDrop(p, dt);
   if (p.shieldCharge) { // embestida de escudo: avanza con el escudo por delante empujando a todo lo que encuentra
     const R = p.shieldCharge, W = AB.wall, step = W.chargeSpeed * dt;
     p.x += R.dx * step; p.y += R.dy * step; R.left -= step;
@@ -2964,7 +3164,8 @@ const ABILITIES = {
   beam: castBeam, area: castArea, rush: startRush, drop: startDrop, ricochet: startRicochet,
   shield: castShield, pillar: castPillar, taunt: castTaunt, shieldThrow: castShieldThrow, roots: castRoots, vine: castVine, grenade: castGrenade, frostburst: castFrostburst, frostMode: castFrostMode, pull: castPull, blink: castBlink, suspend: castSuspend,
   volley: castVolley, overdrive: castOverdrive, detonate: castDetonate, detonator: castDetonator, mortar: castMortar, turret: castTurret, overcharge: castOvercharge,
-  reaper: castReaper, dragon: castDragon
+  reaper: castReaper, dragon: castDragon,
+  drill: startDrill, furyDrop: startFuryDrop // Ámbar en furia
 };
 function useAbility(p, slot) {
   if (!abilityReady(p, slot)) return;
@@ -2972,6 +3173,7 @@ function useAbility(p, slot) {
   const t0 = abilityType(p, slot);
   if (!fn || fn(p) === false) return;
   p.idleT = 0; // usar habilidades también retrasa la recarga automática
+  if (t0 === 'drill' || t0 === 'furyDrop') { setCd(p, slot, t0 === 'drill' ? FURY.drill.cd : FURY.grab.cd); return; } // habilidades de furia: recarga propia
   // [sustituido] setCd(p, slot, slot === 'pri' ? p.ch.priCd : (t0 === 'shieldThrow' ? AB.shieldThrow.cd : p.ch.secCd));
   setCd(p, slot, slot === 'pri' ? p.ch.priCd : (secAltCd(t0) || p.ch.secCd));
 }
@@ -4687,7 +4889,7 @@ function starfallImpact(p, lv) {
   const c = p.ch, cfg = CHARGED.starfall, R = cfg.r0 + (cfg.r1 - cfg.r0) * lv, dmg = c.melee * (1 + 2 * lv) * MELEE_MUL;
   let hit = false;
   for (const e of liveTargets()) if (Math.hypot(e.x - p.x, e.y - p.y) < R + e.r) { damageEnemy(e, p.x, p.y, dmg, dmg, 200); impactFx(p, e, true); hit = true; } // daña al caer, sin lanzar
-  if (hit && c.priType === 'rush') { p.priCd = 0; floatText(p.x, p.y - 62 * c.size, 'Embestida lista', p.slotColor); } // recarga la Embestida
+  if (hit && c.priType === 'rush') { p.priCd = 0; floatText(p.x, p.y - 62 * c.size, (ABILITY_TEXT[abilityType(p, 'pri')] || ['Embestida'])[0] + ' lista', p.slotColor); } // recarga la Embestida (en furia, la Garra taladro)
   effects.push({ type: 'ring', x: p.x, y: p.y, r: R, t: 0, dur: 0.35, color: p.color });
   burst(p.x, p.y - 8, p.color, 20); shake = Math.max(shake, 8);
 }
@@ -4743,12 +4945,13 @@ function drawPreviews() {
     ctx.fillStyle = p.slotColor; ctx.strokeStyle = p.slotColor; ctx.lineWidth = 2;
     const dashed = () => { ctx.globalAlpha = 0.9; ctx.setLineDash([6, 5]); ctx.stroke(); ctx.setLineDash([]); };
     const circle = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.globalAlpha = pulse; ctx.fill(); dashed(); };
-    if (type === 'beam' || type === 'rush') {
-      const [len, who] = type === 'rush' ? rushStop(p) : [beamLength(p.x, p.y, p.ax, p.ay, c.priLen), null];
+    if (type === 'beam' || type === 'rush' || type === 'drill') {
+      const [len, who] = type === 'rush' ? rushStop(p) : [beamLength(p.x, p.y, p.ax, p.ay, type === 'drill' ? FURY.drill.dist : c.priLen), null];
+      const bw = type === 'drill' ? (p.r + FURY.drill.catchR) * 2 : c.priWidth; // el taladro barre su propio ancho
       if (who) { ctx.save(); ctx.globalAlpha = 0.9; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(who.x, who.y, who.r + 6, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
       ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.ay, p.ax));
-      ctx.globalAlpha = pulse; ctx.fillRect(0, -c.priWidth / 2, len, c.priWidth);
-      ctx.globalAlpha = 0.9; ctx.setLineDash([6, 5]); ctx.strokeRect(0, -c.priWidth / 2, len, c.priWidth); ctx.setLineDash([]);
+      ctx.globalAlpha = pulse; ctx.fillRect(0, -bw / 2, len, bw);
+      ctx.globalAlpha = 0.9; ctx.setLineDash([6, 5]); ctx.strokeRect(0, -bw / 2, len, bw); ctx.setLineDash([]);
       ctx.beginPath(); ctx.moveTo(len + 10, 0); ctx.lineTo(len - 4, -9); ctx.lineTo(len - 4, 9); ctx.closePath(); ctx.fill();
     } else if (type === 'ricochet') {
       const [e, air] = ricochetTarget(p);
@@ -4773,12 +4976,12 @@ function drawPreviews() {
         ctx.globalAlpha = 0.95; ctx.lineWidth = 3; ctx.strokeStyle = lv >= 1 && Math.floor(time * 16) % 2 ? '#ffffff' : p.color;
         ctx.beginPath(); ctx.arc(p.x, upY(p.y, 14), p.r + 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lv); ctx.stroke();
       }
-    } else if (type === 'drop') {
-      const e = dropTarget(p);
+    } else if (type === 'drop' || type === 'furyDrop') {
+      const e = type === 'furyDrop' ? furyGrabTarget(p) : dropTarget(p);
       if (e) {
         ctx.globalAlpha = 0.9; ctx.setLineDash([6, 5]); ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(p.x, upY(p.y, 14 * c.size)); ctx.lineTo(e.x, upY(e.y, 12 + e.z)); ctx.stroke();
-        ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, c.dropRadius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, type === 'furyDrop' ? FURY.grab.radius : c.dropRadius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
         ctx.globalAlpha = pulse; ctx.fill();
       }
     } else if (type === 'area') circle(p.x, p.y, c.secRadius);
@@ -5076,6 +5279,9 @@ function drawEffects() {
         ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(bx + 8 * Math.sin(i), by - hgt * 0.5, bx + 4 * Math.cos(i * 2), by - hgt); ctx.stroke();
       }
       ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.stroke();
+    } else if (f.type === 'smoke') { // humo de la furia de Ámbar: bocanada que sube y se abre
+      ctx.globalAlpha = 0.55 * (1 - q) * Math.min(1, q * 6); ctx.fillStyle = f.color;
+      ctx.beginPath(); ctx.arc(f.x + f.dx * q, f.y - f.rise * q, f.r * (1 + 1.4 * q), 0, Math.PI * 2); ctx.fill();
     } else if (f.type === 'ghost') { // estela de velocidad
       ctx.globalAlpha = 0.35 * (1 - q); ctx.fillStyle = f.color; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (1 - 0.3 * q), 0, Math.PI * 2); ctx.fill();
     } else if (f.type === 'cone') { // barrido del Puño ejecutor
@@ -5191,6 +5397,12 @@ function drawAbilityIcon(type, cx, cy, s, col) {
     case 'area': C('B', 0, 0, 0.85, { fill: false, w: th }); L('L', TH, [[0, 0.45], [0, -0.35]]); P('L', [[0, -0.7], [-0.38, -0.2], [0.38, -0.2]]); break;
     case 'rush': L('B', TH, [[-0.85, -0.65], [-0.25, 0], [-0.85, 0.65]]); L('L', TH, [[-0.05, -0.65], [0.6, 0], [-0.05, 0.65]]); break;
     case 'drop': L('L', TH, [[0, -1], [0, 0.2]]); P('L', [[0, 0.55], [-0.42, 0.05], [0.42, 0.05]]); L('B', TH, [[-0.95, 0.88], [0.95, 0.88]]); break;
+    case 'drill': // taladro: cono con espiral y líneas de velocidad
+      P('B', [[-0.55, -0.62], [-0.55, 0.62], [1, 0]]); L('D', th, [[-0.2, -0.48], [0.05, 0.36]]); L('D', th, [[0.25, -0.3], [0.45, 0.18]]);
+      L('L', th, [[-1, -0.4], [-0.72, -0.4]]); L('L', th, [[-1, 0.4], [-0.72, 0.4]]); break;
+    case 'furyDrop': // suben juntos y caen: flecha arriba, flecha abajo y suelo
+      L('L', TH, [[-0.45, 0.55], [-0.45, -0.45]]); P('L', [[-0.45, -0.95], [-0.82, -0.42], [-0.08, -0.42]]);
+      L('B', TH, [[0.45, -0.85], [0.45, 0.25]]); P('B', [[0.45, 0.68], [0.08, 0.18], [0.82, 0.18]]); L('B', TH, [[-0.95, 0.92], [0.95, 0.92]]); break;
     case 'ricochet': L('L', th, [[-1, 0.65], [-0.3, -0.6], [0.35, 0.45]]); L('B', th, [[0.35, 0.45], [0.75, -0.25]]); C('W', 0.78, -0.35, 0.25); break;
     case 'shield': P('B', [[-0.9, 0.5], [-0.75, -0.15], [-0.35, -0.5], [0.35, -0.5], [0.75, -0.15], [0.9, 0.5]]); L('L', th, [[-0.45, -0.15], [0.45, -0.15]]); break;
     case 'pillar': R('B', -1, -0.1, 0.5, 1.1); R('L', -0.25, -1, 0.5, 2); R('B', 0.5, -0.5, 0.5, 1.5); break;
@@ -5413,7 +5625,7 @@ function healPlayer(p, amt) {
 }
 function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
-  if (p.down || p.inv > 0 || p.jump || p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
+  if (p.down || p.inv > 0 || p.jump || p.rush || p.drop || p.drill || p.leap || p.dragonRush || p.reapDash || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
   if (dmg == null) dmg = srcEnemy ? edmg(srcEnemy, 'touch') : 20;
   const heavyHit = dmg >= HURT.heavyDmg;
   p.hp -= dmg; p.inv = HURT.inv; p.mercyT = HURT.inv; p.hurtFx = 0.5; p.hitFlash = 0.1; SFX.hurt();
@@ -5475,6 +5687,7 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   if (e.dead || e.spawnT > 0) return;
   if (e.flying && !ranged) return; // volador: solo le hacen daño los ataques a distancia (disparos y proyectiles)
   if (e.stunT > 0 && e.type !== 'boss') hpDmg *= STUN_DMG_MUL; // aturdido: recibe más daño
+  if (furyBy && furyBy.ch.fury) furyGain(furyBy, Math.min(hpDmg, Math.max(0, e.hp))); // Ámbar: el daño que hace llena la furia
   if (e.frozenAir && e.frozenT > 0) { shatterEnemy(e); return; } // congelado en el aire: cualquier golpe lo rompe
   e.hitLean = (e.x - sx) >= 0 ? -0.22 : 0.22; // se inclina hacia atrás, alejándose del golpe
   interruptHit(e, false);
@@ -5573,6 +5786,7 @@ function nearestAirborne(p) {
 }
 // Ejecución: tier 2 y 3 mueren al instante; el guardián pierde una cuarta parte de su vida
 function executeEnemy(e, p, how) {
+  if (p.ch.fury) furyGain(p, FURY.execGain); // Ámbar: ejecutar también llena la furia
   const ang = Math.atan2(e.y - p.y, e.x - p.x), ey = upY(e.y, 12 + e.z);
   if (how === 'melee' && !p.ch.canMelee) how = 'ranged';
   if (how === 'melee' && p.jump) how = 'air';
@@ -6011,7 +6225,7 @@ function update(dt) {
     return;
   }
   for (const p of players) { p.lx = p.x; p.ly = p.y; }
-  for (const p of players) { if (p.flip && !p.down) updateFlip(p, dt); updatePlayer(p, dt); } // el vuelo avanza siempre, pase lo que pase con el movimiento normal
+  for (const p of players) { if (p.flip && !p.down) updateFlip(p, dt); furyBy = p; updatePlayer(p, dt); furyBy = null; } // el vuelo avanza siempre, pase lo que pase con el movimiento normal
   updateCover(dt); updateVines(dt); updateRevive(dt);
   wheelSteps = 0;
   for (const e of enemies) updateEnemy(e, dt);
@@ -6261,7 +6475,9 @@ const ABILITY_TEXT = {
   // roots: ['Raíces', 'Inmovilizan a los enemigos de una zona'],
   roots: ['Enredaderas', 'Mantén para ampliar el área a tu alrededor; inmoviliza y los enredados pierden más estamina'],
   reaper: ['Puño ejecutor', 'Salta al ejecutable más cercano y lo ejecuta; si no hay, golpea al más cercano'],
-  dragon: ['Poder del dragón', 'Nivel 1: bola de fuego · 2: dragón que gira · 3: forma de dragón']
+  dragon: ['Poder del dragón', 'Nivel 1: bola de fuego · 2: dragón que gira · 3: forma de dragón'],
+  drill: ['Garra taladro', 'Furia: se lanza girando, arrastra a los que pilla con muchos golpes y los lanza'],
+  furyDrop: ['Izuna de furia', 'Furia: agarra al más cercano, subís juntos y lo estampa; la onda lanza a los de alrededor']
 };
 const CHARGED_TEXT = {
   seismic: ['Martillo sísmico', 'El martillo golpea el suelo en área y lanza'],
@@ -6308,7 +6524,8 @@ function specialSlots(c) {
 const ABILITY_NEEDS = {
   drop: 'Necesita un enemigo en el aire', suspend: 'Necesita enemigos en el aire', ricochet: 'Necesita un objetivo',
   frostburst: 'Necesita un enemigo a tiro', dragon: 'Nivel 1 se recarga solo; 2 y 3, ejecutando', reaper: 'Necesita un enemigo cerca', raiseShield: 'Se desgasta; si se rompe, espera', shieldThrow: 'Sin escudo alzado; mientras vuela no puedes alzarlo',
-  turret: 'Una torreta a la vez', grenade: 'Va al enemigo fijado', detonator: 'Necesita cargas puestas'
+  turret: 'Una torreta a la vez', grenade: 'Va al enemigo fijado', detonator: 'Necesita cargas puestas',
+  furyDrop: 'Necesita un enemigo cerca (no el guardián)'
 };
 const fmtS = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
 function shotText(c) {
@@ -6429,6 +6646,7 @@ function interactionChips(c) {
   if (c.finisher) add('Remate de combo');
   if (c.chargedMelee) add('Golpe cargado');
   if (c.moveType === 'jump') add('Engancha en el aire');
+  if (c.fury) add('Modo furia');
   if (c.moveType === 'block') add('Bloqueo');
   if (c.moveType === 'teleport') add('Teletransporte');
   if (c.moveType === 'flip') add('Doble salto');
@@ -7389,14 +7607,33 @@ function drawPlayer(p) {
       ctx.setLineDash([2, 5]); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffffff';
       ctx.beginPath(); ctx.moveTo(p.x, p.y - 2); ctx.lineTo(p.x, p.y - 14 * p.ch.size - pz + p.r); ctx.stroke(); ctx.restore();
     }
-    const spinA = p.flip && p.flipAng ? p.flipAng : 0; // voltereta del doble salto: gira el cuerpo sobre su centro
+    // const spinA = p.flip && p.flipAng ? p.flipAng : 0; // [antes] solo la voltereta de Escarcha giraba el cuerpo
+    const spinA = p.flip && p.flipAng ? p.flipAng : p.drill ? time * 45 : (p.drop && p.drop.fury && p.drop.phase !== 'dash' ? p.drop.spin : 0); // voltereta del doble salto, taladro e Izuna de furia: gira el cuerpo sobre su centro
+    if (p.furyT > 0) { // furia: brillo bajo los pies que palpita
+      ctx.save(); ctx.globalAlpha = 0.22 + 0.12 * Math.sin(time * 14); ctx.fillStyle = FURY.color;
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r + 10, (p.r + 10) * 0.45, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
     if (spinA) { const px = p.x, py = p.y - 14 * p.ch.size - (p.z || 0); ctx.save(); ctx.translate(px, py); ctx.rotate(spinA); ctx.translate(-px, -py); }
-    const fch = p.hitFlash > 0 ? Object.assign({}, p.ch, { color: '#ffffff' }) : p.ch; // destello blanco al encajar el golpe
+    const fch = p.hitFlash > 0 ? Object.assign({}, p.ch, { color: '#ffffff' }) : p.furyT > 0 ? Object.assign({}, p.ch, { color: FURY.color }) : p.ch; // destello blanco al encajar el golpe; naranja en furia
     const jit = p.hitstunT > 0 ? Math.sin(time * 90) * 2.2 : 0; // tiembla mientras dura el hitstun
     drawFigure(p.x + jit, p.y, fch, p.ch.size, (p.z || 0) + bob, { ox: vx * wt.lean, oy: vy * wt.lean * 0.6, sx: 1 - sq, sy: 1 + sq });
     if (spinA) ctx.restore();
   }
   ctx.globalAlpha = 1;
+  if (p.drill) { // Garra taladro: cono que gira delante de Ámbar
+    const a = Math.atan2(p.ay, p.ax), r0 = p.r * 0.2, L = p.r + 34, Wd = p.r + 7;
+    ctx.save(); ctx.translate(p.x, p.y - 12 * p.ch.size); ctx.rotate(a);
+    ctx.globalAlpha = 0.9; ctx.fillStyle = FURY.color; ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(r0, -Wd); ctx.lineTo(L, 0); ctx.lineTo(r0, Wd); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 2.5;
+    for (let i = 0; i < 4; i++) { // espiral que avanza hacia la punta
+      const o = (time * 9 + i / 4) % 1, x = r0 + (L - r0) * o, hw = Wd * (1 - o);
+      ctx.strokeStyle = i % 2 ? '#16121e' : '#ffe9c2'; ctx.beginPath(); ctx.moveTo(x, -hw); ctx.lineTo(x + 7 * (1 - o), hw); ctx.stroke();
+    }
+    ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) { const yy = (i - 1) * (Wd * 0.9); ctx.beginPath(); ctx.moveTo(-p.r - 18 - i * 4, yy); ctx.lineTo(-p.r - 4, yy); ctx.stroke(); } // líneas de velocidad
+    ctx.restore();
+  }
   drawShotState(p);
   if (p.ch.priType === 'raiseShield' && p.shieldUp) { // indicador de cobertura sobre Ceniza
     const ally = !p.covering && players.some(a => a !== p && !a.down && !a.coverBy && Math.hypot(a.x - p.x, a.y - p.y) < 140);
@@ -7786,13 +8023,18 @@ function drawHUD() {
     ctx.font = '800 14px ' + FONT; ctx.fillStyle = p.slotColor; ctx.fillText('J' + p.id, x, 17);
     ctx.fillStyle = p.down ? '#ff8f8f' : '#d8d0e6'; fitText(p.down ? 'Caído' : c.name, x + 25, 17, 62, 600, 12);
     drawHpBar(p, x, 24, 88, U.bar);
+    if (c.fury) { // barra de furia de Ámbar: se llena con el daño; en furia, muestra el tiempo que queda y parpadea
+      const on = p.furyT > 0, f = on ? p.furyT / FURY.time : (p.fury || 0) / FURY.max;
+      ctx.fillStyle = '#2a2431'; ctx.fillRect(x, 24 + U.bar + 3, 88, 4);
+      bar(x, 24 + U.bar + 3, 88, 4, f, on ? (Math.floor(time * 10) % 2 ? FURY.color : '#ffd166') : '#c46a1f');
+    }
     // tres casillas: movimiento, habilidad 1 y habilidad 2
     const px = [x + 96, x + 96 + z + 4, x + 96 + (z + 4) * 2], py = 5, mv = moveOf(c), tur = myTurret(p);
     const secsOf = v => (v > 0.05 ? v : 0);
     drawPip(px[0], py, mv.hold ? 0 : moveFrac(p), mv.icon, p.color, mv.hold ? !!p.blocking : p.moveT > 0 || !!p.jump, false, z,
       mv.hold || c.moveCharges ? 0 : (p.moveCd >= 0.5 ? p.moveCd : 0));
     if (c.moveCharges) for (let k = 0; k < c.moveCharges; k++) { ctx.fillStyle = k < (p.mCh || 0) ? p.color : '#3a3342'; rrect(px[0] + k * 9, py + z + 4, 7, 5, 2); ctx.fill(); } // cargas
-    drawPip(px[1], py, p.priCd / (p.priCdMax || c.priCd), c.priType, p.color, p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp,
+    drawPip(px[1], py, p.priCd / (p.priCdMax || c.priCd), abilityType(p, 'pri'), p.color, p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp,
       !abilityReady(p, 'pri'), z, secsOf(p.priCd), fxOf('pri'));
     if (c.priType === 'raiseShield') bar(px[1], py + z + 4, z, 4, (p.shieldHp == null ? AB.wall.max : p.shieldHp) / AB.wall.max, p.shieldBroken ? '#ff6b6b' : '#bfeaf5'); // resistencia del escudo
     if (c.priType === 'turret') bar(px[1], py + z + 4, z, 4, tur ? tur.hp / AB.turret.hp : (p.turretHp == null ? 1 : p.turretHp / AB.turret.hp), '#7ee08a'); // vida de la torreta
@@ -8074,7 +8316,7 @@ function updateTouchButtons() {
   if (mv.hold) setBtn(dash, mv.icon, p.color, 0, p.down, !!p.blocking);
   else setBtn(dash, mv.icon, p.color, moveFrac(p), p.down, p.moveT > 0 || !!p.jump);
   setPips(dash, p.mCh || 0, c.moveCharges || 0, 0);
-  setBtn(q, c.priType, p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
+  setBtn(q, abilityType(p, 'pri'), p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
     p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
   setBtn(e, abilityType(p, 'sec'), p.color, c.secType === 'dragon' ? Math.max(p.secCd / (p.secCdMax || c.secCd || 1), dragonRegenFrac(p)) : p.secCd / (p.secCdMax || c.secCd || 1), p.down || !abilityReady(p, 'sec'),
     p.cast === 'sec' || (c.secType === 'overcharge' && p.overchargeT > 0));
@@ -8366,7 +8608,7 @@ const TUT_STRAT = {
   'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
   'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
   'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.'],
-  'Ámbar': ['Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
+  'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: humo, más velocidad y Garra taladro (1) e Izuna de furia (2), que agarra sin lanzar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
   'Marea': ['El revólver tiene 6 balas y se recarga solo si no disparas durante unos segundos.', 'La granada (1) va al enemigo fijado: úsala para agrupar enemigos.', 'Disparo rebotante (2): mantenlo cargado para rebotar con más daño.'],
   'Ciruela': ['El gatling es continuo y sin carga: mantén el fuego y reposiciónate con el movimiento.', 'La torreta (1) dispara sola un rato; colócala donde pasen los enemigos.', 'Sobrecarga (2) acelera a la torreta y cura a los aliados cercanos.']
 };
