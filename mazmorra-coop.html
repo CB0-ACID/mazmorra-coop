@@ -1024,6 +1024,7 @@ function genFloor(seed, depth) {
     const sizes = ROOM_SIZES[r.type] || ROOM_SIZES.normal, sz = sizes[mulberry32(r.rng ^ 0x51ed)() * sizes.length | 0];
     r.cols = sz[0]; r.rows = sz[1];
     r.tiles = genTiles(r);
+    r.decor = genDecor(r);
   }
   return { rooms, start, boss, depth };
 }
@@ -4931,6 +4932,8 @@ function paintFloor(x0, x1, y0, y1) {
     if (solidAt(x + 1, y)) { const g = ctx.createLinearGradient(px + T, 0, px + T - 10, 0); g.addColorStop(0, 'rgba(0,0,0,0.3)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(px + T - 10, py, 10, TK); }
     if (room.tiles[y + 1] && room.tiles[y + 1][x] === 2) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(px + 3, py + TK - 5, T - 6, 5); } // sombra que proyecta la roca hacia atrás
   }
+  // Decoración del suelo del motivo de la sala (solo dibujo: no bloquea ni cambia colisiones)
+  for (const dc of (room.decor ? room.decor.floor : [])) drawFloorDecal(dc);
   // Huecos de puerta: pozo que se funde con la oscuridad del fondo y un umbral de piedra en el borde de la sala.
   // Abiertas, el umbral es más claro; cerradas, el hueco queda más apagado (la reja se dibuja aparte).
   for (const [d, [cx, cy]] of Object.entries(DOORPOS)) {
@@ -4986,6 +4989,76 @@ function drawBlock(tx, ty, v, lockedDoor) {
     for (let i = 0; i < 3; i++) ctx.fillRect(x + 8 + i * 10, yy + 4, 4, hh - 8);
   }
 }
+// ---------- Motivos de sala ----------
+// Cada sala tiene un motivo (tema) que se elige con su semilla: decora el suelo con pocos elementos y el muro
+// de arriba con antorchas o estandartes. Son solo dibujos, sin colisión, y dejan libres los pasillos centrales.
+const MOTIFS = {
+  antorchas: { floor: ['grieta', 'grieta', 'charco'], walls: ['antorcha'], nWall: 2, nFloor: [5, 7] },
+  cripta:    { floor: ['hueso', 'grieta', 'grieta'], walls: ['estandarte'], nWall: 2, nFloor: [5, 7], color: '#5b2f6b' },
+  cueva:     { floor: ['musgo', 'musgo', 'cristal', 'charco'], walls: [], nWall: 0, nFloor: [6, 9] },
+  inicio:    { floor: ['grieta'], walls: ['estandarte', 'antorcha'], nWall: 2, nFloor: [2, 3], color: '#2f5b8a' },
+  tesoro:    { floor: ['moneda', 'moneda', 'grieta'], walls: ['antorcha'], nWall: 2, nFloor: [5, 6] },
+  trono:     { floor: ['hueso', 'grieta'], walls: ['estandarte', 'antorcha'], nWall: 4, nFloor: [3, 4], color: '#8a2b2b' }
+};
+function genDecor(r) {
+  const rnd = mulberry32(r.rng ^ 0x7e57), ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+  const C = r.cols, R = r.rows, mx = Math.floor(C / 2), my = Math.floor(R / 2);
+  const key = r.type === 'boss' ? 'trono' : r.type === 'start' ? 'inicio' : r.type === 'treasure' ? 'tesoro' : ['antorchas', 'cripta', 'cueva'][ri(0, 2)];
+  const M = MOTIFS[key], out = { motif: key, floor: [], wall: [] };
+  // muro de arriba: solo donde la cara frontal da a la sala y lejos del hueco de la puerta
+  const picks = [];
+  for (let tries = 0; tries < 60 && picks.length < M.nWall; tries++) {
+    const x = ri(2, C - 3);
+    if (r.tiles[0][x] === 1 && r.tiles[1][x] === 0 && Math.abs(x - mx) >= 4 && picks.every(p => Math.abs(p - x) >= 4)) picks.push(x);
+  }
+  picks.forEach((x, i) => out.wall.push({ x, kind: M.walls[i % M.walls.length], color: M.color, ph: rnd() * 6 }));
+  // suelo: pocos elementos sueltos, nunca en los pasillos centrales ni pegados a un muro o roca
+  const nF = ri(M.nFloor[0], M.nFloor[1]), placed = [];
+  for (let tries = 0; tries < 200 && placed.length < nF; tries++) {
+    const x = ri(3, C - 4), y = ri(3, R - 4);
+    if (Math.abs(x - mx) <= 2 || Math.abs(y - my) <= 2) continue;
+    if (r.tiles[y][x] !== 0 || r.tiles[y - 1][x] !== 0 || r.tiles[y + 1][x] !== 0 || r.tiles[y][x - 1] !== 0 || r.tiles[y][x + 1] !== 0) continue;
+    if (placed.some(p => Math.abs(p.x - x) + Math.abs(p.y - y) < 3)) continue;
+    placed.push({ x, y, kind: M.floor[ri(0, M.floor.length - 1)], ox: (rnd() - 0.5) * T * 0.5, oy: (rnd() - 0.5) * TK * 0.4, s: 0.8 + rnd() * 0.5, pts: Array.from({ length: 4 }, () => [(rnd() - 0.5) * 16, (rnd() - 0.5) * 10]) });
+  }
+  out.floor = placed;
+  return out;
+}
+function drawFloorDecal(dc) {
+  const x = dc.x * T + T / 2 + dc.ox, y = dc.y * TK + TK / 2 + dc.oy, s = dc.s;
+  ctx.save(); ctx.translate(x, y); ctx.scale(1, K);
+  switch (dc.kind) {
+    case 'grieta': ctx.strokeStyle = 'rgba(0,0,0,0.42)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(dc.pts[0][0] * s, dc.pts[0][1] * s); for (const p of dc.pts) ctx.lineTo(p[0] * s, p[1] * s); ctx.stroke(); break;
+    case 'charco': ctx.fillStyle = 'rgba(70,120,150,0.28)'; ctx.beginPath(); ctx.ellipse(0, 0, 11 * s, 7 * s, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(-4 * s, -3 * s, 4 * s, 1.5); break;
+    case 'hueso': ctx.fillStyle = '#cfc6b2'; ctx.fillRect(-7 * s, -1.5, 14 * s, 3); ctx.beginPath(); ctx.arc(-7 * s, -2, 2.4 * s, 0, Math.PI * 2); ctx.arc(7 * s, -2, 2.4 * s, 0, Math.PI * 2); ctx.fill(); break;
+    case 'musgo': ctx.fillStyle = 'rgba(90,150,90,0.35)'; for (const p of dc.pts) { ctx.beginPath(); ctx.arc(p[0] * s, p[1] * s, 3.5 * s, 0, Math.PI * 2); ctx.fill(); } break;
+    case 'cristal': ctx.fillStyle = 'rgba(127,231,255,0.18)'; ctx.beginPath(); ctx.arc(0, 0, 11 * s, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(127,231,255,0.7)'; ctx.beginPath(); ctx.moveTo(0, -7 * s); ctx.lineTo(3 * s, 0); ctx.lineTo(0, 5 * s); ctx.lineTo(-3 * s, 0); ctx.closePath(); ctx.fill(); break;
+    case 'moneda': ctx.fillStyle = '#f5c542'; for (const p of dc.pts.slice(0, 3)) { ctx.beginPath(); ctx.arc(p[0] * 0.6 * s, p[1] * 0.6 * s, 2.6 * s, 0, Math.PI * 2); ctx.fill(); } break;
+  }
+  ctx.restore();
+}
+// Antorcha (llama que parpadea con halo cálido) o estandarte colgado, sobre la cara frontal del muro de arriba
+function drawWallProp(wp) {
+  const cx = wp.x * T + T / 2, base = TK - 14;
+  if (wp.kind === 'estandarte') {
+    const top = TK - WH + 3, c = wp.color || '#6b4b8a';
+    ctx.fillStyle = '#2a2530'; ctx.fillRect(cx - 9, top - 2, 18, 2);
+    ctx.fillStyle = c; ctx.fillRect(cx - 6, top, 12, 20); ctx.beginPath(); ctx.moveTo(cx - 6, top + 20); ctx.lineTo(cx, top + 26); ctx.lineTo(cx + 6, top + 20); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(cx - 6, top, 2, 20);
+    ctx.fillStyle = shade(c, 0.35); ctx.fillRect(cx - 2, top + 6, 4, 8);
+    return;
+  }
+  const f = Math.sin(time * 9 + wp.ph) * 1.2 + Math.sin(time * 4.3 + wp.ph * 2) * 0.8;
+  ctx.fillStyle = '#2a2530'; ctx.fillRect(cx - 3, base, 6, 4); ctx.fillRect(cx - 1, base - 6, 2, 7);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(cx, base - 12, 2, cx, base - 12, 46);
+  g.addColorStop(0, 'rgba(255,170,80,0.3)'); g.addColorStop(1, 'rgba(255,170,80,0)');
+  ctx.fillStyle = g; ctx.fillRect(cx - 46, base - 58, 92, 92);
+  ctx.restore();
+  ctx.fillStyle = '#ff8a2a'; ctx.beginPath(); ctx.ellipse(cx, base - 9 - f * 0.3, 3.4, 6 + f * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffe08a'; ctx.beginPath(); ctx.ellipse(cx, base - 8, 1.8, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+}
+
 // Puertas: arco de piedra con dintel y clave cuando la sala está limpia; reja de hierro mientras no lo está.
 // Se dibuja una vez por puerta, sobre el hueco del suelo (paintFloor) y junto a los pilares de remate (drawBlock).
 function drawDoorway(d) {
@@ -5841,6 +5914,8 @@ function drawGame() {
     const [cx, cy] = DOORPOS[d];
     list.push({ y: (cy + 1) * T - 0.5 + (cy === ROWS - 1 ? 1e5 : 0), f: () => drawDoorway(d) });
   }
+  // Antorchas y estandartes del muro de arriba: van justo detrás de los personajes que estén junto a ese muro
+  for (const wp of (room.decor ? room.decor.wall : [])) if (wp.x >= x0 && wp.x <= x1) list.push({ y: T + 0.3, f: () => drawWallProp(wp) });
   for (const h of pickups) list.push({ y: h.y, f: () => drawPickup(h) });
   for (const e of enemies) list.push({ y: e.y, f: () => drawEnemy(e) });
   for (const p of players) list.push({ y: p.y + (p.down ? -1 : 0), f: () => drawPlayer(p) });
