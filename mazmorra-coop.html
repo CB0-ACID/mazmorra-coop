@@ -4953,11 +4953,12 @@ function paintFloor(x0, x1, y0, y1) {
     for (let i = -1; i <= 1; i++) {
       const tx = hz ? cx + i : cx, ty = hz ? cy : cy + i;
       const x = tx * T, y = ty * TK; let g;
-      const inner = room.cleared ? pal.f1 : shade(pal.f1, -0.4);
-      if (d === 'up') { g = ctx.createLinearGradient(0, y + TK, 0, y - WH); g.addColorStop(0, inner); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y - WH, T, TK + WH); ctx.fillStyle = thr; ctx.fillRect(x, y + TK - 5, T, 5); }
-      if (d === 'down') { g = ctx.createLinearGradient(0, y, 0, y + TK); g.addColorStop(0, inner); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x, y, T, 5); }
-      if (d === 'left') { g = ctx.createLinearGradient(x + T, 0, x, 0); g.addColorStop(0, inner); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x + T - 5, y, 5, TK); }
-      if (d === 'right') { g = ctx.createLinearGradient(x, 0, x + T, 0); g.addColorStop(0, inner); g.addColorStop(1, '#000'); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x, y, 5, TK); }
+      // El fondo del hueco es un tono oscuro de piedra, no negro: un negro puro se lee como un muro roto
+      const inner = room.cleared ? pal.f1 : shade(pal.f1, -0.4), dark = room.cleared ? shade(pal.f1, -0.7) : '#0b0912';
+      if (d === 'up') { g = ctx.createLinearGradient(0, y + TK, 0, y - WH); g.addColorStop(0, inner); g.addColorStop(1, dark); ctx.fillStyle = g; ctx.fillRect(x, y - WH, T, TK + WH); ctx.fillStyle = thr; ctx.fillRect(x, y + TK - 5, T, 5); }
+      if (d === 'down') { g = ctx.createLinearGradient(0, y, 0, y + TK); g.addColorStop(0, inner); g.addColorStop(1, dark); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x, y, T, 5); }
+      if (d === 'left') { g = ctx.createLinearGradient(x + T, 0, x, 0); g.addColorStop(0, inner); g.addColorStop(1, dark); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x + T - 5, y, 5, TK); }
+      if (d === 'right') { g = ctx.createLinearGradient(x, 0, x + T, 0); g.addColorStop(0, inner); g.addColorStop(1, dark); ctx.fillStyle = g; ctx.fillRect(x, y, T, TK); ctx.fillStyle = thr; ctx.fillRect(x, y, 5, TK); }
     }
   }
 }
@@ -4968,14 +4969,11 @@ function drawBlock(tx, ty, v, lockedDoor) {
   const x = tx * T, y = ty * TK, rock = v === 2, low = ty === ROWS - 1;
   const h = low ? LOW_WALL : rock ? Math.round(WH * 0.72) : WH;
   const top = rock ? pal.rockTop : pal.top, front = rock ? pal.rockFront : pal.front;
-  const below = !low && solidAt(tx, ty + 1) && !(rock && room.tiles[ty + 1][tx] === 1);
-  if (low) { // muro de abajo recortado: no sube, para no tapar a nadie que esté pegado a él
-    ctx.fillStyle = top; ctx.fillRect(x, y, T, TK - h);
-    ctx.fillStyle = shade(front, -0.2); ctx.fillRect(x, y + TK - h, T, h);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(x, y, T, 2);
-    if (lockedDoor) { ctx.fillStyle = '#d4464f'; for (let i = 0; i < 3; i++) ctx.fillRect(x + 8 + i * 10, y + 3, 4, TK - 6); }
-    return;
-  }
+  // La cara frontal se oculta bajo el bloque de abajo solo si ese bloque tapa su franja: el muro bajo es más bajo,
+  // así que no la tapa y hay que dibujarla (si no, queda un hueco negro sobre él)
+  const below = !low && ty + 1 !== ROWS - 1 && solidAt(tx, ty + 1) && !(rock && room.tiles[ty + 1][tx] === 1);
+  // El muro de abajo usa el mismo dibujado que el resto, solo que más bajo (LOW_WALL). Antes tenía una rama aparte
+  // que dejaba huecos negros en la fila de encima.
   ctx.fillStyle = top; ctx.fillRect(x, y - h, T, TK + 0.5);
   if (!below) {
     const g = ctx.createLinearGradient(0, y + TK - h, 0, y + TK); g.addColorStop(0, front); g.addColorStop(1, shade(front, -0.35));
@@ -4985,7 +4983,7 @@ function drawBlock(tx, ty, v, lockedDoor) {
   if (!solidAt(tx - 1, ty) && !low) { ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(x, y - h, 2, TK); }
   if (!solidAt(tx + 1, ty) && !low) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(x + T - 2, y - h, 2, TK + (below ? 0 : h)); }
   // Remate junto a un hueco de puerta: el muro acaba en un pilar de piedra (cara clara + arista), no en un corte
-  if (!low && !rock) {
+  if (!rock) {
     const dl = doorAt(tx - 1, ty), dr = doorAt(tx + 1, ty);
     if (dl && room.doors[dl]) { ctx.fillStyle = shade(pal.top, 0.16); ctx.fillRect(x, y - h, 4, TK + h); ctx.fillStyle = shade(pal.front, -0.45); ctx.fillRect(x + 4, y - h, 2, TK + h); }
     if (dr && room.doors[dr]) { ctx.fillStyle = shade(pal.top, 0.16); ctx.fillRect(x + T - 4, y - h, 4, TK + h); ctx.fillStyle = shade(pal.front, -0.45); ctx.fillRect(x + T - 6, y - h, 2, TK + h); }
@@ -5091,6 +5089,8 @@ function drawDoorway(d) {
     if (locked) {
       for (let i = 0; i <= 4; i++) { const bx = x0 + 4 + i * (w - 8) / 4; ctx.fillStyle = iron; ctx.fillRect(bx - 1, y + TK - LOW_WALL - 6, 2, LOW_WALL + 6); }
       ctx.fillStyle = ironDk; ctx.fillRect(x0, y + TK - LOW_WALL - 6, w, 3);
+    } else { // abierta: un dintel fino de piedra marca el paso sin tapar la salida
+      ctx.fillStyle = st; ctx.fillRect(x0 - 3, y + TK - LOW_WALL, w + 6, 3);
     }
   } else { // muros laterales: la reja cruza el hueco y el umbral queda en la sala
     const x = d === 'left' ? 0 : (COLS - 1) * T, y0 = (cy - 1) * TK, h = 3 * TK;
