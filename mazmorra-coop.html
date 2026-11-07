@@ -306,7 +306,7 @@ const FROST_MODE = [
   { key: 'snow', name: 'Bola de nieve', icon: 'snowball', desc: 'Mantén para cargar tamaño y alcance; rebota una vez en la pared' }
 ];
 const BEAM_RAMP = { time: 3, mul: 2, base: 0.85 }; // base: fracción del daño de estamina base del rayo   // la estamina de cada tic sube lineal hasta ×2 tras 3 s de rayo continuo
-const MISSILE = { max: 3, step: 0.4, speed: 460, steer: 11, life: 2.4, lifeFree: 1.0, dmg: 6, sta: 0.08, slow: 2.5, seek: 220 };
+const MISSILE = { max: 3, step: 0.4, speed: 460, steer: 11, life: 2.4, lifeFree: 1.0, dmg: 3, sta: 0.05, slow: 2.5, freezeT: 4, seek: 220 };
 const ABILITY_MUL = 1.6;   // habilidades 1 y 2
 const STUN_DMG_MUL = 1.5;  // daño extra que reciben los enemigos aturdidos (salvo el guardián) si no se les ejecuta
 const AIR_G = 380;        // gravedad reducida de los enemigos lanzados
@@ -2782,11 +2782,11 @@ function hitIceMissile(m, e) {
   if (e.dead) return;
   burst(e.x, upY(e.y, 12 + (e.z || 0)), '#bfeaf5', 6);
   if (n === 2) { e.slowT = MISSILE.slow; floatText(e.x, upY(e.y, 40 + (e.z || 0)), 'Ralentizado', '#bfeaf5'); }
-  if (n >= MISSILE.max && !(e.frozenT > 0)) freezeEnemy(e, false);
+  if (n >= MISSILE.max && !(e.frozenT > 0)) freezeEnemy(e, false, MISSILE.freezeT);
 }
 // Congelar: mismas reglas para el Estallido helado (fromBurst) y para los misiles
-function freezeEnemy(e, fromBurst) {
-  e.frozenT = e.type === 'boss' ? 1 : AB.frostburst.time; e.frozenAir = !!e.airborne; e.frozenBurst = !!fromBurst; e.kbx = e.kby = 0;
+function freezeEnemy(e, fromBurst, time) {
+  e.frozenT = e.type === 'boss' ? 1 : (time || AB.frostburst.time); e.frozenAir = !!e.airborne; e.frozenBurst = !!fromBurst; e.kbx = e.kby = 0;
   if (e.frozenAir) floatText(e.x, upY(e.y, 50 + e.z), 'Congelado', '#bfeaf5');
 }
 function drawIceMissile(m) {
