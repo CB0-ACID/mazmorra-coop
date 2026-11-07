@@ -130,7 +130,7 @@ body.touch.portrait:not(.rotdismiss) #rotate{display:flex}
   <button class="primary" id="rotFull">Pantalla completa en horizontal</button>
   <button id="rotStay">Seguir en vertical</button>
 </div>
-<footer>Mantén el disparo para cargarlo y suéltalo para disparar. Mantén pulsada una habilidad para ver hacia dónde va y suéltala para lanzarla. Pausa con Esc o Start; desde la pausa puedes mostrar la guía de controles.</footer>
+<footer>Mantén el disparo para cargarlo y suéltalo para disparar. Mantén pulsada una habilidad para ver hacia dónde va y suéltala para lanzarla. Pausa con Esc o Start; desde la pausa puedes mostrar la guía de controles. Las teclas y botones se cambian en «Opciones de control», en el menú principal o en la pausa.</footer>
 
 <script>
 (() => {
@@ -442,7 +442,7 @@ const cvs = document.getElementById('game');
 let ctx = cvs.getContext('2d'); // let: los iconos de los botones táctiles lo cambian un instante para pintar en su propio lienzo
 const stage = document.getElementById('stage');
 let lastMenu = null;
-function isMenuState() { return state === 'count' || state === 'select'; }
+function isMenuState() { return state === 'count' || state === 'select' || state === 'options'; }
 function resize() {
   const menu = isMenuState(), dpr = Math.min(2, window.devicePixelRatio || 1);
   document.body.classList.toggle('menu', menu); // primero se oculta el pie, para medir el espacio real
@@ -523,9 +523,58 @@ let pads = [];
 function pollPads() { pads = navigator.getGamepads ? Array.from(navigator.getGamepads()) : []; }
 const touch = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
 const ZERO = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
+// ---------- Controles configurables (Teclado A, Teclado B y mandos) ----------
+// Cada acción tiene una lista de teclas (KeyboardEvent.code) o de botones del mando (índice de Gamepad).
+// Los valores por defecto son los de siempre. Se guardan en localStorage. Ratón (clic y rueda) y táctil no cambian.
+// Esc siempre pausa y cancela, así que no se puede asignar a una acción.
+const BIND_DEF = [
+  { id: 'up',    label: 'Arriba',               kb1: ['KeyW'],              kb2: ['ArrowUp'],             pad: null },
+  { id: 'down',  label: 'Abajo',                kb1: ['KeyS'],              kb2: ['ArrowDown'],           pad: null },
+  { id: 'left',  label: 'Izquierda',            kb1: ['KeyA'],              kb2: ['ArrowLeft'],           pad: null },
+  { id: 'right', label: 'Derecha',              kb1: ['KeyD'],              kb2: ['ArrowRight'],          pad: null },
+  { id: 'atk',   label: 'Atacar / ejecutar',    kb1: ['Space'],             kb2: ['KeyK', 'Enter'],       pad: [0] },
+  { id: 'shot',  label: 'Disparo / carga',      kb1: ['KeyF'],              kb2: ['KeyL', 'ControlRight'], pad: [7, 2] },
+  { id: 'dash',  label: 'Movimiento / bloqueo', kb1: ['ShiftLeft'],         kb2: ['Semicolon', 'ShiftRight'], pad: [1] },
+  { id: 'q',     label: 'Habilidad 1',          kb1: ['KeyQ'],              kb2: ['KeyI'],                pad: [4] },
+  { id: 'e',     label: 'Habilidad 2',          kb1: ['KeyE'],              kb2: ['KeyO'],                pad: [5] },
+  { id: 'lock',  label: 'Fijar objetivo',       kb1: ['KeyR'],              kb2: ['KeyU'],                pad: [6, 3] },
+  { id: 'cycle', label: 'Cambiar objetivo',     kb1: ['Tab'],               kb2: ['KeyP'],                pad: [11] },
+  { id: 'pause', label: 'Pausa',                kb1: [],                    kb2: [],                      pad: [9] },
+];
+const BIND_DEV = ['kb1', 'kb2', 'pad'];
+function defaultBinds() {
+  const o = { kb1: {}, kb2: {}, pad: {} };
+  for (const a of BIND_DEF) { o.kb1[a.id] = [...a.kb1]; o.kb2[a.id] = [...a.kb2]; o.pad[a.id] = a.pad ? [...a.pad] : []; }
+  return o;
+}
+function loadBinds() {
+  const d = defaultBinds();
+  try {
+    const s = JSON.parse(localStorage.getItem('mz-binds') || 'null');
+    if (s) for (const a of BIND_DEF) {
+      for (const dev of ['kb1', 'kb2']) if (Array.isArray(s[dev]?.[a.id])) d[dev][a.id] = s[dev][a.id].filter(c => typeof c === 'string' && c !== 'Escape').slice(0, 2);
+      if (a.pad && Array.isArray(s.pad?.[a.id])) d.pad[a.id] = s.pad[a.id].filter(n => Number.isInteger(n) && n >= 0 && n < 32).slice(0, 2);
+    }
+  } catch (_) {}
+  return d;
+}
+let BINDS = loadBinds();
+function saveBinds() { try { localStorage.setItem('mz-binds', JSON.stringify(BINDS)); } catch (_) {} }
+const kbOn = (dev, id) => BINDS[dev][id].some(c => keys.has(c));
+// Nombres para mostrar (teclado en español: Ñ en el ; y flechas con símbolo)
+const KEY_NAMES = { Space: 'Espacio', ShiftLeft: 'Mayús izq.', ShiftRight: 'Mayús dcha.', ControlRight: 'Ctrl dcha.', ControlLeft: 'Ctrl izq.', Enter: 'Intro', Tab: 'Tab', Semicolon: 'Ñ', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Backspace: 'Retroc.', Delete: 'Supr' };
+const PAD_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'Select', 'Start', 'L3', 'R3', 'Cruz ↑', 'Cruz ↓', 'Cruz ←', 'Cruz →'];
+function keyName(c) { return KEY_NAMES[c] || c.replace(/^Key|^Digit/, ''); }
+function bindName(dev, id) {
+  const v = BINDS[dev][id];
+  if (!v.length) return '—';
+  return v.map(c => dev === 'pad' ? (PAD_NAMES[c] || 'B' + c) : keyName(c)).join(' / ');
+}
 function readDevice(dev) {
-  if (dev === 'kb1') return { x: k('KeyD') - k('KeyA'), y: k('KeyS') - k('KeyW'), a: !!k('Space'), s: !!(k('KeyF') || mouse.l), d: !!k('ShiftLeft'), q: !!k('KeyQ'), e: !!k('KeyE'), l: !!(k('KeyR') || mouse.r), c: !!k('Tab'), t: !!mouse.m, rx: 0, ry: 0 };
-  if (dev === 'kb2') return { x: k('ArrowRight') - k('ArrowLeft'), y: k('ArrowDown') - k('ArrowUp'), a: !!(k('KeyK') || k('Enter')), s: !!(k('KeyL') || k('ControlRight')), d: !!(k('Semicolon') || k('ShiftRight')), q: !!k('KeyI'), e: !!k('KeyO'), l: !!k('KeyU'), c: !!k('KeyP'), t: !!k('KeyJ'), rx: 0, ry: 0 };
+  if (dev === 'kb1' || dev === 'kb2') {
+    const on = id => kbOn(dev, id), m1 = dev === 'kb1'; // el ratón es fijo y pertenece al Teclado A
+    return { x: +on('right') - +on('left'), y: +on('down') - +on('up'), a: on('atk'), s: on('shot') || (m1 && mouse.l), d: on('dash'), q: on('q'), e: on('e'), l: on('lock') || (m1 && mouse.r), c: on('cycle'), p: on('pause'), t: m1 ? !!mouse.m : keys.has('KeyJ'), rx: 0, ry: 0 };
+  }
   if (dev === 'touch') return touch;
   if (dev === 'npc') return npcInput(players.find(q => q.dev === 'npc'));
   const gp = pads[+dev.slice(3)];
@@ -537,7 +586,8 @@ function readDevice(dev) {
   if (!testPad) { if (b(14)) x = -1; if (b(15)) x = 1; if (b(12)) y = -1; if (b(13)) y = 1; }
   let rx = gp.axes[2] || 0, ry = gp.axes[3] || 0;
   if (Math.hypot(rx, ry) < 0.3) { rx = 0; ry = 0; }
-  return { x, y, a: b(0), s: b(7) || b(2), d: b(1), q: b(4), e: b(5), l: b(6) || b(3), c: b(11), p: b(9), t: testPad && dpad, rx, ry };
+  const pb = id => BINDS.pad[id].some(i => b(i)); // botones del mando, configurables para todos los mandos
+  return { x, y, a: pb('atk'), s: pb('shot'), d: pb('dash'), q: pb('q'), e: pb('e'), l: pb('lock'), c: pb('cycle'), p: pb('pause'), t: testPad && dpad, rx, ry };
 }
 const DEVICES = ['kb1', 'kb2', 'touch', 'pad0', 'pad1', 'pad2', 'pad3'];
 const DEVLABEL = { npc: 'Aliado IA', kb1: 'Teclado A', kb2: 'Teclado B', touch: 'Táctil', pad0: 'Mando 1', pad1: 'Mando 2', pad2: 'Mando 3', pad3: 'Mando 4' };
@@ -721,13 +771,14 @@ function testRect() { return [LW / 2 - 170, 300, 340, 28]; }
 
 // ---------- Menú: número de jugadores ----------
 function countBox(n) { const bw = 120, gap = 12, x0 = (LW - (5 * bw + 4 * gap)) / 2; return [x0 + (n - 1) * (bw + gap), 150, bw, 130]; } // la 5.ª es 1 jugador + aliado IA
+function optRect() { return [LW / 2 + 182, 300, 172, 28]; } // botón «Opciones» del menú principal (la opción 6)
 function updateCount() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
     const mv = m.dx || m.dy;
-    if (mv) countSel = ((countSel - 1 + mv + 5) % 5) + 1;
+    if (mv) countSel = ((countSel - 1 + mv + 6) % 6) + 1; // 1-5 jugadores, 6 = opciones de control
     if (m.l) toggleTest();
-    if (m.a) { goSelect(dev); return; }
+    if (m.a) { if (countSel === 6) openOptions('count'); else goSelect(dev); return; }
   }
 }
 function goSelect(dev) {
@@ -823,8 +874,9 @@ function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clie
 const insideAt = (x, y, b) => x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3];
 cvs.addEventListener('mousemove', e => {
   const [x, y] = canvasPoint(e);
-  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; }
-  else if (state === 'pause') { for (let i = 0; i < 4; i++) if (insideAt(x, y, pauseRect(i))) pauseSel = i; }
+  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; }
+  else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i))) pauseSel = i; }
+  else if (state === 'options') { for (let r = 1; r <= optList().length + 2; r++) if (insideAt(x, y, optRowRect(r))) OPT.row = r; }
   else if (state === 'over') { for (let i = 0; i < 3; i++) if (insideAt(x, y, overRect(i))) overSel = i; }
   else if (state === 'select') {
     hoverCard = -1; hoverStart = insideAt(x, y, startRect());
@@ -841,11 +893,16 @@ cvs.addEventListener('pointerdown', e => {
   if (state === 'select' && detailChar >= 0) { detailChar = -1; return; } // cualquier toque cierra la ficha completa
   if (state === 'count') {
     if (inside(testRect())) { toggleTest(); return; }
+    if (inside(optRect())) { countSel = 6; openOptions('count'); return; }
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
+  } else if (state === 'options') {
+    if (OPT.cap) { OPT.cap = null; return; } // un toque mientras se espera una tecla cancela la captura
+    for (let i = 0; i < 3; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
+    for (let r = 1; r <= optList().length + 2; r++) if (inside(optRowRect(r))) { OPT.row = r; activateOptRow(); return; }
   } else if (state === 'over') {
     if (overT > 1.2) for (let i = 0; i < 3; i++) if (inside(overRect(i))) { overSel = i; chooseOver(i); return; }
   } else if (state === 'pause') {
-    for (let i = 0; i < 4; i++) if (inside(pauseRect(i))) { pauseSel = i; choosePause(i); return; }
+    for (let i = 0; i < 5; i++) if (inside(pauseRect(i))) { pauseSel = i; choosePause(i); return; }
   } else if (state === 'select' && startT < 0) {
     if (inside(detailBtnRect())) { detailChar = hoverCard >= 0 ? hoverCard : lastCur; return; }
     if (inside(backRect())) { // con el aliado IA a medio elegir, «Atrás» vuelve a tu personaje
@@ -4115,6 +4172,7 @@ function update(dt) {
   if (state === 'count') { updateCount(); return; }
   if (state === 'select') { updateSelect(dt); return; }
   if (state === 'pause') { updatePause(); return; }
+  if (state === 'options') { updateOptions(); return; }
   if (state === 'over') {
     overT += dt;
     for (const dev of DEVICES) {
@@ -4284,6 +4342,13 @@ function drawCount() {
     ctx.textAlign = 'right'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT; ctx.fillText('clic o botón de fijar', tx + tw - 12, ty + 19);
     ctx.textAlign = 'center';
   }
+  { // botón de opciones de control (opción 6 del menú)
+    const [ox, oy, ow, oh] = optRect(), sel = countSel === 6;
+    rrect(ox, oy, ow, oh, 7); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
+    ctx.fillText('Opciones de control', ox + ow / 2, oy + 19);
+  }
   // escaparate: los ocho personajes, con su halo de color, para ir conociéndolos antes de elegir
   const sy = 396, sp = Math.min(118, (LW - 80) / 8);
   CHARS.forEach((ch, i) => {
@@ -4297,12 +4362,12 @@ function drawCount() {
   ctx.fillStyle = '#d8d0e6'; ctx.font = '600 15px ' + FONT;
   ctx.fillText(isTouch ? 'Toca una opción, o muévete y confirma con golpe' : 'Haz clic en una opción, o muévete con flechas, WASD o mando y confirma con golpe', LW / 2, 484);
   ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
+  const mvTxt = dev => ['up', 'left', 'down', 'right'].map(id => bindName(dev, id)).join(' ');
   const lines = [
-    'Teclado A y ratón: WASD mueve, el ratón apunta, clic izquierdo o Espacio atacan y ejecutan,',
-    'Mayús izq. movimiento, Q y E habilidades, clic derecho fija objetivo, rueda o Tab lo cambia',
-    'Teclado B: flechas, L o K atacan, Ñ movimiento, I y O habilidades, U fija, P cambia',
-    'Mando: stick izquierdo mueve, stick derecho apunta, RT o A atacan, B movimiento,',
-    'LB y RB habilidades, LT fija objetivo y el stick derecho elige otro'
+    `Teclado A y ratón: ${mvTxt('kb1')} mueve, el ratón apunta, ${bindName('kb1', 'atk')} ataca, ${bindName('kb1', 'q')} y ${bindName('kb1', 'e')} habilidades`,
+    `Teclado B: ${mvTxt('kb2')} mueve, ${bindName('kb2', 'atk')} ataca, ${bindName('kb2', 'q')} y ${bindName('kb2', 'e')} habilidades, ${bindName('kb2', 'lock')} fija, ${bindName('kb2', 'cycle')} cambia`,
+    `Mando: stick izquierdo mueve, stick derecho apunta, ${bindName('pad', 'atk')} ataca, ${bindName('pad', 'dash')} movimiento, ${bindName('pad', 'q')} y ${bindName('pad', 'e')} habilidades`,
+    'Las teclas y botones se cambian en Opciones de control, aquí mismo o desde la pausa'
   ];
   lines.forEach((l, i) => ctx.fillText(l, LW / 2, 506 + i * 18));
   ctx.restore();
@@ -5797,6 +5862,7 @@ function draw() {
   if (cvs.style.cursor !== cur) cvs.style.cursor = cur;
   if (state === 'count') drawCount();
   else if (state === 'select') drawSelect();
+  else if (state === 'options') drawOptions();
   else { drawGame(); if (state === 'pause') drawPause(); }
 }
 
@@ -5834,7 +5900,7 @@ function drawOver() {
 }
 
 // ---------- Pausa ----------
-const PAUSE_OPTS = () => ['Continuar', showGuide ? 'Ocultar guía de controles' : 'Mostrar guía de controles', 'Modo de prueba: ' + (testMode ? 'activado' : 'desactivado'), 'Volver al menú'];
+const PAUSE_OPTS = () => ['Continuar', showGuide ? 'Ocultar guía de controles' : 'Mostrar guía de controles', 'Modo de prueba: ' + (testMode ? 'activado' : 'desactivado'), 'Opciones de control', 'Volver al menú'];
 function pauseRect(i) { return [W / 2 - 130, H / 2 - 83 + i * 48, 260, 40]; }
 function enterPause() {
   state = 'pause'; pauseSel = 0; shake = 0;
@@ -5848,20 +5914,21 @@ function choosePause(i) {
   if (i === 0) resume();
   else if (i === 1) showGuide = !showGuide;
   else if (i === 2) toggleTest();
+  else if (i === 3) openOptions('pause');
   else { state = 'count'; players = []; }
 }
 function updatePause() {
   if (pausePressed()) { resume(); return; }
   for (const dev of DEVICES) {
     const m = menuInput(dev), mv = m.dy || m.dx;
-    if (mv) pauseSel = (pauseSel + mv + 4) % 4;
+    if (mv) pauseSel = (pauseSel + mv + 5) % 5;
     if (m.a) { choosePause(pauseSel); return; }
     if (m.d) { resume(); return; }
   }
 }
 function drawPause() {
   ctx.fillStyle = 'rgba(6,4,10,0.62)'; ctx.fillRect(0, 0, W, H);
-  const pw = 320, ph = 298, px = (W - pw) / 2, py = H / 2 - 149;
+  const pw = 320, ph = 346, px = (W - pw) / 2, py = H / 2 - 173;
   rrect(px, py, pw, ph, 12); ctx.fillStyle = '#1c1726'; ctx.fill();
   ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
   ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Pausa', W / 2, py + 42);
@@ -5876,14 +5943,138 @@ function drawPause() {
   ctx.fillText('Golpe elige; movimiento, Esc o Start vuelven al juego; M silencia el sonido', W / 2, py + ph - 16);
 }
 
+// ---------- Opciones de control (desde el menú principal o la pausa) ----------
+// Pestañas: Teclado A, Teclado B y Mandos (la asignación de mandos vale para todos). Fila 0 = pestañas;
+// filas 1..n = acciones; luego «Restaurar» y «Volver».
+const OPT_TABS = [['kb1', 'Teclado A'], ['kb2', 'Teclado B'], ['pad', 'Mandos']];
+const OPT = { tab: 0, row: 0, from: 'count', cap: null, key: null, capT: 0, capIgnore: new Set() };
+// Mientras se espera una tecla nueva, la primera pulsación (sin repetición) se guarda para la asignación
+addEventListener('keydown', e => { if (state === 'options' && OPT.cap && !e.repeat) { OPT.key = e.code; e.preventDefault(); } });
+function optList() { const dev = OPT_TABS[OPT.tab][0]; return BIND_DEF.filter(a => dev === 'pad' ? a.pad : true); }
+function optTabRect(i) { const w = 170, g = 10; return [LW / 2 - (3 * w + 2 * g) / 2 + i * (w + g), 96, w, 34]; }
+function optRowRect(r) { return r < 1 ? [0, 0, 0, 0] : [LW / 2 - 270, 140 + (r - 1) * 26, 540, 22]; }
+function openOptions(from) {
+  OPT.from = from; OPT.row = 0; OPT.cap = null; OPT.key = null;
+  state = 'options';
+  for (const dev of DEVICES) menuInput(dev); // el botón que abrió el menú no debe activar nada aquí
+}
+function closeOptions() { state = OPT.from === 'pause' ? 'pause' : 'count'; }
+function defaultFor(dev) { return defaultBinds()[dev]; }
+// Asigna una tecla o botón. Si ya lo usa otra acción del mismo dispositivo, se intercambian
+function assignBind(dev, id, v) {
+  const map = BINDS[dev], prev = map[id];
+  for (const o in map) if (o !== id && map[o].includes(v)) map[o] = prev.length ? [prev[0]] : [];
+  map[id] = [v]; saveBinds();
+}
+function startCapture(dev, id) {
+  OPT.cap = { dev, id }; OPT.key = null; OPT.capT = time; OPT.capIgnore = new Set();
+  pads.forEach((gp, p) => { if (gp && gp.connected) gp.buttons.forEach((bt, i) => { if (bt.pressed) OPT.capIgnore.add(p + ':' + i); }); }); // lo que ya estaba pulsado no cuenta
+}
+// Primer botón nuevo de cualquier mando, o null
+function padCaptureButton() {
+  let found = null;
+  pads.forEach((gp, p) => {
+    if (!gp || !gp.connected) return;
+    gp.buttons.forEach((bt, i) => {
+      const key = p + ':' + i;
+      if (!bt.pressed) OPT.capIgnore.delete(key);
+      else if (!OPT.capIgnore.has(key) && found === null) found = i;
+    });
+  });
+  return found;
+}
+function activateOptRow() {
+  const dev = OPT_TABS[OPT.tab][0], L = optList().length, r = OPT.row;
+  if (r === 0) { OPT.tab = (OPT.tab + 1) % 3; return; }
+  if (r <= L) { startCapture(dev, optList()[r - 1].id); return; }
+  if (r === L + 1) { BINDS[dev] = defaultFor(dev); saveBinds(); return; }
+  closeOptions();
+}
+function updateOptions() {
+  const pauseHit = pausePressed(); // consume las pulsaciones de pausa; Esc y Start sirven para volver
+  if (OPT.cap) { // esperando la tecla o botón nuevo
+    for (const dev of DEVICES) menuInput(dev); // mantiene al día los flancos de los menús
+    let done = false;
+    if (OPT.key) {
+      const c = OPT.key; OPT.key = null;
+      if (c === 'Escape') done = true;                                       // cancelar
+      else if (OPT.cap.dev !== 'pad') { assignBind(OPT.cap.dev, OPT.cap.id, c); done = true; }
+    }
+    if (!done && OPT.cap.dev === 'pad') {
+      const btn = padCaptureButton();
+      if (btn !== null) { assignBind('pad', OPT.cap.id, btn); done = true; }
+      else if (time - OPT.capT > 8) done = true;                              // sin pulsar en 8 s, se cancela
+    }
+    if (done) OPT.cap = null;
+    return;
+  }
+  const R = optList().length + 3;
+  let back = pauseHit;
+  for (const dev of DEVICES) {
+    const m = menuInput(dev);
+    if (m.dy) OPT.row = (OPT.row + m.dy + R) % R;
+    if (m.dx && OPT.row === 0) OPT.tab = (OPT.tab + m.dx + 3) % 3;
+    if (m.a) { activateOptRow(); if (state !== 'options') return; if (OPT.cap) return; }
+  }
+  if (back) closeOptions();
+}
+function drawOptions() {
+  drawMenuBg();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Opciones de control', LW / 2, 58);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 14px ' + FONT; ctx.fillText('Elige una acción y pulsa la tecla o el botón que quieras usar', LW / 2, 80);
+  OPT_TABS.forEach(([, label], i) => {
+    const [x, y, w, h] = optTabRect(i), sel = i === OPT.tab, foc = sel && OPT.row === 0;
+    rrect(x, y, w, h, 8); ctx.fillStyle = sel ? '#2f2640' : '#16121e'; ctx.fill();
+    ctx.lineWidth = foc ? 2.5 : 1.5; ctx.strokeStyle = foc ? '#b49bff' : sel ? '#6b5e86' : '#3b3349'; ctx.stroke();
+    ctx.fillStyle = sel ? '#f2eefa' : '#b9afc9'; ctx.font = (sel ? '700 ' : '600 ') + '14px ' + FONT;
+    ctx.fillText(label, x + w / 2, y + 22);
+  });
+  const dev = OPT_TABS[OPT.tab][0], list = optList(), L = list.length;
+  const row = (r, label, value) => {
+    const [x, y, w, h] = optRowRect(r), sel = OPT.row === r;
+    rrect(x, y, w, h, 6); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 2 : 1; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
+    ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = (sel ? '700 ' : '600 ') + '13px ' + FONT;
+    ctx.textAlign = 'left'; ctx.fillText(label, x + 14, y + 16);
+    if (value !== null) { ctx.textAlign = 'right'; ctx.fillStyle = OPT.cap && sel ? '#ffd54a' : '#b9afc9'; ctx.fillText(value, x + w - 14, y + 16); }
+    ctx.textAlign = 'center';
+  };
+  list.forEach((a, i) => {
+    const capping = OPT.cap && OPT.cap.id === a.id && OPT.cap.dev === dev;
+    row(i + 1, a.label, capping ? (dev === 'pad' ? 'pulsa un botón…' : 'pulsa una tecla…') : bindName(dev, a.id));
+  });
+  row(L + 1, 'Restaurar valores por defecto de esta pestaña', null);
+  row(L + 2, 'Volver', null);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
+  ctx.fillText(OPT.cap ? (dev === 'pad' ? 'Pulsa un botón del mando (Esc cancela; sin pulsar en 8 s se cancela solo)' : 'Pulsa la tecla nueva (Esc cancela)')
+    : 'Golpe o clic cambia; ← → cambian de pestaña (fila superior); Esc o Start vuelven', LW / 2, LH - 36);
+  ctx.fillText('Si la tecla ya es de otra acción, se intercambian. Esc siempre pausa; el ratón del Teclado A (clic y rueda) es fijo.', LW / 2, LH - 16);
+}
+
 // ---------- Guía de controles (esquina superior izquierda) ----------
-const GUIDE_ROWS = ['Mover', 'Apuntar', 'Atacar / ejecutar', 'Movimiento / bloqueo', 'Habilidad 1', 'Habilidad 2', 'Fijar / cambiar', 'Cambiar', 'Soltar objetivo', 'Pausa', 'Lanzar (prueba)'];
-const GUIDE = {
-  kb1:   ['WASD', 'Ratón', 'Clic izq. / Espacio', 'Mayús izq.', 'Q', 'E', 'Clic dcho. / R', 'Rueda / Tab', 'Mantener fijar', 'Esc', 'Clic rueda'],
-  kb2:   ['Flechas', 'Al moverte', 'L / K / Intro', 'Ñ / Mayús dcha.', 'I', 'O', 'U', 'P', 'Mantener U', 'Esc', 'J'],
-  pad:   ['Stick izq.', 'Stick dcho.', 'RT / A / X', 'B', 'LB', 'RB', 'LT / Y', 'Stick dcho.', 'Mantener LT', 'Start', 'Cruceta'],
-  touch: ['Joystick', 'Al moverte', 'Atacar', 'Movim.', 'Hab. 1', 'Hab. 2', 'Fijar', 'Fijar', 'Mantener Fijar', 'II', 'Lanzar']
-};
+const GUIDE_ROWS = ['Mover', 'Apuntar', 'Atacar / disparar', 'Movimiento / bloqueo', 'Habilidad 1', 'Habilidad 2', 'Fijar / cambiar', 'Cambiar', 'Soltar objetivo', 'Pausa', 'Lanzar (prueba)'];
+const TOUCH_GUIDE = ['Joystick', 'Al moverte', 'Atacar', 'Movim.', 'Hab. 1', 'Hab. 2', 'Fijar', 'Fijar', 'Mantener Fijar', 'II', 'Lanzar'];
+// Celdas de la guía para un dispositivo, con las teclas o botones que tenga asignados ahora mismo
+function guideCells(dev) {
+  if (dev === 'touch') return TOUCH_GUIDE;
+  if (!BINDS[dev] && dev !== 'pad') return GUIDE_ROWS.map(() => '—'); // p. ej. el aliado IA no tiene teclas
+  const pad = dev === 'pad', b = id => bindName(dev, id);
+  const mv = pad ? 'Stick izq.' : ['up', 'left', 'down', 'right'].map(id => b(id)).join(' ');
+  const pausa = pad ? b('pause') : 'Esc' + (BINDS[dev].pause.length ? ' / ' + b('pause') : '');
+  return [
+    mv,
+    dev === 'kb1' ? 'Ratón' : dev === 'kb2' ? 'Al moverte' : 'Stick dcho.',
+    b('atk') + ' / ' + b('shot'),
+    b('dash'),
+    b('q'), b('e'),
+    dev === 'kb1' ? b('lock') + ' / clic dcho.' : b('lock'),
+    dev === 'kb1' ? b('cycle') + ' / rueda' : b('cycle'),
+    'Mantener ' + b('lock'),
+    pausa,
+    dev === 'kb1' ? 'Clic rueda' : dev === 'kb2' ? 'J' : 'Cruceta'
+  ];
+}
 function drawGuide() {
   const n = players.length, lw = 74, cw = 86, rh = 13;
   const w = lw + n * cw + 8, h = 26 + GUIDE_ROWS.length * rh + 4, x = 8, y = HUD + 6;
@@ -5894,14 +6085,12 @@ function drawGuide() {
     ctx.fillStyle = p.slotColor; ctx.font = '700 11px ' + FONT;
     ctx.fillText('J' + p.id + ' ' + DEVLABEL[p.dev], x + lw + i * cw, y + 16);
   });
+  const cells = players.map(p => guideCells(p.dev.startsWith('pad') ? 'pad' : p.dev));
   GUIDE_ROWS.forEach((row, r) => {
     const yy = y + 30 + r * rh;
     ctx.fillStyle = '#8f86a0'; ctx.font = '400 10px ' + FONT; ctx.fillText(row, x + 8, yy);
     ctx.fillStyle = '#e6e0ef'; ctx.font = '600 10px ' + FONT;
-    players.forEach((p, i) => {
-      const g = GUIDE[p.dev.startsWith('pad') ? 'pad' : p.dev];
-      ctx.fillText(g[r], x + lw + i * cw, yy);
-    });
+    players.forEach((p, i) => ctx.fillText(cells[i][r], x + lw + i * cw, yy));
   });
 }
 
