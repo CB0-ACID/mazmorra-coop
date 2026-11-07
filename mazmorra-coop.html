@@ -894,13 +894,15 @@ function devAct(i) {
   if (i === 0) toggleTest();
   else if (i === 1) { levelSel = devStartDepth - 1; state = 'levels'; }
   else if (i === 2) openIdeas();
+  else if (i === 3) location.href = 'diagnostico-mando.html'; // test de mandos
+  else if (i === 4) location.href = 'https://github.com/CB0-ACID/mazmorra-coop/releases/download/tv-latest/app-debug.apk'; // APK para Android TV
   else state = 'count';
 }
 function updateDev() {
   let back = escPressed();
   for (const dev of DEVICES) {
     const m = menuInput(dev);
-    if (m.dy) devSel = (devSel + m.dy + 4) % 4; // 0-2 filas, 3 = volver
+    if (m.dy) devSel = (devSel + m.dy + 6) % 6; // 0-4 filas, 5 = volver
     if (m.a) { devAct(devSel); return; }
     if (m.d) back = true;
   }
@@ -921,9 +923,9 @@ function drawDev() {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Dev Options', LW / 2, 70);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Herramientas para probar y revisar el juego', LW / 2, 98);
-  const names = ['Autosaltar enemigos por los aires', 'Selección de nivel', 'Diario de ideas'];
-  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Ideas que quiero implementar y que aún considero no viables'];
-  for (let i = 0; i < 3; i++) {
+  const names = ['Autosaltar enemigos por los aires', 'Selección de nivel', 'Diario de ideas', 'Test de mandos', 'Descargar app Android TV'];
+  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Ideas que quiero implementar y que aún considero no viables', 'Muestra qué botones y ejes llegan desde los mandos', 'APK para instalar la app con mandos en la tele'];
+  for (let i = 0; i < 5; i++) {
     const [x, y, w, h] = devRow(i), sel = devSel === i;
     rrect(x, y, w, h, 9); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
@@ -933,9 +935,10 @@ function drawDev() {
     ctx.textAlign = 'right'; ctx.font = '700 13px ' + FONT;
     if (i === 0) { ctx.fillStyle = testMode ? '#ffd54a' : '#8f86a0'; ctx.fillText(testMode ? 'Activado' : 'Desactivado', x + w - 18, y + 26); }
     else if (i === 1) { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + devStartDepth + ' · ' + themeOf(devStartDepth).name, x + w - 18, y + 26); }
-    else { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Abrir ›', x + w - 18, y + 26); }
+    else if (i === 2) { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Abrir ›', x + w - 18, y + 26); }
+    else { ctx.fillStyle = '#d8d0e6'; ctx.fillText(i === 3 ? 'Abrir ›' : 'Descargar ›', x + w - 18, y + 26); }
   }
-  const [bx, by, bw, bh] = devBackRect(), sel = devSel === 3;
+  const [bx, by, bw, bh] = devBackRect(), sel = devSel === 5;
   rrect(bx, by, bw, bh, 7); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
   ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
   ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT; ctx.fillText('Volver', bx + bw / 2, by + 20);
@@ -1101,7 +1104,7 @@ cvs.addEventListener('pointerdown', e => {
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
   } else if (state === 'dev') {
     if (inside(devBackRect())) { state = 'count'; return; }
-    for (let i = 0; i < 3; i++) if (inside(devRow(i))) { devSel = i; devAct(i); return; }
+    for (let i = 0; i < 5; i++) if (inside(devRow(i))) { devSel = i; devAct(i); return; }
   } else if (state === 'levels') {
     if (inside(devBackRect())) { state = 'dev'; return; }
     for (let n = 1; n <= 8; n++) if (inside(levelRect(n))) { devStartDepth = n; levelSel = n - 1; state = 'count'; return; }
