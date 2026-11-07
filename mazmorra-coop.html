@@ -863,15 +863,16 @@ const SFX = {
 //   calm  → sin enemigos (sala despejada, menús)
 //   fight → hay enemigos en la sala
 //   boss  → sala del guardián sin despejar
-// Dos fanfarrias que comparten el mismo motivo (La-Re-Fa#-La… Re): 'room' al despejar una sala y 'boss', más larga y elaborada, al derrotar al guardián.
+// Dos fanfarrias que comparten el mismo motivo: 'room' al despejar una sala y 'boss_win', más larga y elaborada, al derrotar al guardián.
 // Cómo se escriben: cada ficha es una semicorchea (16 por compás). Una nota ('D5', 'F#4', 'Bb3'), varias a la vez unidas con '+' ('D4+F#4+A4'),
 // '-' alarga la anterior, '.' es silencio y '|' solo separa compases para leer mejor.
 // En bajo y arpegio también valen fichas relativas al acorde del compás: R/1 raíz, 3 tercera, 5 quinta, O/8 octava.
 // Batería: k bombo, s caja, h charles, t tom, c platillo (combinables con '+').
-// Un patrón más corto que la pista se repite (p. ej., un compás de batería para todos).
+// Un patrón más corto que la pista se repite (p. ej., un compás de batería para todos). 'shift' transporta en semitonos las notas escritas de una voz.
 // La música se activa, desactiva y ajusta en Opciones > Sonido (AUD); M silencia todo.
 const MUSIC_VOL = 0.5; // volumen de la música respecto al general (los efectos suenan por encima)
 const restBars = n => Array(n * 16).fill('.').join(' ');
+/* Música anterior (Re menor, composición propia), sustituida por las variaciones de Borodin. Se deja comentada:
 const MUSIC_DEF = {
   calm: { bpm: 84, loop: true, fadeIn: 1.2,
     chords: ['Dm', 'Bb', 'F', 'C', 'Dm', 'Gm', 'Bb', 'A', 'Dm', 'Bb', 'F', 'C', 'Dm', 'Gm', 'Bb', 'A'],
@@ -929,6 +930,90 @@ const MUSIC_DEF = {
       { drums: 'k . . . s . s s k+c . . . h . h . | k . h . s . h . k . h . s . h h | k . h . s . h . k . k . s s s s | k+c . . . . . . . t t t t s s s s | k+c . . . . . . . . . . .', gain: 0.9 }
     ] }
 };
+*/
+// Toda la música son variaciones del tema más conocido de las Danzas polovtsianas de Borodin (Príncipe Igor, 1890, dominio público):
+// la «Danza deslizante de las doncellas», la melodía que luego se hizo famosa como «Stranger in Paradise». Tema de 6 compases en La.
+//   calm  → versión tranquila en La mayor; la segunda vuelta repite la melodía una octava arriba, más suave
+//   fight → versión animada en La menor melódica (Do natural), notas repetidas cortadas y batería
+//   boss  → versión en La menor armónica (Fa natural, Sol#), más rápida, doblada a la octava grave
+//   room / boss_win → fanfarrias triunfantes en La mayor; la del guardián sigue con la segunda frase del tema y cierra en grande
+const bars = (...b) => b.join(' | ');
+const THEME_CHILL = bars( // La mayor, como el original
+  'B4 - - - B4 - - - F#5 - - - - - - -',
+  'E5 - F#5 - D5 - - - C#5 - B4 - C#5 - D5 -',
+  'E5 - - - - - - - F#5 - - - C#5 - B4 -',
+  'A4 - F#4 - F#4 - B4 - - - - - - - . .',
+  'C#5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
+  'F#4 - - - - - - - - - G#4 - A4 - C#5 -');
+const THEME_FIGHT = bars( // La menor melódica: notas repetidas cortas y respiraciones para que empuje
+  'B4 - . B4 - . B4 - F#5 - - - - - . .',
+  'E5 - F#5 - D5 - - - C5 - B4 - C5 - D5 -',
+  'E5 - - - . . E5 - F#5 - - - C5 - B4 -',
+  'A4 - F#4 - F#4 - B4 - - - - - . . . .',
+  'C5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
+  'F#4 - - - - - . . . . G#4 - A4 - C5 -');
+const THEME_BOSS = bars( // La menor armónica: el Si-Si-Fa (tritono) del arranque suena amenazante
+  'B4 - - . B4 - - . F5 - - - - - - -',
+  'E5 - F5 - D5 - - - C5 - B4 - C5 - D5 -',
+  'E5 - - - - - - - F5 - - - C5 - B4 -',
+  'A4 - F4 - F4 - B4 - - - - - - - . .',
+  'C5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
+  'F4 - - - - - - - - - G#4 - A4 - C5 -');
+const MUSIC_DEF = {
+  calm: { bpm: 76, loop: true, fadeIn: 1.2,
+    chords: ['Bm', 'E', 'A', 'D', 'E', 'F#m', 'Bm', 'E', 'A', 'D', 'E', 'F#m'],
+    voices: [
+      { notes: THEME_CHILL + ' | ' + restBars(6), wave: 'triangle', gain: 0.14 },
+      { notes: restBars(6) + ' | ' + THEME_CHILL, shift: 12, wave: 'sine', gain: 0.1 }, // segunda vuelta, una octava arriba
+      { notes: 'R - - - - - - - 5 - - - - - - -', base: 40, wave: 'triangle', gain: 0.2, cut: 700 },
+      { notes: '1 . 3 . 5 . 8 . 5 . 3 . 1 . 3 .', base: 57, wave: 'sine', gain: 0.06 },
+      { drums: 'k . . . . . h . . . . . . . h .', gain: 0.3 }
+    ] },
+  fight: { bpm: 132, loop: true, fadeIn: 0.5,
+    chords: ['Bm', 'E', 'Am', 'D', 'E', 'F#dim', 'Bm', 'E', 'Am', 'D', 'E', 'F#dim'],
+    voices: [
+      { notes: THEME_FIGHT + ' | ' + restBars(6), wave: 'square', gain: 0.09, cut: 2600 },
+      { notes: restBars(6) + ' | ' + THEME_FIGHT, shift: 12, wave: 'sawtooth', gain: 0.06, cut: 2400, double: { shift: -12, wave: 'square', gain: 0.05, cut: 1800 } },
+      { notes: 'R . R . R . R . R . R . 5 . O .', base: 40, wave: 'sawtooth', gain: 0.17, cut: 900 },
+      { notes: '1 3 5 3 8 5 3 5 1 3 5 3 8 5 3 5', base: 57, wave: 'square', gain: 0.025, cut: 1800 },
+      { drums: 'k . h . s . h . k . k h s . h h', gain: 0.8 }
+    ] },
+  boss: { bpm: 150, loop: true, fadeIn: 0.25,
+    chords: ['Dm', 'E', 'Am', 'Dm', 'E', 'F', 'Dm', 'E', 'Am', 'Dm', 'E', 'F'],
+    voices: [
+      { notes: THEME_BOSS + ' | ' + restBars(6), wave: 'square', gain: 0.09, cut: 3000, double: { shift: -12, wave: 'sawtooth', gain: 0.05, cut: 1400 } },
+      { notes: restBars(6) + ' | ' + THEME_BOSS, shift: 12, wave: 'square', gain: 0.08, cut: 3200, double: { shift: -24, wave: 'sawtooth', gain: 0.06, cut: 1200 } },
+      { notes: 'R O R O R O R O R O R O 5 O R O', base: 40, wave: 'sawtooth', gain: 0.17, cut: 1100 },
+      { notes: '1 . 3 . 5 . 3 . 1 . 3 . 5 . 8 .', base: 45, wave: 'triangle', gain: 0.05 },
+      { drums: 'k . h k s . h . k k h . s . t t', gain: 0.9 }
+    ] },
+  // Fanfarria de sala: la primera frase del tema, acelerada, que resuelve en La mayor
+  room: { bpm: 160, loop: false, len: 24, chords: ['Bm', 'A'],
+    voices: [
+      { notes: 'B4 B4 F#5 - - - E5 F#5 D5 C#5 B4 C#5 D5 - E5 - | A5 - - - - - - -', wave: 'square', gain: 0.11, cut: 3200 },
+      { notes: '. . . . . . C#5 D5 B4 A4 G#4 A4 B4 - C#5 - | E5 - - - - - - -', wave: 'triangle', gain: 0.08 },
+      { notes: '. . . . . . E4+G#4+B4 - - - - - - - - - | A4+C#5+E5 - - - - - - -', wave: 'triangle', gain: 0.06 },
+      { notes: 'B2 . . . . . E2 . . . . . E2 - - - | A1 - - - - - - -', wave: 'sawtooth', gain: 0.16, cut: 900 },
+      { drums: 'k . . . s . k . . . s . s s s s | k+c . . . . . . .', gain: 0.8 }
+    ] },
+  // Fanfarria del guardián: empieza igual que la de sala, sigue con la segunda frase del tema una octava arriba,
+  // armonía a terceras, arpegios, redoble y un arpegio final de La mayor
+  boss_win: { bpm: 160, loop: false, len: 88, chords: ['Bm', 'D', 'A', 'E', 'A', 'A'],
+    voices: [
+      { notes: bars('B4 B4 F#5 - - - E5 F#5 D5 C#5 B4 C#5 D5 - E5 -', 'F#5 - - - C#6 - B5 - A5 - F#5 - F#5 - B5 -', 'C#6 - B5 - A5 - G#5 - A5 - G#5 - F#5 - - -',
+        'G#5 - A5 - C#6 - - - B5 - - - G#5 - E5 -', 'A5 - C#6 - E6 - - - A6 - - - - - - -', '- - - - - - - -'), wave: 'square', gain: 0.11, cut: 3400 },
+      { notes: bars('. . . . . . C#5 D5 B4 A4 G#4 A4 B4 - C#5 -', 'D5 - - - A5 - G#5 - F#5 - D5 - D5 - G#5 -', 'A5 - G#5 - E5 - E5 - F#5 - E5 - D5 - - -',
+        'E5 - F#5 - A5 - - - G#5 - - - E5 - B4 -', 'E5 - A5 - C#6 - - - E6 - - - - - - -', '- - - - - - - -'), wave: 'triangle', gain: 0.08 },
+      { notes: bars('. . . . . . E4+G#4+B4 - - - - - - - - -', 'D4+F#4+A4 - - - - - - - - - - - - - - -', 'C#4+E4+A4 - - - - - - - E4+G#4+B4 - - - - - - -',
+        'E4+G#4+B4+D5 - - - - - - - - - - - - - - -', 'A3+E4+A4+C#5 - - - - - - - - - - - - - - -', '- - - - - - - -'), wave: 'triangle', gain: 0.05 },
+      { notes: bars(restBars(1), '1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8', '1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8', '1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8',
+        '8 5 3 1 8 5 3 1 . . . . . . . .', '. . . . . . . .'), base: 74, wave: 'sine', gain: 0.05 },
+      { notes: bars('B2 . . . . . E2 . . . . . E2 - - -', 'D2 - - - D3 - - - D2 - - - A2 - - -', 'C#2 - - - C#3 - - - E2 - - - E3 - - -',
+        'E2 - - - E3 - - - E2 - E2 - E2 - E2 -', 'A1 - - - - - - - - - - - - - - -', '- - - - - - - -'), wave: 'sawtooth', gain: 0.17, cut: 900 },
+      { drums: bars('k . . . s . k . . . s . s s s s', 'k+c . h . s . h . k . h . s . h h', 'k . h . s . h . k . k . s . h h',
+        'k . h . s . h . t t t t s s s s', 'k+c . . . . . . . . . . . . . . .', '. . . . . . . .'), gain: 0.9 }
+    ] }
+};
 const mf = m => 440 * Math.pow(2, (m - 69) / 12);
 const NOTE_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 function parseNote(s) { const m = /^([A-G])(#|b)?(-?\d)$/.exec(s); return m ? 12 * (+m[3] + 1) + NOTE_PC[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) : null; }
@@ -950,7 +1035,7 @@ function compileMusic(def) {
       if (v.drums) { for (const d of tok.split('+')) steps[i].push({ drum: d, gain: v.gain }); continue; }
       const ch = chords[Math.floor(i / 16) % chords.length];
       cur = tok.split('+').map(t => {
-        let m = parseNote(t);
+        let m = parseNote(t); if (m !== null) m += v.shift || 0;
         if (m === null && t in REL) { const root = v.base + ((ch.pc - v.base % 12) + 12) % 12; m = REL[t] === 3 ? root + 12 : root + ch.iv[REL[t]]; }
         if (m === null) { console.warn('Música: ficha desconocida', t); return null; }
         const ev = { midi: m, len: 1, v };
