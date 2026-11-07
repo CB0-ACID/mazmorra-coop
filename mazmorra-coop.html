@@ -842,8 +842,17 @@ function claim(dev) {
 }
 function moveCursor(s, dx, dy) {
   let col = s.cur % 2, row = Math.floor(s.cur / 2);
-  col = (col + dx + 2) % 2; row = (row + dy + 4) % 4;
-  s.cur = row * 2 + col;
+  for (let k = 0; k < 8; k++) { // avanza en esa dirección hasta encontrar un personaje libre
+    col = (col + dx + 2) % 2; row = (row + dy + 4) % 4;
+    const ci = row * 2 + col;
+    if (!takenBy(ci, s)) { s.cur = ci; return; }
+  }
+}
+// Personaje libre más cercano para un cursor que está sobre uno ya cogido (o el mismo si está libre)
+function freeCursor(s) {
+  if (!takenBy(s.cur, s)) return s.cur;
+  for (let i = 0; i < 8; i++) if (!takenBy(i, s)) return i;
+  return s.cur;
 }
 // Flujo: cada jugador elige personaje (queda «elegido») y después se pulsa Empezar.
 // Con teclado o mando: golpe elige; con todos listos, golpe otra vez o Start empiezan. Moverse cambia la elección.
@@ -863,6 +872,7 @@ function pointerConfirm(dev) {
 function selectReady() { return slots.length === want && slots.every(s => s.locked); }
 function startFromSelect() { if (startT < 0 && selectReady()) startT = 0.6; }
 function updateSelect(dt) {
+  for (const q of slots) if (!q.locked) q.cur = freeCursor(q); // nadie se queda sobre un personaje ya cogido
   if (startT >= 0) { startT -= dt; if (startT < 0) startGame(); return; }
   if (detailChar >= 0) { // ficha completa abierta: golpe, Start, Esc o Select la cierran; el resto de controles se ignoran
     let go = escPressed() || detailOpenPressed();
@@ -910,8 +920,8 @@ cvs.addEventListener('mousemove', e => {
     hoverCard = -1; hoverStart = insideAt(x, y, startRect());
     for (let i = 0; i < 8; i++) if (insideAt(x, y, cardRect(i))) hoverCard = i;
     const s = slots.find(q => q.dev === 'kb1'), ns = npcSlot();
-    if (s && !s.locked && hoverCard >= 0) s.cur = hoverCard; // el cursor de J (teclado A) sigue al ratón
-    else if (s && s.locked && ns && ns.ctrl === 'kb1' && !ns.locked && hoverCard >= 0) ns.cur = hoverCard; // y luego el del aliado IA
+    if (s && !s.locked && hoverCard >= 0 && !takenBy(hoverCard, s)) s.cur = hoverCard; // el cursor de J (teclado A) sigue al ratón
+    else if (s && s.locked && ns && ns.ctrl === 'kb1' && !ns.locked && hoverCard >= 0 && !takenBy(hoverCard, ns)) ns.cur = hoverCard; // y luego el del aliado IA
   }
 });
 cvs.addEventListener('mouseleave', () => { hoverCard = -1; });
@@ -949,6 +959,7 @@ cvs.addEventListener('pointerdown', e => {
       const s = slots.find(q => q.dev === dev) || claim(dev);
       if (!s) return;
       const t = pointerTarget(dev);
+      if (!t || takenBy(i, t)) return; // ya lo ha cogido otro jugador: no se puede señalar
       t.locked = false; t.cur = i; lastCur = i; // paso 1: señalar (cambiar de personaje anula la confirmación)
     }
   }
