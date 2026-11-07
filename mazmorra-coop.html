@@ -826,6 +826,194 @@ const SFX = {
   revolver(lv) { if (sfxOk('rev', 0.05)) { noise(0.2, 1400, 180, 0.75, 'lowpass', 0.8); tone(0.14, 170 - lv * 40, 45, 0.8, 'triangle'); noise(0.03, 6000, 3000, 0.4, 'highpass', 0.6); } },
   claw(heavy) { if (sfxOk('swing', 0.03)) { noise(heavy ? 0.14 : 0.07, heavy ? 5000 : 7000, heavy ? 1500 : 2500, heavy ? 0.45 : 0.3, 'highpass', 0.8); tone(0.05, 1400, 900, 0.08, 'triangle'); } }
 };
+// ---------- Música de fondo sintetizada (sin archivos) ----------
+// Tres pistas en bucle según lo que pasa en la sala:
+//   calm  → sin enemigos (sala despejada, menús)
+//   fight → hay enemigos en la sala
+//   boss  → sala del guardián sin despejar
+// Dos fanfarrias que comparten el mismo motivo (La-Re-Fa#-La… Re): 'room' al despejar una sala y 'boss', más larga y elaborada, al derrotar al guardián.
+// Cómo se escriben: cada ficha es una semicorchea (16 por compás). Una nota ('D5', 'F#4', 'Bb3'), varias a la vez unidas con '+' ('D4+F#4+A4'),
+// '-' alarga la anterior, '.' es silencio y '|' solo separa compases para leer mejor.
+// En bajo y arpegio también valen fichas relativas al acorde del compás: R/1 raíz, 3 tercera, 5 quinta, O/8 octava.
+// Batería: k bombo, s caja, h charles, t tom, c platillo (combinables con '+').
+// Un patrón más corto que la pista se repite (p. ej., un compás de batería para todos).
+// La música se apaga desde Opciones de control > General (localStorage mz-music); M sigue silenciándolo todo.
+const MUSIC_VOL = 0.5; // volumen de la música respecto al general (los efectos suenan por encima)
+const restBars = n => Array(n * 16).fill('.').join(' ');
+const MUSIC_DEF = {
+  calm: { bpm: 84, loop: true, fadeIn: 1.2,
+    chords: ['Dm', 'Bb', 'F', 'C', 'Dm', 'Gm', 'Bb', 'A', 'Dm', 'Bb', 'F', 'C', 'Dm', 'Gm', 'Bb', 'A'],
+    voices: [
+      { notes: restBars(8) + // la primera vuelta solo acompañamiento; la melodía entra en la segunda
+        ' | A4 - - - - - D5 - C5 - - - A4 - - - | Bb4 - - - - - - - F4 - - - . . . . | A4 - - - C5 - - - F5 - - - E5 - D5 - | E5 - - - - - - - C5 - - - . . . .' +
+        ' | D5 - - - - - F5 - E5 - - - D5 - - - | Bb4 - - - D5 - - - G5 - - - F5 - - - | F5 - - - D5 - - - Bb4 - - - C5 - D5 - | C#5 - - - - - - - - - - - . . . .',
+        wave: 'triangle', gain: 0.15 },
+      { notes: 'R - - - - - - - 5 - - - - - - -', base: 38, wave: 'triangle', gain: 0.2, cut: 700 },
+      { notes: '1 . 3 . 5 . 8 . 5 . 3 . 1 . 3 .', base: 62, wave: 'sine', gain: 0.06 },
+      { drums: 'k . . . . . h . . . k . . . h .', gain: 0.35 }
+    ] },
+  fight: { bpm: 132, loop: true, fadeIn: 0.5,
+    chords: ['Dm', 'Dm', 'Bb', 'C', 'Dm', 'Dm', 'Gm', 'A'],
+    voices: [
+      { notes: 'D5 - . D5 F5 - . E5 - D5 - . C5 - A4 - | D5 - - - - - . . . . A4 - C5 - D5 - | F5 - . F5 G5 - F5 - E5 - D5 - . . F5 - | E5 - - - - - . . G5 - - - E5 - C5 -' +
+        ' | D5 - . D5 F5 - . E5 - D5 - . C5 - A4 - | A5 - - - G5 - F5 - E5 - F5 - D5 - - - | G5 - - - Bb5 - A5 - G5 - F5 - D5 - . . | E5 - - - C#5 - - - A4 - - - E5 - C#5 -',
+        wave: 'square', gain: 0.09, cut: 2600 },
+      { notes: 'R . R . R . R . R . R . 5 . O .', base: 38, wave: 'sawtooth', gain: 0.17, cut: 900 },
+      { notes: '1 3 5 3 8 5 3 5 1 3 5 3 8 5 3 5', base: 62, wave: 'square', gain: 0.025, cut: 1800 },
+      { drums: 'k . h . s . h . k . k h s . h h', gain: 0.8 }
+    ] },
+  boss: { bpm: 148, loop: true, fadeIn: 0.25,
+    chords: ['Dm', 'Eb', 'Dm', 'Eb', 'Bb', 'A', 'Dm', 'A'],
+    voices: [
+      { notes: 'D5 - - - A4 - D5 - F5 - - - E5 - D5 - | Eb5 - - - - - D5 - Eb5 - G5 - Bb5 - - - | A5 - - - F5 - - - D5 - F5 - A5 - - - | G5 - - - Eb5 - - - Bb4 - - - . . . .' +
+        ' | Bb5 - - - A5 - G5 - F5 - - - D5 - - - | E5 - - - C#5 - E5 - A5 - - - G5 - E5 - | F5 - E5 - D5 - - - A4 - D5 - F5 - A5 - | C#6 - - - - - - - A5 - E5 - C#5 - A4 -',
+        wave: 'square', gain: 0.09, cut: 3000, double: { shift: -12, wave: 'sawtooth', gain: 0.05, cut: 1400 } },
+      { notes: 'R O R O R O R O R O R O 5 O R O', base: 38, wave: 'sawtooth', gain: 0.17, cut: 1100 },
+      { notes: '1 . 3 . 5 . 3 . 1 . 3 . 5 . 8 .', base: 50, wave: 'triangle', gain: 0.05 },
+      { drums: 'k . h k s . h . k k h . s . t t', gain: 0.9 }
+    ] },
+  // Fanfarria de sala despejada: el motivo y un acorde de Re mayor
+  room: { bpm: 160, loop: false, len: 24, chords: ['D', 'D'],
+    voices: [
+      { notes: 'A4 D5 F#5 A5 - - F#5 A5 D6 - - - - - - - - - - - - - - -', wave: 'square', gain: 0.11, cut: 3200 },
+      { notes: '. . . . . . D5 F#5 A5 - - - - - - - - - - - - - - -', wave: 'triangle', gain: 0.08 },
+      { notes: '. . . . . . . . D4+F#4+A4 - - - - - - - - - - - - - - -', wave: 'triangle', gain: 0.06 },
+      { notes: 'D3 . . . . . A2 . D2 - - - - - - - - - - - - - - -', wave: 'sawtooth', gain: 0.16, cut: 900 },
+      { drums: 'k . . . s . s s k+c . . . . . . . . . . . . . . .', gain: 0.8 }
+    ] },
+  // Fanfarria del guardián: empieza igual que la de sala y sigue con la cadencia Sib-Do-Re, armonía, arpegios y redoble
+  boss_win: { bpm: 150, loop: false, len: 76, chords: ['D', 'Bb', 'C', 'D', 'D'],
+    voices: [
+      { notes: 'A4 D5 F#5 A5 - - F#5 A5 D6 - - - - - - - | Bb5 - - - A5 - Bb5 - D6 - - - C6 - Bb5 - | C6 - - - Bb5 - C6 - E6 - - - D6 - C6 - | A5 - D6 - F#6 - - - A6 - - - - - - - | - - - - - - - - - - - -',
+        wave: 'square', gain: 0.11, cut: 3400 },
+      { notes: '. . . . . . D5 F#5 A5 - - - - - - - | F5 - - - F5 - F5 - Bb5 - - - A5 - G5 - | G5 - - - G5 - G5 - C6 - - - Bb5 - A5 - | F#5 - A5 - D6 - - - F#6 - - - - - - - | - - - - - - - - - - - -',
+        wave: 'triangle', gain: 0.08 },
+      { notes: '. . . . . . . . D4+F#4+A4 - - - - - - - | Bb3+D4+F4 - - - - - - - - - - - - - - - | C4+E4+G4 - - - - - - - - - - - - - - - | D4+F#4+A4+D5 - - - - - - - - - - - - - - - | - - - - - - - - - - - -',
+        wave: 'triangle', gain: 0.05 },
+      { notes: '. . . . . . . . . . . . . . . . | 1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8 | 1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8 | 8 5 3 1 8 5 3 1 . . . . . . . . | . . . . . . . . . . . .',
+        base: 74, wave: 'sine', gain: 0.05 },
+      { notes: 'D3 . . . . . A2 . D2 - - - D3 - - - | Bb1 - - - Bb2 - - - Bb1 - - - F2 - - - | C2 - - - C3 - - - C2 - - - G2 - - - | D2 - - - D3 - - - D2 - - - - - - - | - - - - - - - - - - - -',
+        wave: 'sawtooth', gain: 0.17, cut: 900 },
+      { drums: 'k . . . s . s s k+c . . . h . h . | k . h . s . h . k . h . s . h h | k . h . s . h . k . k . s s s s | k+c . . . . . . . t t t t s s s s | k+c . . . . . . . . . . .', gain: 0.9 }
+    ] }
+};
+const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+const NOTE_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+function parseNote(s) { const m = /^([A-G])(#|b)?(-?\d)$/.exec(s); return m ? 12 * (+m[3] + 1) + NOTE_PC[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) : null; }
+function parseChord(s) {
+  const m = /^([A-G])(#|b)?(m|dim|sus)?$/.exec(s), pc = (NOTE_PC[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + 12) % 12;
+  return { pc, iv: m[3] === 'm' ? [0, 3, 7] : m[3] === 'dim' ? [0, 3, 6] : m[3] === 'sus' ? [0, 5, 7] : [0, 4, 7] };
+}
+const REL = { R: 0, 1: 0, 3: 1, 5: 2, O: 3, 8: 3 };
+function compileMusic(def) {
+  const len = def.len || def.chords.length * 16, chords = def.chords.map(parseChord), steps = Array.from({ length: len }, () => []);
+  for (const v of def.voices) {
+    const tk = (v.drums || v.notes).split(/\s+/).filter(x => x && x !== '|');
+    let cur = null; // nota(s) abiertas que '-' alarga
+    for (let i = 0; i < len; i++) {
+      const tok = tk[i % tk.length];
+      if (tok === '-') { if (cur) for (const ev of cur) ev.len++; continue; }
+      cur = null;
+      if (tok === '.') continue;
+      if (v.drums) { for (const d of tok.split('+')) steps[i].push({ drum: d, gain: v.gain }); continue; }
+      const ch = chords[Math.floor(i / 16) % chords.length];
+      cur = tok.split('+').map(t => {
+        let m = parseNote(t);
+        if (m === null && t in REL) { const root = v.base + ((ch.pc - v.base % 12) + 12) % 12; m = REL[t] === 3 ? root + 12 : root + ch.iv[REL[t]]; }
+        if (m === null) { console.warn('Música: ficha desconocida', t); return null; }
+        const ev = { midi: m, len: 1, v };
+        steps[i].push(ev); return ev;
+      }).filter(Boolean);
+    }
+  }
+  return { bpm: def.bpm, loop: def.loop, fadeIn: def.fadeIn || 0.3, len, steps };
+}
+let MUSIC = null; // pistas compiladas (al primer uso)
+const MUS = { mode: null, track: null, bus: null, step: 0, next: 0, fanUntil: 0, duck: 1,
+  on: (() => { try { return localStorage.getItem('mz-music') !== '0'; } catch (_) { return true; } })() };
+function setMusicOn(v) { MUS.on = v; try { localStorage.setItem('mz-music', v ? '1' : '0'); } catch (_) {} }
+function mVoice(bus, t, midi, dur, wave, gain, cut) {
+  const o = actx.createOscillator(), g = actx.createGain(), end = t + dur, rel = Math.min(0.15, 0.04 + dur * 0.3);
+  o.type = wave; o.frequency.value = mf(midi);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(gain * 0.6, Math.min(end, t + 0.2)); g.gain.setValueAtTime(gain * 0.6, end);
+  g.gain.exponentialRampToValueAtTime(0.0001, end + rel);
+  let node = o;
+  if (cut) { const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut; f.Q.value = 1.5; o.connect(f); node = f; }
+  node.connect(g); g.connect(bus); o.start(t); o.stop(end + rel + 0.05);
+}
+function mNoise(bus, t, dur, freq, type, gain) {
+  const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  s.buffer = noiseBuf; s.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = 0.8;
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(bus); s.start(t, Math.random() * 0.4); s.stop(t + dur + 0.05);
+}
+function mSweep(bus, t, dur, f0, f1, gain, wave) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = wave; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(bus); o.start(t); o.stop(t + dur + 0.05);
+}
+function mDrum(bus, t, d, k) {
+  if (d === 'k') mSweep(bus, t, 0.2, 140, 42, 0.6 * k, 'sine');
+  else if (d === 's') { mNoise(bus, t, 0.14, 1800, 'bandpass', 0.35 * k); mSweep(bus, t, 0.08, 200, 120, 0.15 * k, 'triangle'); }
+  else if (d === 'h') mNoise(bus, t, 0.04, 7000, 'highpass', 0.1 * k);
+  else if (d === 't') mSweep(bus, t, 0.22, 170, 70, 0.4 * k, 'triangle');
+  else if (d === 'c') mNoise(bus, t, 1.2, 4500, 'highpass', 0.22 * k);
+}
+function playMusicStep(tr, i, t, sd, bus) {
+  for (const ev of tr.steps[i]) {
+    if (ev.drum) { mDrum(bus, t, ev.drum, ev.gain); continue; }
+    const v = ev.v, dur = ev.len * sd * 0.92;
+    mVoice(bus, t, ev.midi, dur, v.wave, v.gain, v.cut);
+    if (v.double) mVoice(bus, t, ev.midi + v.double.shift, dur, v.double.wave, v.double.gain, v.double.cut);
+  }
+}
+function musicWanted() {
+  if (state === 'over') return null; // derrota: silencio
+  if (!(state === 'play' || state === 'pause' || state === 'tutorial') || !room || room.cleared) return 'calm';
+  return room.type === 'boss' ? 'boss' : 'fight'; // mientras la sala no esté despejada (también entre oleadas)
+}
+function musicSwitch(mode) {
+  const t = actx.currentTime;
+  if (MUS.bus) { // la pista anterior se funde y se suelta
+    const old = MUS.bus; old.gain.cancelScheduledValues(t); old.gain.setValueAtTime(old.gain.value, t); old.gain.linearRampToValueAtTime(0, t + 0.6);
+    setTimeout(() => old.disconnect(), 1200);
+  }
+  MUS.mode = mode; MUS.bus = null; MUS.track = null;
+  if (!mode) return;
+  MUS.track = MUSIC[mode]; MUS.bus = actx.createGain(); MUS.bus.connect(master);
+  MUS.bus.gain.setValueAtTime(0, t); MUS.bus.gain.linearRampToValueAtTime(MUSIC_VOL * MUS.duck, t + MUS.track.fadeIn);
+  MUS.step = 0; MUS.next = t + 0.08;
+}
+// Se llama en cada fotograma: elige pista y programa las notas que tocan en los próximos 0,2 s
+function musicUpdate() {
+  if (!actx) return;
+  if (!MUSIC) { MUSIC = {}; for (const k in MUSIC_DEF) MUSIC[k] = compileMusic(MUSIC_DEF[k]); }
+  const t = actx.currentTime, want = !MUS.on || t < MUS.fanUntil ? null : musicWanted();
+  if (want !== MUS.mode) musicSwitch(want);
+  const duck = state === 'pause' ? 0.4 : 1; // en pausa, más baja
+  if (MUS.bus && duck !== MUS.duck) { MUS.duck = duck; MUS.bus.gain.setTargetAtTime(MUSIC_VOL * duck, t, 0.15); }
+  const tr = MUS.track; if (!tr) return;
+  const sd = 60 / tr.bpm / 4;
+  if (MUS.next < t) MUS.next = t + 0.03; // tras un parón (pestaña oculta), no recuperar notas atrasadas
+  while (MUS.next < t + 0.2) {
+    if (!muted) playMusicStep(tr, MUS.step, MUS.next, sd, MUS.bus);
+    MUS.step = (MUS.step + 1) % tr.len; MUS.next += sd;
+  }
+}
+// Fanfarria: corta la pista de fondo, suena una vez y después entra la música tranquila
+function musicFanfare(kind) {
+  if (!actx || !MUS.on) return;
+  musicUpdate(); // asegura las pistas compiladas
+  const tr = MUSIC[kind === 'boss' ? 'boss_win' : 'room'], t = actx.currentTime + 0.05, sd = 60 / tr.bpm / 4;
+  MUS.fanUntil = t + tr.len * sd + (kind === 'boss' ? 0.4 : 0.1);
+  musicSwitch(null);
+  if (muted) return;
+  const bus = actx.createGain(); bus.gain.value = MUSIC_VOL * 1.15; bus.connect(master);
+  for (let i = 0; i < tr.len; i++) playMusicStep(tr, i, t + i * sd, sd, bus);
+  setTimeout(() => bus.disconnect(), (tr.len * sd + 2) * 1000);
+}
 let countSel = 2, want = 2, slots = [], startT = -1;
 let pauseSel = 0, showGuide = false, overSel = 0;
 // Modo de prueba: el clic de la rueda (teclado A y ratón), J (teclado B) o la cruceta lanzan por los aires al enemigo apuntado
@@ -1356,6 +1544,7 @@ function makeEnemy(type, x, y, elite) {
 
 function roomCleared() {
   room.cleared = true; bullets = []; hazards = [];
+  musicFanfare(room.type === 'boss' ? 'boss' : 'room');
   let revived = false;
   for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
   if (room.type === 'boss') { room.stairs = true; showBanner('Guardián derrotado: haz clic junto al portal'); }
@@ -7827,7 +8016,8 @@ function drawIdeas() {
 // Pestañas: Teclado A, Teclado B y Mandos (la asignación de mandos vale para todos). Fila 0 = pestañas;
 // filas 1..n = acciones; luego «Restaurar» y «Volver».
 const OPT_TABS = [['kb1', 'Teclado A'], ['kb2', 'Teclado B'], ['pad', 'Mandos'], ['gen', 'General']];
-const GEN_OPTS = [{ id: 'tut', label: 'Tutorial al empezar cada personaje' }]; // pestaña General: interruptores de juego
+const GEN_OPTS = [{ id: 'tut', label: 'Tutorial al empezar cada personaje', get: () => TUT.on, set: setTutOn },
+  { id: 'music', label: 'Música de fondo', get: () => MUS.on, set: setMusicOn }]; // pestaña General: interruptores de juego
 const OPT = { tab: 0, row: 0, from: 'count', cap: null, key: null, capT: 0, capIgnore: new Set() };
 // Mientras se espera una tecla nueva, la primera pulsación (sin repetición) se guarda para la asignación
 addEventListener('keydown', e => { if (state === 'options' && OPT.cap && !e.repeat) { OPT.key = e.code; e.preventDefault(); } });
@@ -7867,7 +8057,7 @@ function padCaptureButton() {
 function activateOptRow() {
   const dev = OPT_TABS[OPT.tab][0], L = optList().length, r = OPT.row;
   if (r === 0) { OPT.tab = (OPT.tab + 1) % OPT_TABS.length; return; }
-  if (dev === 'gen') { if (r <= L) setTutOn(!TUT.on); else if (r === L + 1) setTutOn(true); else closeOptions(); return; }
+  if (dev === 'gen') { if (r <= L) { const o = GEN_OPTS[r - 1]; o.set(!o.get()); } else if (r === L + 1) GEN_OPTS.forEach(o => o.set(true)); else closeOptions(); return; }
   if (r <= L) { startCapture(dev, optList()[r - 1].id); return; }
   if (r === L + 1) { BINDS[dev] = defaultFor(dev); saveBinds(); return; }
   closeOptions();
@@ -7924,7 +8114,7 @@ function drawOptions() {
   };
   list.forEach((a, i) => {
     const capping = OPT.cap && OPT.cap.id === a.id && OPT.cap.dev === dev;
-    row(i + 1, a.label, capping ? (dev === 'pad' ? 'pulsa un botón…' : 'pulsa una tecla…') : dev === 'gen' ? (TUT.on ? 'Activado' : 'Desactivado') : bindName(dev, a.id));
+    row(i + 1, a.label, capping ? (dev === 'pad' ? 'pulsa un botón…' : 'pulsa una tecla…') : dev === 'gen' ? (a.get() ? 'Activado' : 'Desactivado') : bindName(dev, a.id));
   });
   row(L + 1, 'Restaurar valores por defecto de esta pestaña', null);
   row(L + 2, 'Volver', null);
@@ -7986,12 +8176,13 @@ function frame(now) {
   while (acc >= STEP) { update(STEP); acc -= STEP; }
   if (isMenuState() !== lastMenu) resize(); // al cambiar entre menú y juego, el lienzo cambia de tamaño
   draw();
+  musicUpdate();
   requestAnimationFrame(frame);
 }
 resize();
 requestAnimationFrame(frame);
 // Gancho de depuración para pruebas automáticas: solo existe si la URL lleva ?debug
-if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS }; }, enterRoom, roomCleared, update };
+if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS }; }, enterRoom, roomCleared, update, MUS, musicFanfare };
 })();
 
 // ===== Código retirado, comentado y sin efecto =====
