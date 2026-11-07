@@ -656,6 +656,21 @@ const BUFFER = 0.25;      // búfer de entrada: una pulsación se recuerda 0,25 
 // Sensación del cuerpo a cuerpo
 const HITSTOP_LIGHT = 0.045, HITSTOP_HEAVY = 0.085, HITSTOP_FLURRY = 0.025; // congelado al acertar
 const HITSTUN_LIGHT = 0.18, HITSTUN_HEAVY = 0.25;
+// Al recibir daño un jugador: hitstun breve (sin control, sale despedido), luego invulnerabilidad parpadeando.
+// Referencias: Terraria 0,67 s de invulnerabilidad, Rayman 0,5 s, Alundra/Shantae ~1 s, Hollow Knight 1,7 s con el amuleto.
+// Hitstun corto (0,2-0,35 s) para no encadenar golpes injustos con 4 jugadores y muchos enemigos en pantalla.
+const HURT = {
+  inv: 1.0,          // segundos invulnerable tras el golpe (cuenta desde el impacto, incluye el hitstun)
+  stun: 0.2,         // hitstun de un golpe normal
+  stunHeavy: 0.35,   // hitstun de un golpe fuerte (daño >= heavyDmg)
+  heavyDmg: 28,
+  stunMul: { heavy: 0.6, medium: 1, light: 1.1 }, // los tanques apenas se inmutan; los ágiles salen más despedidos
+  hitstop: 0.05,     // congelado de la acción al encajar el golpe
+  kb: 260,           // empuje base (se multiplica por el kbMul del peso)
+  blink: 0.07,       // medio ciclo de parpadeo en segundos (~7 parpadeos por segundo)
+  blinkFast: 0.04,   // en el último cuarto de la ventana parpadea más rápido: avisa de que se acaba
+  revive: 1.5        // invulnerabilidad al levantarse tras caer
+};
 // Bloqueo (tanques): mantener el botón de movimiento; frena y para lo que llega por delante
 const BLOCK_ARC = 1.3, BLOCK_SPEED = 0.4, BLOCK_PERFECT = 0.2; // ángulo cubierto, velocidad, ventana de bloqueo perfecto // reacción del enemigo: interrumpe su acción
 
@@ -1123,7 +1138,7 @@ function makeEnemy(type, x, y, elite) {
 function roomCleared() {
   room.cleared = true; bullets = []; hazards = [];
   let revived = false;
-  for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = 1.5; revived = true; }
+  for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
   if (room.type === 'boss') { room.stairs = true; showBanner('Guardián derrotado, baja por la escalera'); }
   else {
     showBanner(revived ? 'Sala despejada, compañeros de vuelta' : 'Sala despejada');
@@ -1509,6 +1524,14 @@ function updatePlayer(p, dt) {
   if (p.hurtFx > 0) p.hurtFx -= dt; if (p.healFx > 0) p.healFx -= dt;
   if (p.turretHp != null && !myTurret(p)) p.turretHp = Math.min(AB.turret.hp, p.turretHp + AB.turret.regen * dt); // la torreta guardada se repara
   if (p.comboT > 0) { p.comboT -= dt; if (p.comboT <= 0) p.combo = 0; }
+  if (p.mercyT > 0) p.mercyT -= dt; if (p.hitFlash > 0) p.hitFlash -= dt;
+  if (p.hitstunT > 0) { // hitstun: sin control, solo el empuje del golpe (lo pulsado se guarda en el búfer y sale al recuperarse)
+    p.hitstunT -= dt; p.mvx = p.mvy = 0; p.blocking = false;
+    p.x += p.kbx * dt; p.y += p.kby * dt;
+    const dk = Math.max(0, 1 - 8 * dt); p.kbx *= dk; p.kby *= dk;
+    collide(p, true);
+    return;
+  }
 
   let mx = p.coverBy || p.reviving ? 0 : inp.x, my = p.coverBy || p.reviving ? 0 : inp.y; const mm = Math.hypot(mx, my); // cubierto (le lleva Ceniza) o levantando a alguien: quieto
   if (mm > 0.2) { p.fx = mx / mm; p.fy = my / mm; }
@@ -2217,7 +2240,7 @@ function updateRevive(dt) {
       if (!p.ghost) { p.bleed = (p.bleed == null ? REVIVE.bleed : p.bleed) - dt; if (p.bleed <= 0) { p.ghost = true; p.bleed = 0; floatText(p.x, p.y - 34, 'Fantasma', '#a79cb6'); } }
     }
     if (p.rev >= 1) { // ¡en pie!
-      p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = 1.5;
+      p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive;
       burst(p.x, p.y - 12, '#7ee08a', 20); floatText(p.x, p.y - 36, '¡En pie!', '#7ee08a'); SFX.launch();
     }
   }
@@ -3722,11 +3745,16 @@ function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
   if (p.down || p.inv > 0 || p.jump || p.rush || p.drop || p.leap || p.dragonRush || p.reapDash || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
   if (dmg == null) dmg = srcEnemy ? edmg(srcEnemy, 'touch') : 20;
-  p.hp -= dmg; p.inv = 1.0; p.hurtFx = 0.5; SFX.hurt();
+  const heavyHit = dmg >= HURT.heavyDmg;
+  p.hp -= dmg; p.inv = HURT.inv; p.mercyT = HURT.inv; p.hurtFx = 0.5; p.hitFlash = 0.1; SFX.hurt();
+  p.hitstunT = (heavyHit ? HURT.stunHeavy : HURT.stun) * (HURT.stunMul[p.ch.weight] || 1);
+  hitstop = Math.max(hitstop, HURT.hitstop);
+  // el golpe interrumpe lo que estuviera haciendo
+  p.slash = null; p.cast = null; p.charging = false; p.mCharging = false; p.mHold = null; p.flurry = null; p.fan = null; p.burst = null; p.blocking = false; p.moveT = 0;
   floatText(p.x + (Math.random() - 0.5) * 14, p.y - 50 * p.ch.size, '-' + Math.round(dmg), '#ff5a6e');
   const dx = p.x - sx, dy = p.y - sy, d = Math.hypot(dx, dy) || 1;
   const kbm = (WEIGHT[p.ch.weight] || WEIGHT.medium).kbMul; // los pesados apenas se mueven al recibir golpes
-  p.kbx = dx / d * 260 * kbm; p.kby = dy / d * 260 * kbm;
+  p.kbx = dx / d * HURT.kb * kbm * (heavyHit ? 1.3 : 1); p.kby = dy / d * HURT.kb * kbm * (heavyHit ? 1.3 : 1);
   shake = Math.max(shake, 6); burst(p.x, p.y - 12, p.color, 10);
   if (p.hp <= 0) { p.hp = 0; p.down = true; p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
   return true;
@@ -5231,7 +5259,10 @@ function drawPlayer(p) {
   ctx.lineTo(p.x + Math.cos(a + 2.6) * (p.r + 2), p.y + Math.sin(a + 2.6) * (p.r + 2) * 0.6);
   ctx.lineTo(p.x + Math.cos(a - 2.6) * (p.r + 2), p.y + Math.sin(a - 2.6) * (p.r + 2) * 0.6);
   ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
-  if (p.inv > 0 && Math.floor(time * 20) % 2) ctx.globalAlpha = 0.35;
+  if (p.mercyT > 0 && !p.down) { // parpadeo de la invulnerabilidad tras el golpe; acelera al final
+    const per = p.mercyT < HURT.inv * 0.25 ? HURT.blinkFast : HURT.blink;
+    if (Math.floor(time / per) % 2) ctx.globalAlpha = 0.25;
+  }
   { // cuerpo vivo: se inclina hacia la marcha, se balancea al andar y se estira o aplasta al arrancar y parar
     const wt = WEIGHT[p.ch.weight] || WEIGHT.medium, vx = p.mvx || 0, vy = p.mvy || 0, sp = Math.min(1, Math.hypot(vx, vy));
     const bob = Math.abs(Math.sin(p.walk || 0)) * wt.bob * sp, sq = p.sq || 0, pz = p.z || 0;
@@ -5243,7 +5274,9 @@ function drawPlayer(p) {
     }
     const spinA = p.flip && p.flipAng ? p.flipAng : 0; // voltereta del doble salto: gira el cuerpo sobre su centro
     if (spinA) { const px = p.x, py = p.y - 14 * p.ch.size - (p.z || 0); ctx.save(); ctx.translate(px, py); ctx.rotate(spinA); ctx.translate(-px, -py); }
-    drawFigure(p.x, p.y, p.ch, p.ch.size, (p.z || 0) + bob, { ox: vx * wt.lean, oy: vy * wt.lean * 0.6, sx: 1 - sq, sy: 1 + sq });
+    const fch = p.hitFlash > 0 ? Object.assign({}, p.ch, { color: '#ffffff' }) : p.ch; // destello blanco al encajar el golpe
+    const jit = p.hitstunT > 0 ? Math.sin(time * 90) * 2.2 : 0; // tiembla mientras dura el hitstun
+    drawFigure(p.x + jit, p.y, fch, p.ch.size, (p.z || 0) + bob, { ox: vx * wt.lean, oy: vy * wt.lean * 0.6, sx: 1 - sq, sy: 1 + sq });
     if (spinA) ctx.restore();
   }
   ctx.globalAlpha = 1;
