@@ -1,0 +1,46 @@
+name: Build Android TV APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'mazmorra-coop.html'
+      - '.github/workflows/android-tv.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Copiar el juego a los assets de la app
+        run: |
+          mkdir -p android/app/src/main/assets
+          cp mazmorra-coop.html android/app/src/main/assets/index.html
+
+      - name: Compilar APK de depuración
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+
+      - name: Publicar APK en la release tv-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view tv-latest >/dev/null 2>&1 || gh release create tv-latest --prerelease --title "APK para Android TV" --notes "Última compilación automática desde main"
+          gh release upload tv-latest android/app/build/outputs/apk/debug/app-debug.apk --clobber
