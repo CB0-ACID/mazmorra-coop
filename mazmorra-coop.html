@@ -250,7 +250,7 @@ const AB = {
   shield:    { r: 95, time: 3.5 },
   pillar:    { dist: 180, r: 62, delay: 0.35, dmg: 2 },
   taunt:     { r: 280, time: 4 },
-  shieldThrow: { speed: 640, range: 360, r: 16, dmg: 1.6, sta: 1.4, kb: 320, bounceR: 230, bounces: 2, homing: 9, returnSpeed: 720, maxTime: 4, cd: 4 }, // Lanzar escudo (Ceniza, con el escudo bajado): recto, rebota en 2 y vuelve
+  shieldThrow: { speed: 640, range: 360, r: 16, dmg: 1.6, sta: 1.4, kb: 320, bounceR: 230, bounces: 2, returnSpeed: 720, maxTime: 4, cd: 4 }, // Lanzar escudo (Ceniza, con el escudo bajado): recto, rebota en 2 y vuelve
   // vine:   { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 300, tick: 0.25, tickDmg: 0.6 }, // valores anteriores
   vine:      { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 420, tick: 0.25, tickDmg: 0.9,
                tetherHeal: 1, relaunch: 1.5 }, // Liana giratoria (Musgo). tetherHeal: vida por tic a Musgo y al aliado unidos; relaunch: s antes de volver a lanzar al mismo enemigo
@@ -2439,7 +2439,7 @@ function castTaunt(p) {
 // (hasta 2 rebotes) y después vuelve solo. Mientras está en el aire no se puede alzar el escudo
 function castShieldThrow(p) {
   const S = AB.shieldThrow;
-  p.shieldOut = { x: p.x + p.ax * (p.r + 8), y: p.y + p.ay * (p.r + 8), dx: p.ax, dy: p.ay, phase: 'out', dist: 0, left: S.bounces, to: null, hit: new Set(), t: 0, spin: 0 };
+  p.shieldOut = { x: p.x + p.ax * (p.r + 8), y: p.y + p.ay * (p.r + 8), dx: p.ax, dy: p.ay, phase: 'out', dist: 0, left: S.bounces, to: null, hit: new Set(), t: 0, spin: 0, h: 12 };
   p.slash = null; p.mHold = null; p.mCharging = false;
   floatText(p.x, p.y - 46 * p.ch.size, 'Lanzar escudo', p.slotColor); SFX.swing(true);
 }
@@ -2471,21 +2471,22 @@ function updateShieldThrows(dt) {
       if (!e || e.dead) { S.phase = 'return'; S.to = null; }
       else {
         const dx = e.x - S.x, dy = e.y - S.y, d = Math.hypot(dx, dy) || 1;
-        const k = Math.min(1, T0.homing * dt); S.dx += (dx / d - S.dx) * k; S.dy += (dy / d - S.dy) * k;
-        const m = Math.hypot(S.dx, S.dy) || 1; S.dx /= m; S.dy /= m;
+        S.dx = dx / d; S.dy = dy / d; // en línea recta hacia el objetivo (si se mueve, corrige el rumbo)
+        S.h += (12 + (e.z || 0) - S.h) * Math.min(1, 12 * dt); // sube si el objetivo está en el aire
       }
     }
     if (S.phase === 'return') { // vuelve a Ceniza atravesando lo que haya en medio
       const dx = p.x - S.x, dy = p.y - S.y, d = Math.hypot(dx, dy) || 1, step = T0.returnSpeed * dt;
       if (d < p.r + 12 || d <= step) { p.shieldOut = null; floatText(p.x, p.y - 46 * p.ch.size, 'Escudo recuperado', p.slotColor); SFX.hit(false); continue; }
       S.dx = dx / d; S.dy = dy / d; S.x += S.dx * step; S.y += S.dy * step;
+      S.h += (12 + (p.z || 0) - S.h) * Math.min(1, 12 * dt);
       continue;
     }
     // ida o rebote: avanza en pasos cortos para no atravesar a nadie
     const total = T0.speed * dt, n = Math.max(1, Math.ceil(total / 8)), st = total / n;
     for (let i = 0; i < n && S.phase !== 'return'; i++) {
       const nx = S.x + S.dx * st, ny = S.y + S.dy * st;
-      if (isSolid(Math.floor(nx / T), Math.floor(ny / T), false)) { S.phase = 'return'; burst(S.x, upY(S.y, 14), '#b7b1c6', 8); SFX.hit(false); break; } // choca con un muro y vuelve
+      if (isSolid(Math.floor(nx / T), Math.floor(ny / T), false)) { S.phase = 'return'; burst(S.x, upY(S.y, S.h), '#b7b1c6', 8); SFX.hit(false); break; } // choca con un muro y vuelve
       S.x = nx; S.y = ny;
       if (S.phase === 'out') { S.dist += st; if (S.dist >= T0.range) { S.phase = 'return'; break; } }
       const prev = S.phase === 'bounce' ? S.to : null;
@@ -2499,8 +2500,9 @@ function updateShieldThrows(dt) {
   }
 }
 function drawThrownShield(p) {
-  const S = p.shieldOut, sz = p.ch.size, lift = 14 * sz;
-  const cx = S.x, cy = upY(S.y, lift);
+  // se dibuja con la vista ya proyectada (S.y aplastada por projectOn), a la altura del cuerpo de los enemigos
+  const S = p.shieldOut, sz = p.ch.size;
+  const cx = S.x, cy = S.y - (S.h || 12);
   ctx.save();
   ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ellipse(S.x, S.y, 12 * sz, 5 * sz); ctx.globalAlpha = 1; // sombra
   ctx.translate(cx, cy);
@@ -6172,7 +6174,8 @@ const PROJ_KEYS = ['y', 'y1', 'y2', 'ay', 'beamY']; // beamY: el extremo de las 
 let projSaved = null;
 function projectOn() {
   projSaved = []; const seen = new Set();
-  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles, stalacs]) for (const o of L) {
+  const thrown = players.map(p => p.shieldOut).filter(Boolean); // escudos lanzados de Ceniza
+  for (const L of [players, enemies, bullets, pBullets, particles, pickups, effects, texts, turrets, arcOrbs, grenades, missiles, stalacs, thrown]) for (const o of L) {
     if (seen.has(o)) continue; seen.add(o);
     for (const k of PROJ_KEYS) { const v = o[k]; if (typeof v === 'number') { projSaved.push(o, k, v); o[k] = v * K; } }
   }
