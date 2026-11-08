@@ -263,7 +263,7 @@ const ENEMY_DMG = {
   golem:    { leap: 32, slam: 36 },     // salto y pisotón
   splitter: { bomb: 22 },               // bombas sembradas
   // boss:     { contact: 30, shot: 18 }   // [RETIRADO 2026-11-08] el guardián dañaba siempre al tocar
-  boss:     { contact: 30, shot: 18, gore: 26, stomp: 26, slam: 32, quake: 22 } // contact: embestida del Ariete · shot: balas del Cañonero · resto: avisos del suelo
+  boss:     { contact: 30, shot: 18, gore: 26, stomp: 26, slam: 32, quake: 22, beam: 34, bolt: 28, bomb: 22, land: 32 } // contact: embestida del Ariete · shot: balas del Cañonero · resto: avisos del suelo
 };
 // Ataque que se aplica al tocar a un jugador (solo mientras isHot(e) lo permite)
 const CONTACT_ATTACK = { mite: 'dash', charger: 'dash', boss: 'contact' };
@@ -1039,6 +1039,15 @@ const THEME_BOSS = bars(
   'A4 - F4 - F4 - B4 - - - - - - - . .',
   'C5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
   'F4 - - - - - - - - - G#4 - A4 - C5 -');
+// Guardián final (Dragón): el tema del guardián martilleado, con notas repetidas y una subida al final de la cuarta frase.
+// Se transporta a Re menor (Si-Si-Fa → Mi-Mi-Sib: el tritono suena todavía más oscuro)
+const THEME_FINAL = bars(
+  'B4 - . B4 B4 - . B4 F5 - - - - - . .',
+  'E5 - F5 - D5 - - - C5 - B4 - C5 - D5 -',
+  'E5 - - - E5 - E5 - F5 - - - C5 - B4 -',
+  'A4 - F4 - F4 - B4 - - - - - B4 C5 D5 E5',
+  'C5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
+  'F4 - - - - - - - - - G#4 - A4 - C5 -');
 // Menú: la sección central de la misma danza (La mayor)
 const THEME_MENU = bars(
   'B4 - - - B4 - - - D5 - - - - - - -',
@@ -1147,6 +1156,34 @@ const MUSIC_DEF = {
       { drums: 'k . s k . k s . k k s . k . s s', gain: 0.7, layer: 'drive' },
       { drums: oneShot(208, { 16: 'c', 112: 'c' }), gain: 0.6, layer: 'peak' }, // platillo al empezar cada vuelta del tema
       { drums: oneShot(208, { 0: 'b+c+T', 8: 'r', 10: 'r', 12: 's', 13: 's', 14: 's', 15: 's' }), gain: 0.8 }
+    ] },
+  // Guardián final (Dragón de la Catedral): épica, dramática y sin respiro, en la línea del tema de Fatalis (Monster Hunter World).
+  // Re menor, 170 BPM. Ostinato de cuerdas a semicorcheas, coro que canta, metales con el tema, golpes de metal y graves
+  // en ritmo 3+3+2 y timbales sin parar. Forma: entrada coral (2 compases) → A: tema en los metales (6) → B: coro y violines arriba,
+  // metales doblando (6) → C: puente en secuencia que sube (4) → vuelve a A. Fases: <60 % de vida o mientras vuela, capa «peak»;
+  // <30 %, medio tono arriba y más deprisa.
+  final: { bpm: 170, loop: true, verb: 0.35, fadeIn: 0.2, loopStart: 32,
+    chords: ['Dm', 'Dm', 'Gm', 'A', 'Dm', 'Gm', 'A', 'Bb', 'Gm', 'A', 'Dm', 'Gm', 'A', 'Bb', 'Bb', 'C', 'Dm', 'A'],
+    voices: [
+      { notes: bars('1+3+5 - - - - - - - - - - - - - - -', '1+3+5 - - - - - - - 1+3+5 - - - 1+3+5 - - -', restBars(16)), base: 50, inst: 'choir', gain: 0.08 }, // entrada: coro
+      { notes: bars(restBars(2), THEME_FINAL, restBars(10)), shift: -7, inst: 'brass', gain: 0.15 },                   // A: tema en los metales
+      { notes: bars(restBars(2), THEME_FINAL, restBars(10)), shift: 5, inst: 'strings', gain: 0.05, layer: 'drive' },  // A: violines arriba
+      { notes: bars(restBars(8), THEME_FINAL, restBars(4)), shift: 5, inst: 'choir', gain: 0.08 },                     // B: el coro canta el tema
+      { notes: bars(restBars(8), THEME_FINAL, restBars(4)), shift: -7, inst: 'brass', gain: 0.13 },                    // B: metales doblando abajo
+      { notes: bars(restBars(14), FIGHT_BRIDGE), inst: 'brass', gain: 0.14 },                                          // C: puente
+      { notes: bars(restBars(14), FIGHT_BRIDGE), shift: 12, inst: 'choir', gain: 0.07, layer: 'peak' },
+      { notes: '1 1 5 1 8 1 5 1 1 1 5 1 8 5 3 5', base: 50, inst: 'ost', gain: 0.06 },                                 // ostinato de cuerdas
+      { notes: '. 8 . 8 . 8 . 8 . 8 . 8 . 8 5 8', base: 62, inst: 'ost', gain: 0.035, layer: 'drive' },
+      { notes: '1+5 . . 1+5 . . 1+5 . . . 1+5 . 1+5 . . .', base: 50, inst: 'brass', gain: 0.06, layer: 'peak' },    // golpes de metal 3+3+2
+      { notes: 'R . . R . . R . R . R . R . . .', base: 38, inst: 'lowstr', gain: 0.15 },                              // graves 3+3+2
+      { notes: 'R - - - - - - - - - - - - - - -', base: 26, inst: 'drone', gain: 0.06 },
+      { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'choir', gain: 0.035, layer: 'peak' },
+      { drums: 'T . . T . . T . T . T . T T T T', gain: 0.95 },
+      { drums: 'k . s k . k s . k k s . k . s s', gain: 0.7, layer: 'drive' },
+      { drums: 'b . . . . . . . b . . . . . . .', gain: 0.5 },
+      { drums: fillBars(18, [1, 7, 13, 17], '. . . . . . . . s . s s T T T T'), gain: 0.75 },
+      { drums: oneShot(288, { 0: 'b+c+T', 32: 'c', 128: 'c', 224: 'c' }), gain: 0.8 },
+      { drums: oneShot(288, Object.fromEntries([0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25, 26, 27, 28, 29, 30, 31].map(i => [i, 'T']))), gain: 0.55 } // redoble de entrada
     ] },
   // Codas (sustituyen a las fanfarrias): cierran el combate con calma y emoción y desembocan en la música de exploración.
   // Terminan en La mayor; la exploración entra por debajo del acorde final con su pedal de La y su Re menor.
@@ -1495,7 +1532,8 @@ function musicWanted() {
   if (!inGame) return 'menu'; // menús: la sección central de la danza; el tema principal empieza al jugar
   if (SIEGE.on) return SIEGE.phase === 'wave' ? 'fight' : 'calm';
   if (!room || room.cleared) return 'calm';
-  return room.type === 'boss' ? 'boss' : 'fight'; // mientras la sala no esté despejada (también entre oleadas)
+  // return room.type === 'boss' ? 'boss' : 'fight'; // [RETIRADO 2026-11-08] antes todos los guardianes con la misma pista
+  return room.type === 'boss' ? (isFinalBoss(floor.depth) ? 'final' : 'boss') : 'fight'; // mientras la sala no esté despejada (también entre oleadas)
 }
 function musicSwitch(mode) {
   const t = actx.currentTime;
@@ -1521,6 +1559,7 @@ function musicDyn(dt) {
   if (inGame) {
     for (const p of players) if (!p.down && p.maxHp) low = Math.min(low, p.hp / p.maxHp);
     for (const e of enemies) if (!e.dead) { live++; if (e.tier === 4) boss = e; }
+    D.sky = !!(boss && boss.sky); // el Dragón vuela
   }
   const danger = Math.min(1, Math.max(0, (0.35 - low) / 0.2)), inten = Math.min(1, live / 6), k = Math.min(1, dt * 1.5);
   D.danger += (danger - D.danger) * k; D.inten += (inten - D.inten) * k;
@@ -1552,6 +1591,10 @@ function musicMix(t) {
     tempo = 0.86 + 0.18 * sm(b / 0.9) + 0.04 * D.danger;
   }
   */
+  else if (mode === 'final') { // guardián final: toda la fuerza desde el principio; «peak» con <60 % de vida o mientras vuela
+    const ph = D.bossFrac; want.peak = ph < 0.6 || D.sky ? 1 : 0.25; tempo = 1 + 0.04 * D.danger + (D.sky ? 0.03 : 0);
+    if (ph < 0.3) { MUS.transWant = 1; tempo += 0.06; }
+  }
   else if (mode === 'boss') {
     const ph = D.bossFrac; want.peak = ph < 0.5 ? 1 : 0.2; tempo = 1 + 0.05 * D.danger;
     if (ph < 0.25) { MUS.transWant = 1; tempo += 0.07; } // fase final: medio tono arriba y más deprisa
@@ -2148,7 +2191,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
   useRoom(r);
-  room = r; r.visited = true; portalT = 0; enemies = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; embers = []; cBombs = []; stickies = []; shells = []; dolls = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
+  room = r; r.visited = true; portalT = 0; enemies = []; bossFx = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; embers = []; cBombs = []; stickies = []; shells = []; dolls = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
   const entry = dir ? OPP[dir] : null;
@@ -2214,7 +2257,7 @@ function updateBossAdds(dt) {
     for (const e of enemies) if (e.bossAdd && !e.dead) { e.dead = true; burst(e.x, upY(e.y, 14), e.color, 10); }
     return;
   }
-  if (boss.spawnT > 0) return;
+  if (boss.spawnT > 0 && !boss.sky) return;
   if (room.addT == null) room.addT = BOSS_ADDS.first;
   room.addT -= dt;
   if (room.addT <= 0) { spawnBossAdds(); room.addT = boss.hp < boss.maxHp / 2 ? BOSS_ADDS.everyRage : BOSS_ADDS.every; }
@@ -2271,7 +2314,7 @@ function roomCleared() {
   musicFanfare(room.type === 'boss' ? 'boss' : 'room');
   let revived = false;
   for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
-  if (room.type === 'boss') { room.stairs = true; showBanner('Guardián derrotado: ve al portal y pulsa Fijar'); }
+  if (room.type === 'boss') { room.stairs = true; showBanner(isFinalBoss(floor.depth) ? '¡Ciclo completado! El Dragón ha caído: ve al portal' : 'Guardián derrotado: ve al portal y pulsa Fijar'); }
   else {
     showBanner(revived ? 'Sala despejada, compañeros de vuelta' : 'Sala despejada');
     if (Math.random() < 0.3) pickups.push({ x: (MID_X + 0.5) * T, y: (MID_Y + 0.5) * T, t: 0 });
@@ -6459,8 +6502,12 @@ const ENEMY_AI = {
 // · Tienen un ataque en área alrededor, muy telegrafiado, que usan más cuanto más los rodeáis o más pegados estáis.
 // · Tras cada ataque se quedan quietos un momento: ventana para castigarlos.
 // · Un guardián por bioma: piso 1 Cañonero, piso 2 Ariete, piso 3 Coloso (y se repite).
-const BOSS_KINDS = ['cannon', 'ram', 'colossus'];
+// const BOSS_KINDS = ['cannon', 'ram', 'colossus']; // [RETIRADO 2026-11-08] ciclo de tres pisos
+// function bossKindFor(depth) { return BOSS_KINDS[((depth || 1) - 1) % BOSS_KINDS.length]; }
+// Ciclo de cuatro pisos: el cuarto (Catedral gótica) cierra el ciclo con el Dragón, el guardián final
+const BOSS_KINDS = ['cannon', 'ram', 'colossus', 'dragon'];
 function bossKindFor(depth) { return BOSS_KINDS[((depth || 1) - 1) % BOSS_KINDS.length]; }
+const isFinalBoss = depth => bossKindFor(depth) === 'dragon';
 const BOSS = {
   walkT: [1.4, 2.2], walkTRage: [0.9, 1.4], // segundos andando entre ataques
   flankOff: 1.25, closeR: 60,               // a más de 1,25 rad de su frente, o a menos de 60 px de su borde, cuenta como «rodeándolo»
@@ -6481,7 +6528,18 @@ const BOSS = {
     recover: 1.3, recoverRage: 1.0,
     slam:  { wind: 1.1, windRage: 0.9, r: 145, arc: 0.6, range: 170 },
     quake: { wind: 0.9, windRage: 0.75, n: 7, step: 58, r: 38, gap: 0.12 },
-    stomp: { wind: 1.7, windRage: 1.4, r: 165 } }
+    stomp: { wind: 1.7, windRage: 1.4, r: 165 } },
+  // Dragón de la Catedral (guardián final del ciclo, piso 4): rayo de energía, rayos del cielo y vuelo con bombardeo
+  dragon: { name: 'Dragón de la Catedral', color: '#3a3150', energy: '#b48cff', r: 38, spdMul: 0.85, turn: 1.5, muzzle: 30,
+    recover: 1.2, recoverRage: 0.9,
+    // Rayo: la esfera crece en la boca, sobre la línea del disparo; la dirección se fija «lock» s antes; dura «dur» s
+    beam: { wind: 1.9, windRage: 1.5, lock: 0.6, turn: 1.0, w: 70, max: 1000, dur: 1.0, sweepRage: 0.35 },
+    // Rayos del cielo: 2 o 3 áreas juntas sobre un jugador (con rabia, sobre dos jugadores); caen uno tras otro
+    bolt: { wind: 0.5, windRage: 0.4, n: [2, 3], r: 54, spread: 70, delay: 1.1, gap: 0.18 },
+    // Vuelo: despega (invulnerable), 2 pasadas de bombardeo (3 con rabia) siguiendo la sombra, y cae con daño en área
+    fly: { first: 9, cd: 20, cdRage: 15, takeoff: 0.9, height: 620, passes: 2, passesRage: 3,
+           passWind: 0.9, passSpd: 380, bombR: 44, bombStep: 64, bombLead: 0.25,
+           dive: 1.5, diveFall: 0.45, landR: 160, land: 1.8 } }
 };
 const bossCfg = e => BOSS[e.kind || 'cannon'];
 const bossRage = e => e.hp < e.maxHp / 2;
@@ -6522,6 +6580,11 @@ function bossNovaAngles(e) { // anillo con huecos repartidos y un giro aleatorio
 function bossLane(e) { // largo del carril de embestida: hasta el primer muro (o el máximo)
   const C = BOSS.ram.charge, ux = Math.cos(e.dir), uy = Math.sin(e.dir);
   let L = 0; while (L < C.max && !segSolid(e.x + ux * L, e.y + uy * L, e.x + ux * (L + 16), e.y + uy * (L + 16))) L += 16;
+  return L;
+}
+function rayLen(x, y, a, max) { // distancia hasta el primer muro en una dirección
+  const ux = Math.cos(a), uy = Math.sin(a); let L = 0;
+  while (L < max && !segSolid(x + ux * L, y + uy * L, x + ux * (L + 16), y + uy * (L + 16))) L += 16;
   return L;
 }
 function bossHazard(e, x, y, r, delay, dmgKey, extra) { hazards.push(Object.assign({ x, y, r, t: 0, delay, owner: e, dmg: edmg(e, dmgKey) }, extra || {})); }
@@ -6642,6 +6705,138 @@ const BOSS_AI_BY_KIND = {
     const sp = e.spd * C.spdMul * (rage ? 1.2 : 1); return [Math.cos(e.dir) * sp, Math.sin(e.dir) * sp];
   }
 };
+// ---------- Dragón (guardián final) ----------
+// Efectos visuales del Dragón: rayos que caen y explosiones de las bombas (se programan con el mismo retraso que su aviso)
+let bossFx = [];
+function bossFxAt(type, x, y, delay, extra) { bossFx.push(Object.assign({ type, x, y, t: -delay }, extra || {})); }
+function updateBossFx(dt) {
+  for (const f of bossFx) {
+    const was = f.t; f.t += dt;
+    if (was < 0 && f.t >= 0) { // estalla
+      if (f.type === 'bolt') { shake = Math.max(shake, 6); burst(f.x, upY(f.y, 6), '#e6d6ff', 14); SFX.hit(true); }
+      else if (f.type === 'blast') { shake = Math.max(shake, 3); burst(f.x, upY(f.y, 6), '#ffb27a', 10); }
+      else if (f.type === 'land') { shake = Math.max(shake, 14); burst(f.x, upY(f.y, 8), '#b48cff', 40); }
+    }
+  }
+  bossFx = bossFx.filter(f => f.t < 0.45);
+}
+// Puntos de una línea dentro de la sala (para el bombardeo): pasa por (px, py) con ángulo a
+function bossPassLine(px, py, a) {
+  const ux = Math.cos(a), uy = Math.sin(a), m = T * 1.6;
+  const inRoom = (x, y) => x > m && y > m && x < COLS * T - m && y < ROWS * T - m;
+  let b = 0, f = 0; while (b < 1400 && inRoom(px - ux * (b + 16), py - uy * (b + 16))) b += 16;
+  while (f < 1400 && inRoom(px + ux * (f + 16), py + uy * (f + 16))) f += 16;
+  return { x0: px - ux * b, y0: py - uy * b, x1: px + ux * f, y1: py + uy * f, len: b + f, a };
+}
+// Despegue: deja de estar en la sala a efectos de golpes (spawnT alto: nadie lo apunta ni le hace daño)
+function dragonTakeoff(e) {
+  const F = BOSS.dragon.fly;
+  e.sky = true; e.spawnT = 1e9; e.state = 'takeoff'; e.t = F.takeoff; e.passesLeft = bossRage(e) ? F.passesRage : F.passes;
+  for (const h of hazards) if (h.owner === e && !h.detach) h.cancel = true;
+  showBanner('¡El dragón alza el vuelo!');
+}
+function dragonNextPass(e, p) {
+  const F = BOSS.dragon.fly, tgt = p || players.find(q => !q.down) || { x: e.x, y: e.y };
+  const a = Math.random() * Math.PI * 2, L = bossPassLine(tgt.x, tgt.y, a);
+  e.pass = L; e.state = 'passWind'; e.windDur = e.t = F.passWind; e.sx0 = e.x; e.sy0 = e.y;
+  const ux = Math.cos(a), uy = Math.sin(a);
+  for (let s = F.bombStep * 0.5; s < L.len; s += F.bombStep) { // bombas a lo largo de la línea, cada una cuando la sombra pasa por encima
+    const x = L.x0 + ux * s, y = L.y0 + uy * s, d = F.passWind + F.bombLead + s / F.passSpd;
+    bossHazard(e, x, y, F.bombR, d, 'bomb', { detach: true }); bossFxAt('blast', x, y, d);
+  }
+}
+// Mientras vuela (llamado desde updateEnemy en lugar de la IA normal)
+function dragonSky(e, dt) {
+  const D = BOSS.dragon, F = D.fly; e.t -= dt; e.anim += dt;
+  const [p] = nearestPlayer(e);
+  if (e.state === 'takeoff') { // sube y se sale de la pantalla
+    const k = 1 - Math.max(0, e.t) / F.takeoff; e.z = F.height * k * k;
+    if (e.t <= 0) dragonNextPass(e, p);
+    return;
+  }
+  if (e.state === 'passWind') { // la sombra va al principio de la línea, que ya se ve en el suelo
+    const k = 1 - Math.max(0, e.t) / F.passWind, P = e.pass;
+    e.x = e.sx0 + (P.x0 - e.sx0) * k; e.y = e.sy0 + (P.y0 - e.sy0) * k;
+    if (e.t <= 0) { e.state = 'pass'; e.passS = -F.bombLead * F.passSpd; }
+    return;
+  }
+  if (e.state === 'pass') { // la sombra recorre la línea y las bombas caen detrás de ella
+    const P = e.pass; e.passS += F.passSpd * dt; const s = Math.max(0, Math.min(P.len, e.passS));
+    e.x = P.x0 + Math.cos(P.a) * s; e.y = P.y0 + Math.sin(P.a) * s;
+    if (e.passS >= P.len + 40) {
+      e.passesLeft--;
+      if (e.passesLeft > 0) dragonNextPass(e, p);
+      else { // picado: elige dónde caer (sobre un jugador) y lo marca en el suelo
+        const tg = p || { x: e.x, y: e.y };
+        e.state = 'dive'; e.windDur = e.t = F.dive; e.sx0 = e.x; e.sy0 = e.y; e.lx = tg.x; e.ly = tg.y;
+        bossHazard(e, tg.x, tg.y, F.landR, F.dive, 'land', { detach: true }); bossFxAt('land', tg.x, tg.y, F.dive);
+      }
+    }
+    return;
+  }
+  if (e.state === 'dive') { // la sombra se coloca sobre el punto de caída y crece; cae en el último momento
+    const k = 1 - Math.max(0, e.t) / F.dive, mv = Math.min(1, k / 0.6);
+    e.x = e.sx0 + (e.lx - e.sx0) * mv; e.y = e.sy0 + (e.ly - e.sy0) * mv;
+    e.z = e.t > F.diveFall ? F.height : F.height * Math.pow(Math.max(0, e.t) / F.diveFall, 2);
+    if (e.t <= 0) { // aterriza: vuelve a ser golpeable y se queda un rato quieto (gran ventana para castigarlo)
+      e.sky = false; e.spawnT = 0; e.z = 0; e.x = e.lx; e.y = e.ly; e.state = 'recover'; e.t = F.land;
+      e.flyCd = bossRage(e) ? F.cdRage : F.cd; e.lastAtk = 'area';
+    }
+  }
+}
+function dragonBolts(e, tg) { // 2 o 3 rayos del cielo juntos alrededor de un jugador
+  const B = BOSS.dragon.bolt, n = B.n[0] + Math.floor(Math.random() * (B.n[1] - B.n[0] + 1)), a0 = Math.random() * Math.PI * 2;
+  for (let i = 0; i < n; i++) {
+    const a = a0 + i * Math.PI * 2 / n, o = i === 0 ? 0 : B.spread; // el primero, justo donde estás; los otros, al lado
+    const x = tg.x + Math.cos(a) * o, y = tg.y + Math.sin(a) * o, d = B.delay + i * B.gap;
+    if (outsideRoom(x, y)) continue;
+    bossHazard(e, x, y, B.r, d, 'bolt', { detach: true }); bossFxAt('bolt', x, y, d);
+  }
+}
+BOSS_AI_BY_KIND.dragon = function (e, p, d, dt) {
+  const C = BOSS.dragon, rage = bossRage(e); e.t -= dt;
+  if (e.flyCd == null) e.flyCd = C.fly.first;
+  e.flyCd -= dt;
+  if (e.state === 'beamWind') { // la esfera de energía crece en la boca; el área del rayo se ve en el suelo
+    if (e.t > C.beam.lock) bossTurn(e, p.x, p.y, C.beam.turn, dt);
+    const [mx, my] = bossMuzzle(e); e.beamL = rayLen(mx, my, e.dir, C.beam.max);
+    if (e.t <= 0) { e.state = 'beam'; e.t = C.beam.dur; shake = Math.max(shake, 8); SFX.hit(true); }
+    return [0, 0];
+  }
+  if (e.state === 'beam') { // el rayo daña a lo largo de todo el carril; con rabia lo arrastra un poco hacia ti
+    if (rage) bossTurn(e, p.x, p.y, C.beam.sweepRage, dt);
+    const [mx, my] = bossMuzzle(e), ux = Math.cos(e.dir), uy = Math.sin(e.dir); e.beamL = rayLen(mx, my, e.dir, C.beam.max);
+    for (const q of players) {
+      if (q.down) continue;
+      const s = (q.x - mx) * ux + (q.y - my) * uy; if (s < -q.r || s > e.beamL) continue;
+      const off = Math.abs((q.x - mx) * -uy + (q.y - my) * ux); if (off > C.beam.w / 2 + q.r) continue;
+      hurtPlayer(q, mx + ux * s, my + uy * s, null, edmg(e, 'beam'));
+    }
+    shake = Math.max(shake, 3);
+    if (e.t <= 0) bossRecover(e);
+    return [0, 0];
+  }
+  if (e.state === 'boltWind') { // alza la cabeza: las áreas ya están en el suelo
+    if (e.t <= 0) bossRecover(e);
+    return [0, 0];
+  }
+  if (e.state === 'recover') { if (e.t <= 0) bossWalk(e); return [0, 0]; }
+  bossTurn(e, p.x, p.y, C.turn, dt);
+  if (e.t <= 0) {
+    const off = Math.abs(bossAng(Math.atan2(p.y - e.y, p.x - e.x) - e.dir)), canFly = e.flyCd <= 0;
+    const k = bossPick({ fly: canFly ? 1.2 + bossAreaWeight(e) : 0, beam: off < 1 ? 1.4 : 0.4, bolt: d > 160 ? 1.3 : 0.6 + (canFly ? 0 : 0.6 * bossFlank(e)) });
+    e.lastAtk = k === 'fly' ? 'area' : 'front';
+    if (k === 'fly') { dragonTakeoff(e); return [0, 0]; }
+    if (k === 'beam') { bossWind(e, 'beamWind', C.beam); const [mx, my] = bossMuzzle(e); e.beamL = rayLen(mx, my, e.dir, C.beam.max); }
+    else { // rayos del cielo: sobre el jugador más cercano (con rabia, también sobre otro)
+      bossWind(e, 'boltWind', C.bolt); dragonBolts(e, p);
+      if (rage) { const o = players.filter(q => !q.down && q !== p); if (o.length) dragonBolts(e, o[Math.floor(Math.random() * o.length)]); }
+    }
+    return [0, 0];
+  }
+  const sp = e.spd * C.spdMul * (rage ? 1.2 : 1), want = d < 110 ? 0.3 : 1; return [Math.cos(e.dir) * sp * want, Math.sin(e.dir) * sp * want];
+};
+
 // Grieta del Coloso: una fila de avisos que avanza desde sus puños hacia delante, uno tras otro
 function bossQuake(e) {
   const Q = BOSS.colossus.quake, ux = Math.cos(e.dir), uy = Math.sin(e.dir);
@@ -6661,6 +6856,7 @@ function isHot(e) {
 }
 
 function updateEnemy(e, dt) {
+  if (e.sky) { dragonSky(e, dt); return; } // Dragón volando: fuera de la sala, no se le puede golpear
   if (e.spawnT > 0) { e.spawnT -= dt; return; }
   e.squash = Math.max(0, (e.squash || 0) - dt * 7);
   if (e.hitstun > 0) e.hitstun -= dt;
@@ -6940,6 +7136,7 @@ function update(dt) {
   }
   pBullets = pBullets.filter(b => b.life > 0);
   updateBossAdds(dt); // refuerzos de tier 1 y 2 durante la pelea con el guardián
+  updateBossFx(dt);   // rayos y explosiones del Dragón
   enemies = enemies.filter(e => !e.dead);
 
   for (let i = pickups.length - 1; i >= 0; i--) {
@@ -8439,6 +8636,12 @@ function drawBossBody(e, x, y, r, fill, wk, stun) {
         ctx.quadraticCurveTo(bx + fx * r * 0.5 + sx * s * r * 0.55, by + fy * r * 0.5 + sy * s * r * 0.55, bx + fx * r * 0.95 + sx * s * r * 0.08, by + fy * r * 0.95 + sy * s * r * 0.08);
         ctx.stroke();
       }
+    } else if (kind === 'dragon') { // cabeza con cuernos; la boca brilla al cargar el rayo
+      const hx = x + fx * r * 0.95, hy = y + fy * r * 0.95 - r * 0.1 - (e.state === 'boltWind' ? 10 * wk : 0), hr = r * 0.48;
+      ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(hx, hy, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#d9cbb0'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(hx + sx * s * hr * 0.6, hy + sy * s * hr * 0.6 - 4); ctx.lineTo(hx + sx * s * hr * 1.2 - fx * hr * 0.6, hy + sy * s * hr * 1.2 - fy * hr * 0.6 - hr * 0.9); ctx.stroke(); }
+      if (e.state === 'beamWind' || e.state === 'beam') { ctx.globalAlpha = 0.85; ctx.fillStyle = BOSS.dragon.energy; ellipse(hx + fx * hr * 0.7, hy + fy * hr * 0.7, hr * 0.45, hr * 0.35); }
     } else { // Coloso: dos puños que se alzan
       for (const s of [-1, 1]) {
         const cx = x + fx * r * 0.6 + sx * s * r * 0.78, cy = y + fy * r * 0.6 + sy * s * r * 0.78 - lift, rr = r * 0.4 * (1 + 0.25 * wk);
@@ -8450,7 +8653,19 @@ function drawBossBody(e, x, y, r, fill, wk, stun) {
   const body = () => {
     ctx.save(); ctx.fillStyle = fill; ctx.strokeStyle = rage ? (Math.floor(time * 6) % 2 ? '#ff3b4e' : '#8a1f2a') : dark; ctx.lineWidth = rage ? 3.5 : 3;
     ctx.beginPath();
-    if (kind === 'ram') ctx.ellipse(x, y, r * 1.2, r * 0.92, a, 0, Math.PI * 2);
+    if (kind === 'dragon') { // alas a los lados (baten más rápido al volar) y cola detrás
+      const flap = Math.sin(e.anim * (e.sky ? 14 : 3)) * (e.sky ? 0.5 : 0.15);
+      ctx.save(); ctx.fillStyle = '#2a2340'; ctx.strokeStyle = dark; ctx.lineWidth = 2;
+      for (const s2 of [-1, 1]) {
+        const bx = x + sx * s2 * r * 0.5, by = y + sy * s2 * r * 0.5, tipx = x + sx * s2 * r * (2.1 + flap) - fx * r * 0.4, tipy = y + sy * s2 * r * (2.1 + flap) - fy * r * 0.4 - r * (0.9 + flap);
+        ctx.beginPath(); ctx.moveTo(bx + fx * r * 0.4, by + fy * r * 0.4); ctx.lineTo(tipx, tipy); ctx.lineTo(bx - fx * r * 0.7, by - fy * r * 0.7 + r * 0.2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      ctx.lineWidth = r * 0.28; ctx.lineCap = 'round'; ctx.strokeStyle = fill; ctx.beginPath(); ctx.moveTo(x - fx * r * 0.8, y - fy * r * 0.8);
+      ctx.quadraticCurveTo(x - fx * r * 1.6 + sx * r * 0.5 * Math.sin(e.anim * 2), y - fy * r * 1.6 + sy * r * 0.5 * Math.sin(e.anim * 2), x - fx * r * 2.1, y - fy * r * 2.1); ctx.stroke();
+      ctx.restore();
+      ctx.beginPath(); ctx.ellipse(x, y, r * 1.1, r * 0.85, a, 0, Math.PI * 2);
+    }
+    else if (kind === 'ram') ctx.ellipse(x, y, r * 1.2, r * 0.92, a, 0, Math.PI * 2);
     else if (kind === 'colossus') for (let i = 0; i < 8; i++) { const t = a + Math.PI / 8 + i * Math.PI / 4, rr = r * (i % 2 ? 1 : 0.93); ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(t) * rr, y + Math.sin(t) * rr); }
     else ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -8468,13 +8683,13 @@ function drawBossBody(e, x, y, r, fill, wk, stun) {
   };
   const face = () => { // ojos en el frente (de espaldas no se ven)
     if (away) return;
-    const cx = x + fx * r * 0.5, cy = y + fy * r * 0.5 - r * 0.12, er = Math.max(3, r * 0.14);
+    const fo = kind === 'dragon' ? 0.95 : 0.5, cx = x + fx * r * fo, cy = y + fy * r * fo - r * 0.12 - (kind === 'dragon' ? r * 0.12 : 0), er = Math.max(3, r * (kind === 'dragon' ? 0.1 : 0.14));
     ctx.save();
     for (const s of [-1, 1]) {
-      const ex = cx + sx * s * r * 0.3, ey = cy + sy * s * r * 0.3 * 0.6;
+      const ew = kind === 'dragon' ? 0.2 : 0.3, ex = cx + sx * s * r * ew, ey = cy + sy * s * r * ew * 0.6;
       if (stun) { ctx.strokeStyle = dark; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(ex - er, ey - er); ctx.lineTo(ex + er, ey + er); ctx.moveTo(ex + er, ey - er); ctx.lineTo(ex - er, ey + er); ctx.stroke(); continue; }
       ctx.fillStyle = '#fff6e0'; ellipse(ex, ey, er * 1.25, er * 1.25);
-      ctx.fillStyle = wk > 0 || e.state === 'charge' ? '#ff3b4e' : dark; ellipse(ex + fx * er * 0.4, ey + fy * er * 0.4, er * 0.7, er * 0.7);
+      ctx.fillStyle = kind === 'dragon' ? (wk > 0 || e.state === 'beam' ? '#ffffff' : BOSS.dragon.energy) : wk > 0 || e.state === 'charge' ? '#ff3b4e' : dark; ellipse(ex + fx * er * 0.4, ey + fy * er * 0.4, er * 0.7, er * 0.7);
     }
     ctx.strokeStyle = dark; ctx.lineWidth = 3; ctx.lineCap = 'round'; // ceño: más fruncido al preparar
     for (const s of [-1, 1]) { const ex = cx + sx * s * r * 0.3, ey = cy + sy * s * r * 0.18 - er * 1.7; ctx.beginPath(); ctx.moveTo(ex - sx * s * er * 1.4, ey - er * 0.4 * wk); ctx.lineTo(ex + sx * s * er * 0.9, ey + er * (0.3 + 0.6 * wk)); ctx.stroke(); }
@@ -8483,8 +8698,10 @@ function drawBossBody(e, x, y, r, fill, wk, stun) {
   if (away) { front(); body(); } else { body(); front(); face(); }
 }
 function drawEnemy(e) {
+  if (e.sky && (e.z || 0) > 420) return; // Dragón fuera de la pantalla: solo se ve su sombra (drawBossTells)
   const base = e.tier >= 4 ? 18 : (e.tier === 3 ? 16 : 12), z = e.z || 0, sh = Math.max(0.6, 1 - z / 300);
-  if (e.airborne && z > 2) { // en el aire: sombra bien visible, marca de caída y línea de altura
+  if (e.sky) { /* su sombra se pinta en el suelo con drawBossTells */ }
+  else if (e.airborne && z > 2) { // en el aire: sombra bien visible, marca de caída y línea de altura
     ctx.fillStyle = 'rgba(0,0,0,0.22)'; ellipse(e.x, e.y, e.r * 1.15, e.r * 0.52);          // sombra suave del tamaño real
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ellipse(e.x, e.y, e.r * sh * 0.75, e.r * 0.34 * sh); // núcleo oscuro que encoge con la altura
     ctx.save(); ctx.strokeStyle = e.frozenAir ? '#bfeaf5' : '#ffd54a'; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
@@ -8494,7 +8711,7 @@ function drawEnemy(e) {
     ctx.beginPath(); ctx.moveTo(e.x, e.y - 2); ctx.lineTo(e.x, e.y - base - z + e.r); ctx.stroke();          // línea de altura
     ctx.restore();
   } else { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ellipse(e.x, e.y, e.r, e.r * 0.45); }
-  if (e.spawnT > 0) {
+  if (e.spawnT > 0 && !e.sky) {
     const kk = 1 - e.spawnT / 0.7;
     ctx.strokeStyle = e.color; ctx.lineWidth = 2; ctx.globalAlpha = 0.45 + 0.4 * Math.sin(time * 25);
     ctx.beginPath(); ctx.ellipse(e.x, e.y, e.r * (0.4 + kk), e.r * (0.4 + kk) * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
@@ -8617,10 +8834,57 @@ function drawHazards() {
 // [RETIRADO 2026-11-08 · v2]     ctx.restore();
 // [RETIRADO 2026-11-08 · v2]   }
 // [RETIRADO 2026-11-08 · v2] }
+// Dragón: lo que va por encima del suelo (se pinta después de las figuras). Los enemigos ya vienen con la «y» proyectada;
+// los efectos de bossFx no, así que se multiplican por K.
+function drawBossAir() {
+  const D = BOSS.dragon;
+  for (const e of enemies) {
+    if (e.kind !== 'dragon' || e.dead || e.sky || e.stunT > 0) continue;
+    if (e.state !== 'beamWind' && e.state !== 'beam') continue;
+    const o = e.r + D.muzzle, ux = Math.cos(e.dir), uy = Math.sin(e.dir), mx = e.x + ux * o, my = e.y + uy * o * K - 18;
+    ctx.save();
+    if (e.state === 'beamWind') { // esfera de energía que crece en la boca, sobre la línea del rayo
+      const k = windK(e), R = 6 + 26 * k;
+      const g = ctx.createRadialGradient(mx, my, 0, mx, my, R * 1.8); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.4, 'rgba(180,140,255,0.8)'); g.addColorStop(1, 'rgba(180,140,255,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(mx, my, R * 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(mx, my, R * 0.55, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < 5; i++) { // chispas que la alimentan
+        const a = time * 6 + i * 1.26, d = R * 2.6 * (1 - ((time * 2 + i * 0.2) % 1));
+        ctx.fillStyle = D.energy; ctx.beginPath(); ctx.arc(mx + Math.cos(a) * d, my + Math.sin(a) * d * 0.7, 2.5, 0, Math.PI * 2); ctx.fill();
+      }
+    } else { // el rayo: núcleo blanco y halo violeta hasta el muro
+      const L = e.beamL || 0, ex = mx + ux * L, ey = my + uy * L * K, w = D.beam.w * (0.9 + 0.1 * Math.sin(time * 40));
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.35; ctx.strokeStyle = D.energy; ctx.lineWidth = w * 1.4; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = 0.9; ctx.lineWidth = w * 0.7; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = w * 0.3; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(mx, my, w * 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  for (const f of bossFx) { // rayos que caen del cielo y disparos del bombardeo
+    const x = f.x, y = f.y * K; ctx.save();
+    if (f.type === 'bolt') {
+      if (f.t < 0 && f.t > -0.35) { ctx.globalAlpha = 0.3 + 0.3 * Math.sin(time * 50); ctx.strokeStyle = '#e6d6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y - 700); ctx.lineTo(x, y); ctx.stroke(); }
+      if (f.t >= 0) { // zigzag brillante desde arriba
+        ctx.globalAlpha = 1 - f.t / 0.45; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.shadowColor = D.energy; ctx.shadowBlur = 18;
+        ctx.beginPath(); ctx.moveTo(x, y - 700); let yy = y - 700; let i = 0;
+        while (yy < y) { yy += 50; ctx.lineTo(x + ((i++ % 2) ? 14 : -14) * Math.random(), Math.min(yy, y)); }
+        ctx.stroke(); ctx.fillStyle = D.energy; ctx.beginPath(); ctx.ellipse(x, y, 40 * (1 + f.t * 2), 18 * (1 + f.t * 2), 0, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (f.type === 'blast') {
+      if (f.t < 0 && f.t > -0.3) { const h = -f.t / 0.3 * 260; ctx.fillStyle = '#ffb27a'; ctx.beginPath(); ctx.arc(x, y - h, 6, 0, Math.PI * 2); ctx.fill(); } // la bomba cayendo
+      if (f.t >= 0) { ctx.globalAlpha = 1 - f.t / 0.45; ctx.fillStyle = '#ffb27a'; ctx.beginPath(); ctx.ellipse(x, y, 30 + 60 * f.t, 14 + 28 * f.t, 0, 0, Math.PI * 2); ctx.fill(); }
+    } else if (f.type === 'land' && f.t >= 0) {
+      ctx.globalAlpha = 1 - f.t / 0.45; ctx.strokeStyle = D.energy; ctx.lineWidth = 6; ctx.beginPath(); ctx.ellipse(x, y, 160 * (0.6 + f.t), 160 * K * (0.6 + f.t), 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
 // Avisos de los guardianes en el suelo (los de área y cornadas van como hazards; aquí los disparos y la embestida)
 function drawBossTells() {
   for (const e of enemies) {
-    if (e.type !== 'boss' || e.dead || e.airborne || e.stunT > 0 || e.spawnT > 0) continue;
+    if (e.type !== 'boss' || e.dead || e.airborne || e.stunT > 0 || (e.spawnT > 0 && !e.sky)) continue;
     const k = windK(e), C = BOSS.cannon;
     ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#ff4d5e'; ctx.fillStyle = '#ff4d5e';
     const [mx, my] = bossMuzzle(e);
@@ -8641,6 +8905,26 @@ function drawBossTells() {
       ctx.beginPath();
       for (const a of e.novaAngles) { ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
       ctx.stroke(); ctx.globalAlpha = 0.2 + 0.3 * k; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, r0 + len, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (e.kind === 'dragon') {
+      const D = BOSS.dragon, F = D.fly;
+      if (e.state === 'beamWind') { // área del rayo: discontinua mientras apunta, sólida al fijar
+        const L = e.beamL || 0, w = D.beam.w / 2, locked = e.t <= D.beam.lock;
+        ctx.save(); ctx.translate(mx, my); ctx.rotate(e.dir); ctx.fillStyle = D.energy; ctx.strokeStyle = D.energy;
+        ctx.globalAlpha = locked ? 0.3 : 0.08 + 0.15 * k; ctx.fillRect(0, -w, L, w * 2);
+        ctx.globalAlpha = locked ? 1 : 0.55; ctx.lineWidth = locked ? 3 : 2; if (!locked) ctx.setLineDash([12, 8]); ctx.strokeRect(0, -w, L, w * 2);
+        ctx.restore();
+      }
+      if (e.sky) { // sombra que guía: grande y clara, para prever las pasadas y la caída
+        const hk = Math.min(1, (e.z || 0) / F.height), R = e.r * (1.3 + 0.5 * hk) * (e.state === 'dive' ? 1 + 0.6 * (1 - Math.max(0, e.t) / F.dive) : 1);
+        ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(e.x, e.y, R * 1.5, R, Math.cos(e.anim * 2) * 0.1, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.7 + 0.3 * Math.sin(time * 8); ctx.strokeStyle = D.energy; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.lineDashOffset = -time * 40;
+        ctx.beginPath(); ctx.ellipse(e.x, e.y, R * 1.7, R * 1.15, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+        if ((e.state === 'passWind' || e.state === 'pass') && e.pass) { // línea del bombardeo con flechas en el sentido de la pasada
+          const P = e.pass; ctx.save(); ctx.strokeStyle = '#ff4d5e'; ctx.globalAlpha = 0.75; ctx.lineWidth = 3; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -time * 60;
+          ctx.beginPath(); ctx.moveTo(P.x0, P.y0); ctx.lineTo(P.x1, P.y1); ctx.stroke(); ctx.restore();
+        }
+      }
     }
     if (e.state === 'chargeWind') { // carril de la embestida hasta el muro
       const L = e.lane || 0, w = e.r, ux = Math.cos(e.dir), uy = Math.sin(e.dir), locked = e.t <= BOSS.ram.charge.lock;
@@ -8978,14 +9262,14 @@ function drawGame() {
     for (const it of list) it.f();
     for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
-    drawArcOrbs('air'); drawGrenades(); drawCoralAir(); drawDolls(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); if (SIEGE.on) siegeDrawAir(); drawTexts(); drawInteractHints();
+    drawArcOrbs('air'); drawBossAir(); drawGrenades(); drawCoralAir(); drawDolls(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); if (SIEGE.on) siegeDrawAir(); drawTexts(); drawInteractHints();
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
   drawFuryScreen();
   drawOffscreen();
   if (SIEGE.on) siegeDrawUI();
-  const boss = enemies.find(e => e.type === 'boss' && e.spawnT <= 0);
+  const boss = enemies.find(e => e.type === 'boss' && (e.spawnT <= 0 || e.sky));
   if (boss) {
     const by = H - 22, bw = W - 280, on = guardianLevantable(boss);
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(140, by, bw, 8);
