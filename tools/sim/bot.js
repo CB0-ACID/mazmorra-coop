@@ -200,11 +200,17 @@
       if (SK.abilities && b.abT <= 0 && !p.cast && !b.hold.q && !b.hold.e) {
         const ok = s => abilityReady(p, s), t1 = c.priType, t2 = abilityType(p, 'sec');
         const near = gap < (c.canShoot ? 420 : 220);
-        if (t1 && !SK.noPri && t1 !== 'raiseShield' && p.priCd <= 0 && near && ok('pri') && !(t1 === 'turret' && myTurret(p))) {
+        if (t1 && !SK.noPri && t1 !== 'raiseShield' && !(t1 === 'frostburst' && tg.frozenT > 0) && p.priCd <= 0 && near && ok('pri') && !(t1 === 'turret' && myTurret(p))) {
           pulse(b, 'q', t1 === 'shieldThrow' ? 1.05 : 0.12); b.abT = 0.4;
-        } else if (t2 && !SK.noSec && t2 !== 'frostMode' && t2 !== 'taunt' && p.secCd <= 0 && near && ok('sec') && !(t2 === 'turret' && myTurret(p))) {
-          pulse(b, 'e', t2 === 'shieldThrow' ? 1.05 : t2 === 'ricochet' ? 0.5 : t2 === 'dragon' ? 0.1 : 0.12); b.abT = 0.4;
+        } else if (t2 && !SK.noSec && t2 !== 'frostMode' && !(t2 === 'snowball' && !(tg.frozenT > 0.15 && gap < 330 && (gap >= 150 || p.moveCd > 0 || p.flip))) && t2 !== 'taunt' && p.secCd <= 0 && near && ok('sec') && !(t2 === 'turret' && myTurret(p))) {
+          pulse(b, 'e', t2 === 'shieldThrow' ? 1.05 : t2 === 'ricochet' ? 0.5 : t2 === 'dragon' ? 0.1 : t2 === 'snowball' ? 0.35 : 0.12); b.abT = 0.4;
         }
+      }
+      // Escarcha: picado sobre el congelado (salto y, ya en el aire, otra pulsación) cuando la bola de nieve no está lista
+      if (c.moveType === 'flip' && !SK.noDive) {
+        if (b.diveStep === 1 && p.flip && (p.z || 0) >= 10 && !b.hold.d) { pulse(b, 'd', 0.04); b.diveStep = 0; }
+        else if (!b.diveStep && tg.frozenT > 0.3 && gap < 190 && !p.flip && p.moveCd <= 0 && !b.hold.d && !b.hold.e) { pulse(b, 'd', 0.04); b.diveStep = 1; b.diveT = 0.6; }
+        if (b.diveStep) { b.diveT -= STEP; if (b.diveT <= 0) b.diveStep = 0; }
       }
       // Marea y Ciruela: Bravata / misil tras moverse cuando no hay peligro (cada pocos segundos)
       if ((c.ammo || c.postMoveMissile) && p.moveCd <= 0 && b.dodging <= 0) {

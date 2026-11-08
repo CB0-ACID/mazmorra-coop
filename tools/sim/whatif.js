@@ -2,9 +2,9 @@
 'use strict';
 const { makeSim, newMetrics, runRoom } = require('./sim');
 const [ci, patch, NS] = [+process.argv[2], process.argv[3], +process.argv[4] || 10];
-const S = makeSim({ react: 0.15, notice: 0.95, abilities: patch !== 'noAbil', dodge: true, noPri: patch === 'noPri', noSec: patch === 'noSec', parry: patch !== 'noParry' });
+const S = makeSim({ react: 0.15, notice: 0.95, abilities: patch !== 'noAbil', dodge: true, noPri: patch === 'noPri', noSec: patch === 'noSec', parry: patch !== 'noParry', noDive: patch === 'noDive' || patch === 'noAbil' });
 const PATCH = {
-  none: '', noPri: '', noSec: '', noAbil: '', noParry: '',
+  none: '', noPri: '', noSec: '', noAbil: '', noParry: '', noDive: '',
   noFury: `CHARS[5].fury = false;`,
   bossHp2: `{ const _d = damageEnemy; damageEnemy = function (e, sx, sy, h, s, kb, ranged) { if (e.type === 'boss' && ranged) h *= 2; return _d.call(this, e, sx, sy, h, s, kb, ranged); }; }`,
   frostHp2: `CHARS[2].hp = 80; CHARS[2].shot = 1.6; { const _d = damageEnemy; damageEnemy = function (e, sx, sy, h, s, kb, ranged) { if (e.type === 'boss' && ranged) h *= 2; return _d.call(this, e, sx, sy, h, s, kb, ranged); }; }`,

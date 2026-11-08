@@ -482,6 +482,12 @@ const SNOW = { minLv: 0.2, grow: 0.6, kb: 520, kbCharge: 0.6, stun: 0.2, trail: 
 // termina la congelación con un extra. Nunca mata a tier 3 ni al guardián.
 // vuln: multiplicador del daño recibido mientras está congelado, por tier (4 = guardián) · breakPct: extra al romper, fracción de la vida máxima
 // shatterBelow: tier 1-2 se hacen añicos si tras romper les queda menos de esta fracción · bossImmune: s que el guardián no se puede volver a congelar
+// Frío de Escarcha (2026-11-08): el rayo no quita estamina; suma frío y, al llegar al umbral, congela.
+// need: segundos de rayo continuo para congelar por tier · hold: s sin rayo antes de que el frío baje · decay: frío que pierde por segundo
+// beamMul: daño del rayo (× c.shot) · det: detonación (bola de nieve y picado sobre un congelado): radio, daño (× DMG.ability),
+// estamina al guardián (fracción de su máxima; tier 1-3 quedan aturdidos) y frío que reparte a los de alrededor (fracción de su umbral)
+const CHILL = { need: { 1: 0.7, 2: 1.3, 3: 2.2, 4: 4 }, hold: 1, decay: 1.5, beamMul: 1.25,
+  det: { r: 70, dmg: 4, bossSta: 0.38, spread: 0.5 } };
 const FREEZE = { vuln: { 1: 1.5, 2: 1.5, 3: 1.25, 4: 1.15 }, breakPct: { 1: 0.25, 2: 0.25, 3: 0.12, 4: 0.04 }, shatterBelow: 0.2, bossImmune: 6 };
 // Picado de Escarcha: en pleno salto, volver a pulsar movimiento la lanza en picado como si ella fuese la estalactita
 // range: alcance del fijado · dist: punto de caída sin objetivo (hacia donde apuntas) · snap: imán alrededor de ese punto · frozenPull: preferencia por los congelados
@@ -491,7 +497,8 @@ const DIVE = { range: 220, dist: 110, snap: 90, frozenPull: 60, minZ: 8, hang: 0
 // [RETIRADO 2026-11-08] const FROZEN_BREAK = { bossDmg: 30 }; // congelado que se rompe (estalactita y bola de nieve): los que no son guardián mueren de un golpe; el guardián recibe este daño
 // Disparo básico de Escarcha: la habilidad secundaria cambia entre estos dos modos (los Misiles de cristal están retirados al final del archivo)
 const FROST_MODE = [
-  { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo; cada tic quita más estamina, hasta el doble. Si aturde, congela' },
+  // [RETIRADO 2026-11-08] { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo; cada tic quita más estamina, hasta el doble. Si aturde, congela' },
+  { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo que suma frío; al llenar el aro, el enemigo se congela' },
   { key: 'snow', name: 'Bola de nieve', icon: 'snowball', desc: 'Mantén para cargar tamaño y alcance; rebota una vez; destroza a los congelados' }
 ];
 const BEAM_RAMP = { time: 3, mul: 2, base: 0.85 }; // base: fracción del daño de estamina base del rayo   // la estamina de cada tic sube lineal hasta ×2 tras 3 s de rayo continuo
@@ -601,7 +608,8 @@ const CHARS = [
   { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'tanque', role: 'Tanque · Mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
     priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
     moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.25, moveCharges: 3, moveRecharge: 1.8 }, // teletransporte corto con 3 cargas; moveCd es solo la pausa entre usos
-  { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil · Escarcha', priType: 'frostburst', priCd: 7, secType: 'frostMode', secCd: 0.3,
+  // [RETIRADO 2026-11-08] secType: 'frostMode', secCd: 0.3 (cambio de disparo) y 60 PV de la familia ágil
+  { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil · Escarcha', priType: 'frostburst', priCd: 7, secType: 'snowball', secCd: 1.6, hp: 80,
     shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300, moveType: 'flip', moveCd: 0.1, moveInvuln: false }, // ondas mágicas continuas; cargando, bola de nieve
   // [RETIRADO] Coral antes del rediseño del chamuscado:
   // { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
@@ -637,7 +645,7 @@ const CHARS = [
 const RATINGS = {
   Ceniza:   { dmg: 2, tec: 4, sup: 5 }, // martillo de poco daño; lanza con el martillo y el sísmico; escudo que cubre al grupo y Provocación
   Musgo:    { dmg: 3, tec: 4, sup: 3 }, // orbe arcano y liana que dañan; raíces inmovilizan y la onda empuja a todos; la liana une aliados
-  Escarcha: { dmg: 4, tec: 5, sup: 2 }, // rayo continuo y bola de nieve; congela, rompe congelados y la estalactita controla zonas
+  Escarcha: { dmg: 4, tec: 5, sup: 2 }, // rayo que enfría hasta congelar; Estallido helado congela al instante; bola de nieve y picado detonan la congelación (aturden y enfrían a los de al lado)
   Coral:    { dmg: 4, tec: 4, sup: 1 }, // [RETIRADO 2026-11-08] tec: 3 · granadas de impacto que dañan y lanzan; cargas pegajosas que, detonadas, rompen la estamina (también bomba humana en un aliado); muñeco bomba y lluvia de mortero
   // [RETIRADO 2026-11-08] comentario de la Coral de pistolas: // dos pistolas en ráfaga; el abanico al rojo lanza
   Brasa:    { dmg: 5, tec: 5, sup: 1 }, // ráfaga de remate y ejecución; embestida, uppercut y caída lanzan
@@ -2642,7 +2650,7 @@ const MOVES = {
   jump: { name: 'Salto', desc: 'Hacia un enemigo en el aire te enganchas y sigues el combo', icon: 'jump',
     start(p, c, mx, my) { startJump(p, mx || 0, my || 0); } }, // el salto lleva su propio estado (p.jump, ver «Salto»)
   // [RETIRADO 2026-11-08] flip: { name: 'Doble salto', desc: 'Cada pulsación salta con una voltereta (dos seguidos); el segundo salto deja caer una estalactita de hielo', icon: 'jump',
-  flip: { name: 'Salto y picado', desc: 'Salta con una voltereta; pulsa de nuevo en el aire para caer en picado sobre el objetivo como una estalactita', icon: 'jump',
+  flip: { name: 'Salto y picado', desc: 'Salta con una voltereta; pulsa de nuevo en el aire para caer en picado sobre el objetivo; sobre un congelado, detona la congelación', icon: 'jump', // [RETIRADO 2026-11-08] desc: '… como una estalactita'
     start(p, c, mx, my) { startFlip(p, mx || 0, my || 0); },
     update(p, c, dt) { updateFlip(p, dt); } }, // el salto usa p.flip; mientras dura, p.moveT > 0 y controla el desplazamiento
   block: { name: 'Guardia', desc: 'Mantén para bloquear; justo a tiempo, bloqueo perfecto', icon: 'block', hold: true }
@@ -2824,7 +2832,8 @@ function diveImpact(p) {
     if (Math.hypot(e.x - p.x, e.y - p.y) >= DIVE.r + e.r || (e.z || 0) > 60) continue;
     const fz = e.frozenT > 0;
     damageEnemy(e, p.x, p.y, dmg, e.maxSta * DIVE.sta, DIVE.kb, true); // a un congelado le entra el extra de quebradizo
-    if (fz && !e.dead) breakFrozen(e, p.x, p.y, DIVE.kb);             // y además se rompe
+    // [RETIRADO 2026-11-08] if (fz && !e.dead) breakFrozen(e, p.x, p.y, DIVE.kb);             // y además se rompe
+    if (fz && !e.dead) detonateFrozen(e, p, p.x, p.y);                 // y además detona la congelación
   }
   effects.push({ type: 'ring', x: p.x, y: p.y, r: DIVE.r, t: 0, dur: 0.35, color: '#bfeaf5' });
   effects.push({ type: 'ring', x: p.x, y: p.y, r: DIVE.r * 0.55, t: 0, dur: 0.22, color: '#ffffff' });
@@ -3877,7 +3886,7 @@ function updateSpecial(p, dt) {
 
 const ABILITIES = {
   beam: castBeam, area: castArea, rush: startRush, drop: startDrop, ricochet: startRicochet,
-  shield: castShield, pillar: castPillar, taunt: castTaunt, shieldThrow: castShieldThrow, roots: castRoots, vine: castVine, grenade: castGrenade, frostburst: castFrostburst, frostMode: castFrostMode, pull: castPull, blink: castBlink, suspend: castSuspend,
+  shield: castShield, pillar: castPillar, taunt: castTaunt, shieldThrow: castShieldThrow, roots: castRoots, vine: castVine, grenade: castGrenade, frostburst: castFrostburst, snowball: castSnowball, frostMode: castFrostMode, pull: castPull, blink: castBlink, suspend: castSuspend,
   volley: castVolley, overdrive: castOverdrive, detonate: castDetonate, detonator: castDetonator, mortar: castMortar, turret: castTurret, overcharge: castOvercharge,
   reaper: castReaper, dragon: castDragon,
   drill: startDrill, furyDrop: startFuryDrop // Ámbar en furia
@@ -5269,9 +5278,12 @@ function frostBeamTick(p, staMul) {
   else { let ba = 0.35; for (const e of liveTargets()) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d > R) continue; const a = angTo(e); if (a < ba) { ba = a; best = e; } } }
   if (best) {
     p.beamX = best.x; p.beamY = best.y; p.beamZ = best.z || 0;
-    const wasStun = best.stunT > 0;
-    shotHit(p, best, c.shot, 20, p.x, p.y, false, staMul);
-    if (!wasStun && best.stunT > 0 && !best.dead) freezeEnemy(best, false, AB.frostburst.time); // el rayo que aturde también congela
+    // [RETIRADO 2026-11-08] el rayo quitaba estamina y, al aturdir, congelaba:
+    // const wasStun = best.stunT > 0;
+    // shotHit(p, best, c.shot, 20, p.x, p.y, false, staMul);
+    // if (!wasStun && best.stunT > 0 && !best.dead) freezeEnemy(best, false, AB.frostburst.time); // el rayo que aturde también congela
+    shotHit(p, best, c.shot * CHILL.beamMul / (best.maxSta > 0 ? DMG.shotHpVsSta : 1), 20, p.x, p.y, false, 0); // daño de vida completo y sin estamina (el rayo ya no rompe estamina: congela)
+    if (!best.dead && !(best.frozenT > 0)) addChill(best, c.shotCd);    // suma frío: al llegar al umbral, congela
     if (Math.random() < 0.5) burst(best.x, best.y - 12 - (best.z || 0), '#bfeaf5', 2);
   } else { const d = beamLength(p.x, p.y, p.ax, p.ay, R); p.beamX = p.x + p.ax * d; p.beamY = p.y + p.ay * d; p.beamZ = 0; }
   SFX.beam();
@@ -5360,6 +5372,9 @@ function drawFlake(q) {
   for (let i = 0; i < 3; i++) { const t = a + i * Math.PI / 3; ctx.moveTo(q.x - Math.cos(t) * r, q.y - Math.sin(t) * r); ctx.lineTo(q.x + Math.cos(t) * r, q.y + Math.sin(t) * r); }
   ctx.stroke();
 }
+// Bola de nieve como habilidad 2 (2026-11-08): mantener carga tamaño y alcance; al soltar sale. Detona a los congelados
+function snowballAbilityLv(p) { return Math.max(0.25, Math.min(1, (p.castT || 0) / p.ch.chargeTime)); }
+function castSnowball(p) { throwSnowball(p, snowballAbilityLv(p)); }
 function throwSnowball(p, lv) {
   // [RETIRADO 2026-11-08] const c = p.ch, r = 6 + 16 * lv, sp = 320, range = 300 + 260 * lv; // cargada: más grande y llega más lejos
   // [RETIRADO 2026-11-08] pBullets.push({ x: p.x + p.ax * (p.r + r), y: p.y + p.ay * (p.r + r), vx: p.ax * sp, vy: p.ay * sp, r, life: range / sp, dmg: c.shot * (3 + 9 * lv), color: '#e8f7ff',
@@ -5442,6 +5457,38 @@ function updateFrostShot(p, inp, dt) {
 // Misiles de cristal: salen en abanico y se dirigen al objetivo fijado (o a la mira si no hay)
 // Un misil de un mismo disparo: daño de vida y estamina; con dos impactos ralentiza; con los tres congela
 // Congelar: mismas reglas para el Estallido helado (fromBurst) y para los misiles
+// Frío: se acumula con el rayo (y con las detonaciones cercanas) y congela al llegar al umbral de su tier
+function chillNeed(e) { return CHILL.need[frozenTier(e)] || CHILL.need[1]; }
+function addChill(e, amt) {
+  if (e.dead || e.frozenT > 0 || (e.type === 'boss' && e.freezeImmuneT > 0)) return;
+  e.chill = (e.chill || 0) + amt; e.chillT = CHILL.hold;
+  if (e.chill >= chillNeed(e)) { e.chill = 0; freezeEnemy(e, false, AB.frostburst.time); if (!e.frozenAir) floatText(e.x, upY(e.y, 50 + (e.z || 0)), 'Congelado', '#bfeaf5'); }
+}
+function updateChill(dt) {
+  for (const e of enemies) {
+    if (!e.chill) continue;
+    e.chillT = (e.chillT || 0) - dt;
+    if (e.chillT <= 0) e.chill = Math.max(0, e.chill - CHILL.decay * dt);
+  }
+}
+// Detonar la congelación (bola de nieve o picado de Escarcha): estallido de hielo que aturde al congelado
+// (al guardián le quita gran parte de la estamina) y reparte frío a los de alrededor
+function detonateFrozen(e, p, sx, sy) {
+  if (e.dead || !(e.frozenT > 0)) return false;
+  const D = CHILL.det, dmg = D.dmg * DMG.ability;
+  e.frozenT = 0; e.frozenAir = false; e.frozenBurst = false;
+  damageEnemy(e, sx, sy, dmg, e.type === 'boss' ? e.maxSta * D.bossSta : 0, 0, true);
+  if (!e.dead && e.type !== 'boss' && !(e.stunT > 0)) stunEnemy(e);
+  for (const o of liveTargets()) { // onda helada
+    if (o === e || Math.hypot(o.x - e.x, o.y - e.y) > D.r + o.r) continue;
+    damageEnemy(o, e.x, e.y, dmg * 0.4, 0, 120, true);
+    if (!o.dead) addChill(o, chillNeed(o) * D.spread);
+  }
+  iceBreakFx(e);
+  effects.push({ type: 'ring', x: e.x, y: e.y, r: D.r, t: 0, dur: 0.35, color: '#bfeaf5' });
+  floatText(e.x, upY(e.y, 64 + (e.z || 0)), '¡Estalla!', '#ffffff');
+  return true;
+}
 function freezeEnemy(e, fromBurst, time) {
   if (scorchN(e) >= 1 && thermalShock(e)) return; // chamuscado: en vez de congelarse, el hielo revienta
   if (e.type === 'boss' && e.freezeImmuneT > 0) return; // el guardián no se puede volver a congelar enseguida
@@ -6587,7 +6634,8 @@ function shotHit(p, e, dmg, kb, sx, sy, ability, staMul) {
   // [RETIRADO 2026-11-08] const mul = ability ? ABILITY_MUL : SHOT_MUL * (e.airborne ? AIR_SHOT_MUL : SHOT_GROUND_MUL);
   const mul = ability ? DMG.ability : (e.airborne ? DMG.shotAir : DMG.shotGround);
   if (e.maxSta > 0) { // cada disparo quita una fracción fija de la barra; la carga la multiplica
-    const sta = e.maxSta * p.ch.shotStagger * (dmg / p.ch.shot) * tierRule(e).shotStaMul * mul * (staMul || 1);
+    // [RETIRADO 2026-11-08] const sta = e.maxSta * p.ch.shotStagger * (dmg / p.ch.shot) * tierRule(e).shotStaMul * mul * (staMul || 1);
+    const sta = e.maxSta * p.ch.shotStagger * (dmg / p.ch.shot) * tierRule(e).shotStaMul * mul * (staMul == null ? 1 : staMul); // 0 = sin estamina (rayo de Escarcha)
     damageEnemy(e, sx, sy, dmg * DMG.shotHpVsSta * mul, sta, kb, true);
   }
   else damageEnemy(e, sx, sy, dmg * mul, 0, kb, true); // tier 1: sin estamina, el disparo quita vida normal
@@ -7580,6 +7628,7 @@ function update(dt) {
   updateChains(dt); updateShieldThrows(dt); updateShieldFlung(dt);
   updatePZones(dt); updateTurrets(dt); updateArcOrbs(dt); updateGrenades(dt); updateStalacs(dt); updateMissiles(dt); updateBurns(dt); updateDragonFx(dt);
   updateScorch(dt); updateEmbers(dt); // Coral: chamuscado y brasas
+  updateChill(dt); // Escarcha: el frío baja si dejan de darle con el rayo
   updateCBombs(dt); updateStickies(); updateShells(dt); updateDolls(dt); // Coral: granadas, cargas pegajosas y mortero
 
   for (const b of bullets) {
@@ -7627,7 +7676,7 @@ function update(dt) {
         // [RETIRADO 2026-11-08] }
         // [RETIRADO 2026-11-08] if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); }
         // [RETIRADO 2026-11-08] if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); if (b.snow) snowKnock(e, b); }
-        if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); const fz = e.frozenT > 0; shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); if (b.snow) { if (fz) breakFrozen(e, b.x, b.y, 160); else snowKnock(e, b); } } // bola: a los congelados los rompe; a los demás, los empuja
+        if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); const fz = e.frozenT > 0; shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); if (b.snow) { if (fz) detonateFrozen(e, b.owner, b.x, b.y); else snowKnock(e, b); } } // bola: a los congelados los detona; a los demás, los empuja  // [RETIRADO 2026-11-08] if (fz) breakFrozen(e, b.x, b.y, 160)
         else { shotHit(b.owner, e, b.dmg, 110, b.x - b.vx * 0.05, b.y - b.vy * 0.05); b.life = 0; break; }
       }
     }
@@ -7806,7 +7855,9 @@ const ABILITY_TEXT = {
   taunt: ['Provocación', 'Atrae a los enemigos; su guardia cubre todo'],
   shieldThrow: ['Lanzar escudo', 'Vuela recto, rebota en dos enemigos y vuelve. Cargable: más daño, alcance y rebotes'],
   grenade: ['Granada', 'En arco al fijado: explota y lo lanza'],
-  frostburst: ['Estallido helado', 'Mantén para ampliar el área; congela a los que están dentro; en el aire, se rompe'],
+  // [RETIRADO 2026-11-08] frostburst: ['Estallido helado', 'Mantén para ampliar el área; congela a los que están dentro; en el aire, se rompe'],
+  frostburst: ['Estallido helado', 'Mantén para ampliar el área; congela al instante a los que están dentro'],
+  snowball: ['Bola de nieve', 'Mantén para cargar tamaño y alcance; a los congelados los detona: quedan aturdidos y enfría a los de al lado'],
   frostMode: ['Cambio de disparo', 'Cambia entre rayo, misiles de cristal y bola de nieve'],
   // roots: ['Raíces', 'Inmovilizan a los enemigos de una zona'],
   roots: ['Enredaderas', 'Mantén para ampliar el área a tu alrededor; inmoviliza y los enredados pierden más estamina'],
@@ -7975,7 +8026,7 @@ const ABILITY_CHIP = {
   beam: 'Daño lineal', area: 'Lanza en área', rush: 'Embiste', drop: 'Caída Izuna', ricochet: 'Rebota',
   shield: 'Bloquea balas', raiseShield: 'Bloquea balas', volley: 'Cono de disparos', overdrive: 'Purga de calor', detonate: 'Detona marcas', detonator: 'Rompe estamina', mortar: 'Bombardeo en zona',
   turret: 'Torreta', overcharge: 'Cura aliados', taunt: 'Provoca', grenade: 'Explota', frostburst: 'Congela',
-  frostMode: 'Cambia de disparo', vine: 'Barrido', roots: 'Inmoviliza', reaper: 'Ejecuta', dragon: 'Multiobjetivo'
+  frostMode: 'Cambia de disparo', snowball: 'Detona congelados', vine: 'Barrido', roots: 'Inmoviliza', reaper: 'Ejecuta', dragon: 'Multiobjetivo'
 };
 function interactionChips(c) {
   const out = [], add = t => { if (t && !out.includes(t)) out.push(t); };
@@ -9267,6 +9318,11 @@ function drawEnemy(e) {
   ctx.restore();
   ctx.globalAlpha = 1;
   if (stun) for (let i = 0; i < 3; i++) { const a = time * 5 + i * 2.1; ctx.fillStyle = '#ffd54a'; ellipse(x + Math.cos(a) * r * 0.9, y - r - 3 + Math.sin(a) * 3, 2.2, 2.2); }
+  if (e.chill > 0 && !(e.frozenT > 0)) { // frío acumulado: aro helado que se llena hasta congelar
+    const k = Math.min(1, e.chill / chillNeed(e));
+    ctx.save(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(191,234,245,0.25)'; ctx.beginPath(); ctx.arc(x, y, r + 7, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#bfeaf5'; ctx.beginPath(); ctx.arc(x, y, r + 7, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   if (e.frozenT > 0) { // bloque de hielo
     ctx.save(); ctx.globalAlpha = e.frozenAir ? 0.75 : 0.55; ctx.fillStyle = '#bfeaf5'; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
     rrect(x - r - 5, y - r - 5, (r + 5) * 2, (r + 5) * 2, 5); ctx.fill(); ctx.stroke();
@@ -10125,6 +10181,7 @@ function tutSpecAbility(type, c) {
     case 'taunt': return Object.assign(base, { noEnemy: true, fx: [ring(0, 0, AB.taunt.r, '#ff6b6b', 0, 0.45)] });
     case 'overdrive': return Object.assign(base, { fx: [ring(0, 0, AB.overdrive.r, '#ff8a3d', 0, 0.4)] });
     case 'frostMode': return Object.assign(base, { noEnemy: true, fx: [ring(0, 0, 30, '#bfeaf5', 0, 0.3), ring(0, 0, 18, '#ffffff', 0.1, 0.25)] });
+    case 'snowball': return Object.assign(base, { hitAt: 0.3, fx: [tr(far, 14, '#e8f7ff'), ring(far, -9, CHILL.det.r, '#bfeaf5', 0.28, 0.35), ring(far, -9, 22, '#ffffff', 0.3, 0.25)] });
     case 'overcharge': return Object.assign(base, { noEnemy: true, fx: [ring(0, 0, AB.overcharge.healR * 0.35, '#7ee08a', 0, 0.4)] });
     case 'dragon': return Object.assign(base, { fx: [ring(0, 0, 26, '#ffe066', 0, 0.35), { type: 'dragon', x: 0, y: -8, ax: 1, ay: 0, len: 110, w: 40, color: col, d0: 0.05, dur: 0.35 }] });
     case 'roots': return Object.assign(base, { fx: [ring(far, -9, AB.roots.r, col, 0, 0.4)] });
@@ -10204,7 +10261,8 @@ const TUT_STRAT = {
   // [RETIRADO 2026-11-08] 'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
   'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje. Álzalo justo antes del golpe para un bloqueo perfecto: rompe gran parte de la estamina del atacante (también si es el golpe al suelo de un guardián cercano). Lo que bloqueas con el escudo en alto os cura a ti y al aliado cubierto (con un límite que se recarga).', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
   'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
-  'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
+  // [RETIRADO 2026-11-08] 'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
+  'Escarcha': ['Mantén el rayo sobre un enemigo: suma frío (el aro helado) y, al llenarlo, lo congela. Si dejas de darle, el frío se va.', 'Estallido helado (1) congela al instante a los de una zona. Después, detona: Bola de nieve (2) a distancia o picado (pulsa movimiento dos veces) de cerca.', 'Detonar aturde al congelado, listo para rematar, y enfría a los de al lado: encadena congelaciones en los grupos.'],
   // [RETIRADO 2026-11-08] (textos de la Coral de pistolas con calor)
   // 'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
   'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido, listo para rematar.', 'Pega una carga a un compañero y detónala: bomba humana que lanza a todos los de alrededor. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
