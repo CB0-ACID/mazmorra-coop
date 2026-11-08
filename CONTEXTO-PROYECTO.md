@@ -131,12 +131,13 @@ Término canónico en **negrita**; entre paréntesis, el anglicismo o la palabra
 - **Levantar** (lanzar por los aires, «launch», `tryLaunch`): mandar a un enemigo al aire. **Lanzador** («launcher», `launcher: true`) es el golpe o habilidad que levanta. Ojo: `shotMode: 'launcher'` es el lanzagranadas de Coral y no tiene que ver.
 - **Levantable** (`levantable`, `guardianLevantable`): enemigo dentro de su **ventana de levantar** (`TIER_RULES.launchSta`); su barra de estamina se pinta en cian y el guardián muestra un icono de viento.
 - **En el aire** (`airborne`): enemigo levantado; cae despacio y, al tocar suelo, sufre la **caída** (`DMG.fallHp`, `DMG.fallSta`).
+- **Aéreo** (`aerial(e)`): enemigo en el aire, lanzado (`airborne`) o volador (`flying`). Es el criterio para el salto de Brasa y Ámbar, la Caída Izuna y la altura de los golpes.
 - **Malabar aéreo** («juggle», `JUGGLE_VZ`): mantener a un enemigo en el aire a golpes o disparos.
 - **Aturdido** («stun», `stunT`): estado al vaciar la estamina; recibe más daño (`DMG.stunned`) y se le puede **ejecutar**.
 - **Ejecutar** («execute», `executeEnemy`): acabar de golpe con un enemigo aturdido en el suelo pulsando el ataque a su lado (o en el aire, enganchado con el salto). El Puño ejecutor de Brasa también ejecuta a los tier 1. Carga recursos de algunos personajes (furia de Ámbar, Poder del dragón de Brasa).
 - **Remate**: palabra reservada para el último golpe de un combo (`finisher`); para acabar con un aturdido se dice **ejecutar**.
 - **Contacto** (`isHot`, `CONTACT_ATTACK`): daño por tocar al enemigo. Solo durante la embestida avisada del ácaro y del embestidor, y siempre con el guardián.
-- **Volador** (`fly`, `flying`): el murciélago; solo le dañan los ataques a distancia y los lanzadores.
+- **Volador** (`fly`, `flying`): el murciélago; vuela a su altura (`flyZ`) y no aterriza al caer. Mientras vuela solo le dañan los ataques a distancia, los golpes de quien salta, los ataques que lanzan por los aires y la Caída Izuna; el golpe normal desde el suelo avisa «Salta o lánzalo».
 - **Quemadura** (`BURN`), **congelado** (`frozenT`), **ralentizado** (`slowT`), **enredado** (`rootT`): estados alterados.
 
 ### Enemigos (nombre de diseño → identificador)

@@ -2181,10 +2181,13 @@ function startMovement(p, mx, my) {
 }
 // ---------- Salto ----------
 // Busca a un enemigo en el aire hacia el que saltar: el fijado primero, si no el más cercano delante
+// Aéreo: enemigo en el aire, ya sea lanzado (airborne) o volador (murciélago)
+function aerial(e) { return !!(e.airborne || e.flying); }
 function jumpTarget(p, dx, dy, moving) {
   let best = null, bs = 1e9;
   for (const e of liveTargets()) {
-    if (!e.airborne || e.grabbed || e.frozenAir) continue;
+    // [RETIRADO 2026-11-08] if (!e.airborne || e.grabbed || e.frozenAir) continue;
+    if (!aerial(e) || e.grabbed || e.frozenAir) continue;
     const vx = e.x - p.x, vy = e.y - p.y, d = Math.hypot(vx, vy);
     if (d > (moving ? JUMP.homeRange : JUMP.vertRange)) continue;
     if (moving && d > e.r + p.r + 20 && (vx * dx + vy * dy) / (d || 1) < JUMP.homeCos) continue;
@@ -2216,13 +2219,14 @@ function updateJump(p, dt) { // devuelve true mientras el salto controla el desp
   const J = p.jump;
   p.kbx = p.kby = 0; p.mvx *= 0.9; p.mvy *= 0.9;
   J.t += dt;
-  const e = J.target, alive = e && !e.dead && e.airborne && !e.grabbed && enemies.includes(e);
+  // [RETIRADO 2026-11-08] const e = J.target, alive = e && !e.dead && e.airborne && !e.grabbed && enemies.includes(e);
+  const e = J.target, alive = e && !e.dead && aerial(e) && !e.grabbed && enemies.includes(e);
   if (J.phase === 'arc') {
     const k = Math.min(1, J.t / JUMP.dur), step = JUMP.dist / JUMP.dur * dt;
     p.x += J.dx * step; p.y += J.dy * step; collide(p, true);
     p.z = Math.sin(k * Math.PI) * JUMP.h;
     for (const o of liveTargets()) { // roza a un enemigo en el aire: se engancha a él
-      if (!o.airborne || o.grabbed || o.frozenAir) continue;
+      if (!aerial(o) || o.grabbed || o.frozenAir) continue; // [RETIRADO 2026-11-08] antes: !o.airborne
       if (Math.hypot(o.x - p.x, o.y - p.y) < o.r + p.r + JUMP.latchR) { beginJumpReach(p, o); return true; }
     }
     if (k >= 1) jumpLand(p);
@@ -2597,7 +2601,7 @@ function updatePlayer(p, dt) {
     const s = p.slash; s.t += dt * (p.furyT > 0 ? FURY.anim : 1); // en furia, los golpes salen más rápidos
     for (const e of enemies) {
       if (e.dead || e.spawnT > 0 || s.hit.has(e)) continue;
-      if (slashHits(p, s, e.x, e.y, e.r) && Math.abs((e.airborne ? e.z : 0) - (p.z || 0)) < ((p.jump || (p.z || 0) > 8) ? AIR_SLASH_Z : 70)) { s.hit.add(e); meleeHit(p, e, s); }
+      if (slashHits(p, s, e.x, e.y, e.r) && Math.abs((aerial(e) ? e.z : 0) - (p.z || 0)) < ((p.jump || (p.z || 0) > 8) ? AIR_SLASH_Z : 70)) { s.hit.add(e); meleeHit(p, e, s); }
     }
     for (const b of bullets) if (slashHits(p, s, b.x, b.y, 0)) { b.life = 0; burst(b.x, b.y - 12, '#ffffff', 3); }
     if (c.meleeStyle === 'claw' && s.kind === 'heavy') { // Tajo sombra: siluetas y marca en X al atravesar
@@ -2828,10 +2832,18 @@ function fireShot(p, dmg, lv) {
 }
 
 // ---------- Habilidades de Brawler ----------
-function dropTarget(p) {
-  if (p.jump) { const e = p.jump.target; return e && !e.dead && e.airborne && !e.grabbed ? e : null; } // en el aire: el enemigo al que estás pegado
-  if (p.lockOn && p.target && p.target.airborne && !p.target.dead) return p.target;
-  return nearestAirborne(p);
+// [RETIRADO 2026-11-08] versión anterior: solo enemigos lanzados (airborne)
+// function dropTarget(p) {
+//   if (p.jump) { const e = p.jump.target; return e && !e.dead && e.airborne && !e.grabbed ? e : null; }
+//   if (p.lockOn && p.target && p.target.airborne && !p.target.dead) return p.target;
+//   return nearestAirborne(p);
+// }
+function dropTarget(p) { // cualquier aéreo: lanzado o volador
+  if (p.jump) { const e = p.jump.target; return e && !e.dead && aerial(e) && !e.grabbed ? e : null; } // en el aire: el enemigo al que estás pegado
+  if (p.lockOn && p.target && aerial(p.target) && !p.target.dead && !p.target.grabbed) return p.target;
+  let best = null, bd = 1e9;
+  for (const e of liveTargets()) if (aerial(e) && !e.grabbed) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e; } }
+  return best;
 }
 // Modo de prueba: lanza por los aires al enemigo apuntado (o al más cercano), sin importar su estamina
 function testLaunch(p) {
@@ -3100,7 +3112,7 @@ function updateFuryDrop(p, dt) {
   // impacto
   e.z = 0; e.vz = 0; e.airborne = false; e.getup = G.getup; e.grabbed = false;
   p.z = 0; p.drop = null; p.inv = Math.max(p.inv, 0.5);
-  damageEnemy(e, e.x, e.y - 1, c.dropDmg * DMG.ability * G.dmgMul, e.maxSta * G.sta, 0);
+  damageEnemy(e, e.x, e.y - 1, c.dropDmg * DMG.ability * G.dmgMul, e.maxSta * G.sta, 0, true); // también al volador agarrado
   scorchLand(e);
   for (const o of liveTargets()) { // la onda del impacto daña y lanza a los de alrededor
     if (o === e || o.airborne || Math.hypot(o.x - e.x, o.y - e.y) > G.radius + o.r) continue;
@@ -3247,7 +3259,7 @@ function updateSpecial(p, dt) {
   if (k < 1) return true;
   e.z = 0; e.vz = 0; e.airborne = false; e.getup = 0.6; e.grabbed = false;
   p.z = 0; p.drop = null; p.inv = Math.max(p.inv, 0.4);
-  damageEnemy(e, e.x, e.y - 1, c.dropDmg * DMG.ability, e.maxSta * c.dropSta, 0);
+  damageEnemy(e, e.x, e.y - 1, c.dropDmg * DMG.ability, e.maxSta * c.dropSta, 0, true); // también al volador agarrado
   scorchLand(e); // Caída Izuna con un chamuscado: Meteorito
   for (const o of liveTargets()) if (o !== e && !o.airborne && Math.hypot(o.x - e.x, o.y - e.y) < c.dropRadius + o.r) damageEnemy(o, e.x, e.y, DMG.ability, DMG.ability, 260);
   effects.push({ type: 'ring', x: e.x, y: e.y, r: c.dropRadius, t: 0, dur: 0.35, color: p.color });
@@ -5783,7 +5795,10 @@ function interruptHit(e, heavy) {
 // Daño: el cuerpo a cuerpo quita vida y estamina a partes iguales; el disparo quita sobre todo estamina
 function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   if (e.dead || e.spawnT > 0) return;
-  if (e.flying && !ranged) return; // volador: solo le hacen daño los ataques a distancia (disparos y proyectiles)
+  // [RETIRADO 2026-11-08] if (e.flying && !ranged) return; // volador: solo le hacen daño los ataques a distancia (disparos y proyectiles)
+  // ranged = el golpe alcanza a un volador: disparo, proyectil, golpe de quien salta, lanzador o Caída Izuna.
+  // Volando a su altura, lo demás no le hace nada; si ese mismo golpe lo lanza, tryLaunch aplica el daño guardado.
+  if (e.flying && !e.airborne && !ranged) { e.blockedHit = { t: time, sx, sy, hp: hpDmg, sta: staDmg, kb: kbBase }; return; }
   if (e.stunT > 0 && tierRule(e).stunnedDmg) hpDmg *= DMG.stunned; // aturdido: recibe más daño (el guardián no)
   if (furyBy && furyBy.ch.fury) furyGain(furyBy, Math.min(hpDmg, Math.max(0, e.hp))); // Ámbar: el daño que hace llena la furia
   if (e.frozenAir && e.frozenT > 0) { shatterEnemy(e); return; } // congelado en el aire: cualquier golpe lo rompe
@@ -5804,11 +5819,13 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
 }
 function meleeHit(p, e, s) {
   const dmg = p.ch.melee * s.def.dmg * DMG.melee, heavy = s.kind === 'heavy' || s.def.dmg >= 1.5;
-  if (e.flying && !s.def.launcher) { // volador: el golpe normal no le hace nada, y se avisa
-    if (!s.noted) { s.noted = true; floatText(e.x, upY(e.y, 16 + (e.z || 0)), 'Solo a distancia', '#c9b8ff'); }
+  const airHit = !!s.def.launcher || !!p.jump || (p.z || 0) > 8; // lanzador o golpe desde el aire: alcanza a los voladores
+  // [RETIRADO 2026-11-08] if (e.flying && !s.def.launcher) { ... 'Solo a distancia' ... return; }
+  if (e.flying && !e.airborne && !airHit) { // volador: el golpe normal desde el suelo no le hace nada, y se avisa
+    if (!s.noted) { s.noted = true; floatText(e.x, upY(e.y, 16 + (e.z || 0)), 'Salta o lánzalo', '#c9b8ff'); }
     return;
   }
-  damageEnemy(e, p.x, p.y, dmg, dmg, s.def.kb, !!s.def.launcher); // los launchers también alcanzan a los voladores
+  damageEnemy(e, p.x, p.y, dmg, dmg, s.def.kb, airHit);
   impactFx(p, e, heavy, s.kind === 'flurry');
   if (e.dead) return;
   if (s.def.launcher && tryLaunch(e, s.def.forceLaunch)) { p.lockOn = true; p.target = e; } // quien lo lanza lo fija al instante
@@ -5861,8 +5878,11 @@ function interruptible(e) { return enVentana(e); }
 function tryLaunch(e, force) {
   if (!launchable(e, force)) return false;
   if (e.frozenT > 0 && e.type !== 'boss') { e.hp = 0; killEnemy(e, true); return false; } // congelado en el suelo y lanzado por los aires: se rompe
-  e.airborne = true; e.z = 1; e.vz = LAUNCH_VZ; e.kbx *= 0.2; e.kby *= 0.2; e.state = 'walk';
+  // [RETIRADO 2026-11-08] e.airborne = true; e.z = 1; ...
+  e.airborne = true; e.z = Math.max(1, e.z || 0); e.vz = LAUNCH_VZ; e.kbx *= 0.2; e.kby *= 0.2; e.state = 'walk'; // el volador sale desde su altura
   floatText(e.x, e.y - 40, '¡Al aire!', '#ffffff'); burst(e.x, e.y, '#d8cfe6', 10); SFX.launch();
+  const b = e.blockedHit; e.blockedHit = null;
+  if (e.flying && b && b.t === time) damageEnemy(e, b.sx, b.sy, b.hp, b.sta, b.kb, true); // el ataque que lanza a un volador también le hace daño
   return true;
 }
 function execReach(e, p) { return e.r + p.r + 44; }
