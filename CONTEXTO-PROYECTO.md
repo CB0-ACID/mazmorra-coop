@@ -14,12 +14,12 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
 ## Archivos
 1. **mazmorra-coop.html**: el prototipo jugable (≈257 kB).
    - 8 personajes en 4 roles: Ceniza (tanque defensor), Musgo (tanque mago), Escarcha (ágil, escarcha), Coral (ágil, demoledora: lanzagranadas), Brasa (brawler ejecutor), Ámbar (brawler ninja), Marea (tirador, rebote), Ciruela (tirador, torreta).
-   - Enemigos por tiers: mite y slime (T1), charger y shooter (T2), golem y splitter (T3), guardián del piso (T4).
-   - Sistemas: vida y estamina de enemigos, aturdimiento y ejecuciones, lanzar enemigos por los aires y rematarlos (juggle), bloqueo con bloqueo perfecto, hitstop/hitstun, búfer de entrada, rescate de compañeros caídos (fantasma si se agota el tiempo), aliado IA, habilidades 1 y 2 y ataques cargados.
+   - Enemigos por tiers: ácaro, limo y murciélago (T1), embestidor y artillero (T2), gólem y divisor (T3), guardián del piso (T4). En el código: `mite`, `slime`, `bat`, `charger`, `shooter`, `golem`, `splitter` y `boss` (ver el glosario).
+   - Sistemas: vida y estamina de enemigos, aturdimiento y ejecuciones, levantar enemigos por los aires y mantenerlos arriba (malabar aéreo), bloqueo con bloqueo perfecto, hitstop/hitstun, búfer de entrada, rescate de compañeros caídos (fantasma si se agota el tiempo), aliado IA, habilidades 1 y 2 y ataques cargados.
    - Entradas: Teclado A, Teclado B, táctil y hasta 4 mandos (Gamepad API). Menú de pausa con guía de controles y modo de prueba.
    - Controles configurables: «Opciones de control» en el menú principal (opción 6) y en la pausa. Asigna teclas a Teclado A/B y botones a los mandos; las asignaciones se guardan en el navegador (localStorage, clave `mz-binds`). Si una tecla ya es de otra acción, se intercambian. Esc siempre pausa y cancela. El ratón del Teclado A (clic y rueda) y el táctil son fijos.
-   - Ajustes recientes: enemigos con ×4,4 de vida y ×2 de estamina; en partidas con varios humanos, cada jugador extra suma un 50 % de vida a los enemigos (MULTI_HP_MUL = 0.5) para premiar combos (lanzar, rematar en el aire, ejecutar). El modo «1 + IA» cuenta como un jugador.
-   - Vida en puntos con barra (ya no en corazones; 1 corazón antiguo = 20 puntos): tanques 160, medios 100, ágiles 60. Cada ataque enemigo tiene su daño propio en ENEMY_DMG (élites +30 %); curaciones en HEAL (corazón recogido +40, al bajar de piso +40), Puño ejecutor +20 y rescate a 40. El corazón queda como símbolo de curación. Números flotantes de daño y curación y barrita sobre la cabeza al recibir daño.
+   - Vida y estamina de los enemigos en puntos directos en `ENEMY` (desde el 2026-11-08 ya incluyen el antiguo ×4,4 de vida y ×2 de estamina). Escalado por piso y jugadores en `ENEMY_SCALE`: cada jugador humano extra suma un 50 % de vida (`multiHp`) para premiar combinar (levantar, rematar en el aire, ejecutar). El modo «1 + IA» cuenta como un jugador. Élites en `ELITE`.
+   - Vida en puntos con barra (ya no en corazones; 1 corazón antiguo = 20 puntos): tanques 160, medios 100, ágiles 60. Cada ataque enemigo tiene su daño propio en ENEMY_DMG, con una entrada por ataque y sin «touch» genérico (élites × `ELITE.dmg` = +30 %); el daño al tocar sale de `CONTACT_ATTACK`; curaciones en HEAL (corazón recogido +40, al bajar de piso +40), Puño ejecutor +20 y rescate a 40. El corazón queda como símbolo de curación. Números flotantes de daño y curación y barrita sobre la cabeza al recibir daño.
    - Al recibir daño (constante HURT): hitstop de 0,05 s, hitstun de 0,2 s (0,35 s si el golpe quita 28 o más; tanques ×0,6, ágiles ×1,1) sin control y con empuje, interrumpe ataques, cargas y habilidades; después 1 s de invulnerabilidad desde el impacto con parpadeo que se acelera en el último cuarto. Al levantarse tras caer, 1,5 s. Las esquivas siguen siendo invulnerables pero ya no parpadean.
    - Fijado automático de los cuerpo a cuerpo (tanques y brawlers): al moverte, fijan al enemigo más cercano dentro del cono hacia el que miras, y al golpear dan un paso de entrada que cierra el hueco. Se ajusta con la constante AIM.
    - Mira automática de los personajes a distancia (sin fijar a mano): apunta al enemigo que tienes delante (prioriza a los que están en el aire) y, mientras disparas, se queda pegada aunque huyas, para disparar hacia atrás; con stick derecho o ratón solo hace de imán suave. Se ajusta con la constante AIM_R.
@@ -38,8 +38,8 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
    - Golpes especiales con icono (`specialSlots`): tras moverte, avanzando hacia el fijado y retrocediendo, sacados del `meleeKit` de cada personaje; Marea tiene «Vaciar el tambor» y Ciruela «Misil teledirigido» tras moverse. La gatling de Ciruela coge velocidad al mantener el disparo (de 0,3 s a 0,11 s entre balas en 1,5 s) y se sobrecalienta (bloqueada 1,6 s); la Sobrecarga duplica la cadencia (tope 0,07 s) y hace que cada bala caliente 4 veces menos (`AB.gatling`, `gatlingFire`). Los iconos se componen con un gesto (giro, carrera, estocada, ascendente) y el arma del estilo (`sp_<gesto>_<arma>`). Se muestran en la ficha de selección, en la sección «Golpes especiales».
    - Marcador en partida (`drawHUD`, `HUD_UI`): se dibuja a escala 1 y se amplía con `hudS` = `cssPerUnit` / escala del lienzo (entre 1 y 1,8), para que en el móvil los iconos midan unos 26 px reales y el texto no baje de 12 px; con muchos jugadores se reduce para que quepa. `HUD` (alto) es variable. Casillas de 26 con los segundos de recarga dentro; vida verde que pasa a rojo y parpadea al 20 % (`hpColor`); al quedar lista una habilidad 1 o 2 de 1,5 s o más suena un aviso suave (`SFX.ready`, más grave la 1) y la casilla destella (`watchReady`).
    - **Confirmar en partida = botón de fijar/apuntar** (`INTERACTS`): con algo al alcance, ese botón hace la acción en vez de fijar y aparece un aviso «[botón] acción» sobre el jugador (en táctil, el botón Fijar se ilumina). Acciones: cruzar el portal, subir a la espalda de Ceniza con el escudo alzado (los humanos ya no se suben solos; el aliado IA sí) y bajar de ella (también con el movimiento), y cargar a la espalda la torreta de Ciruela (cualquier jugador; se suelta **manteniendo** Fijar, así que pulsarlo sigue fijando). A cuestas, la torreta sigue al portador, dispara, cura con Sobrecarga y gasta su tiempo, pero no recibe daño ni para balas; si el portador cae, se queda en el suelo (`carriedBy`, `pickTurret`, `dropTurret`). El portal antiguo (clic junto a él y golpear) queda comentado.
-   - Las constantes de balance están agrupadas al principio del script (ENEMY, AB, CHARGED, BASE_STATS, REVIVE…).
-   - **Salas más grandes que la pantalla y cámara de grupo** (estilo Hades): cada sala tiene su tamaño (`ROOM_SIZES`: inicio 21×15, tesoro 17×13, jefe 29×21, normales entre 25×21 y 35×15). La cámara sigue al centro del grupo y se aleja lo justo para que quepan todos hasta `CAM.zMin` (zoom con límite del laboratorio); llegado a ese zoom, quien está en un extremo no puede alejarse más (`leash`). Flechas en el borde para compañeros y enemigos fuera de la vista. Las puertas miden 3 casillas.
+   - Las constantes de balance están agrupadas al principio del script (ENEMY, ENEMY_SCALE, ELITE, TIER_RULES, ENEMY_DMG, DMG, AB, CHARGED, BASE_STATS, REVIVE…). Ver «Convenciones del código».
+   - **Salas más grandes que la pantalla y cámara de grupo** (estilo Hades): cada sala tiene su tamaño (`ROOM_SIZES`: inicio 21×15, tesoro 17×13, guardián 29×21, normales entre 25×21 y 35×15). La cámara sigue al centro del grupo y se aleja lo justo para que quepan todos hasta `CAM.zMin` (zoom con límite del laboratorio); llegado a ese zoom, quien está en un extremo no puede alejarse más (`leash`). Flechas en el borde para compañeros y enemigos fuera de la vista. Las puertas miden 3 casillas.
    - **Generación de salas**: forma rectangular, en cruz u octogonal (esquinas macizas) y relleno simétrico de pilares sueltos, rejilla de columnas, grupos de rocas, murete con huecos o columnata. Los pasillos centrales hacia las puertas siempre quedan libres y lo que no se alcanza desde el centro se rellena. Las oleadas aparecen cerca del grupo.
    - **Vista tres cuartos reforzada** (`VIEW`): el suelo se aplasta en vertical (`squash` 0.78) y los muros levantan `wallH` píxeles con cara frontal y sombra al pie; el muro de abajo va recortado para no tapar. Con `squash: 1` se vuelve a la vista cenital. Técnica: la lógica sigue en coordenadas de mundo; al dibujar, lo que va pegado al suelo (zonas, avisos, previsualizaciones) se pinta con el lienzo aplastado y lo que está de pie se pinta con sus «y» proyectadas un instante (`projectOn`/`projectOff`). Para guardar en un efecto un punto a cierta altura se usa `upY(y, altura)`.
    - Saltos y lanzamientos: sombra que encoge con la altura, marca de aterrizaje y línea de altura también para los personajes que saltan.
@@ -80,3 +80,101 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
 
 ## Laboratorio: pantalla partida para 4 (mecánica 9)
 - `laboratorio-coop.html#split4`: hasta cuatro jugadores en un mapa grande. Se agrupan por distancia con histéresis (juntos hasta 640 px, se unen a menos de 440) y cada grupo tiene su vista: entera, mitades, mitad + dos cuartos o 2×2. J1 y J2 con teclado (o J2 con IA), J3 y J4 con los mandos 3 y 4 o la IA; cualquier mando conectado manda sobre su jugador. Opción «siempre 2×2» para medir el peor caso; el marcador enseña los ms de dibujo.
+
+## Convenciones del código (desde el 2026-11-08)
+- **Nada se borra**: al modificar o quitar habilidades, ataques o valores, la versión anterior queda comentada justo encima con la etiqueta `[RETIRADO aaaa-mm-dd] motivo` (las retiradas antiguas llevan `[RETIRADO]` sin fecha). Un bloque grande retirado puede ir al final del archivo, en «Código retirado, comentado y sin efecto».
+- **Fórmula de daño única** (`DMG`, con la fórmula escrita encima): todo el daño está en PV, la misma unidad que la vida de `ENEMY`. Golpe = `ch.melee × golpe.dmg × DMG.melee`; habilidad = valor de `AB` × `DMG.ability`; disparo normal con `DMG.shotGround` (0,36) o `DMG.shotAir` (0,84), y a enemigos con estamina la vida × `DMG.shotHpVsSta`. Aturdido × `DMG.stunned`; caída tras lanzamiento `DMG.fallHp` y `DMG.fallSta`. Sustituye a `MELEE_MUL`, `SHOT_MUL`, `AIR_SHOT_MUL`, `SHOT_GROUND_MUL`, `ABILITY_MUL`, `STUN_DMG_MUL`, `FALL_HP`, `FALL_STA`.
+- **Reglas por tier en una tabla** (`TIER_RULES`, función `tierRule(e)`): ventana de levantar e interrumpir (`launchSta`: tier 1-2 siempre, tier 3 al 50 %, guardián al 25 %), empuje recibido, duración del aturdimiento, extra de daño aturdido, estamina de los disparos y probabilidad de soltar corazón. Las funciones `enVentana`, `levantable`, `guardianLevantable`, `launchable` e `interruptible` leen de ahí.
+- **Daño enemigo sin huecos**: `edmg(e, ataque)` avisa en la consola (una vez, con `warnOnce`) si falta una entrada en `ENEMY_DMG`, y usa `DMG_FALLBACK` (20) para no romper la partida.
+- **Nombres en código = nombres del glosario**: familias de personaje `tanque`, `agil`, `brawler`, `tirador` (antes `grande` y `golpe`). El guardián conserva el identificador interno `boss` (tipo de enemigo, tipo de sala y pistas de música).
+- **Banco de pruebas**: con `?debug` en la URL; las comprobaciones de balance comparan una huella numérica (vida y estamina por piso y jugadores, daño de cada golpe y disparo a cada enemigo, reglas por tier) y simulaciones deterministas con cuatro aliados IA en mazmorra y asedio.
+
+## Glosario
+Término canónico en **negrita**; entre paréntesis, el anglicismo o la palabra que se usaba y el identificador en el código. En la interfaz y en los documentos se usa siempre el término canónico.
+
+### Partida y estructura
+- **Roguelite** (anglicismo aceptado): juego de partidas cortas con salas aleatorias en el que se empieza de cero cada vez. «Roguelike» es el género de origen, más estricto.
+- **Cooperativo** («coop»): todos los jugadores contra la máquina en la misma pantalla.
+- **Partida** («run»): de la selección de personajes a la derrota o al abandono.
+- **Piso** (`floor`, `depth`): conjunto de salas que termina con el guardián y un portal al piso siguiente.
+- **Sala** (`room`): espacio con puertas; se cierra hasta limpiarla. Tipos: inicio, normal, tesoro y guardián (`'boss'`).
+- **Encuentro** (`makeEncounter`): los enemigos de una sala, elegidos con un **presupuesto** (`cost` de cada enemigo) que crece con la distancia, el piso y los jugadores. Puede llegar en dos **oleadas**.
+- **Portal**: salida tras vencer al guardián.
+- **Modo Mazmorra / Modo Asedio**: los dos modos del menú principal.
+
+### Combate básico
+- **Golpe** (ataque cuerpo a cuerpo, `melee`): ataque básico de tanques y brawlers. Cada personaje tiene su **juego de golpes** (`meleeKit`).
+- **Combo**: cadena de tres golpes seguidos; el tercero es el **remate de combo** (`finisher`).
+- **Golpe tras movimiento** (`afterMove`), **golpe adelantado** (`toward`) y **golpe de retirada / ascendente** (`away`): variantes según lo que hagas justo antes. Juntos son los **golpes especiales** (`specialSlots`).
+- **Golpe cargado / disparo cargado** (`chargedMelee`, `charge`): mantener el ataque para cargar; nivel de carga de 0 a 1.
+- **Disparo** (`shot`): ataque básico de ágiles y tiradores. **Impacto instantáneo** («hitscan»): llega sin viajar. **Proyectil** (`projectile`): viaja por la sala.
+- **Habilidad 1 y habilidad 2** (`pri`, `sec`): habilidades propias de cada personaje; **habilidad alternativa** (`secAlt`) cuando una cambia según el estado.
+- **Movimiento** (antes «dash», `moveType`): esquiva, zancada, teletransporte, salto, voltereta o guardia según el personaje.
+- **Recarga** («cooldown», `cd`): tiempo hasta poder repetir una acción.
+- **Fijar** («lock-on», `lockOn`, `target`): elegir el enemigo al que se dirigen golpes y disparos. **Fijado automático** (`AIM`) en cuerpo a cuerpo y **mira automática** (`AIM_R`) a distancia.
+- **Fallo** («whiff»): golpe que no toca a nadie; se muestra «Fallo».
+- **Empuje** («knockback», `kb`): desplazamiento que provoca un impacto.
+- **Congelado al acertar** («hitstop»): pausa de unas centésimas al conectar un golpe, para dar peso.
+- **Aturdimiento por impacto** («hitstun»): tiempo sin control tras recibir un golpe. No confundir con **aturdido** (estado por estamina).
+- **Búfer de entrada** (`BUFFER`): una pulsación se recuerda 0,25 s y sale en cuanto se puede.
+- **Invulnerabilidad** («i-frames», `inv`): tiempo en el que no se recibe daño (esquivas, tras recibir daño, al levantarse).
+- **Bloqueo** y **bloqueo perfecto** («parry», `BLOCK_PERFECT`): parar un ataque; si es justo a tiempo, además interrumpe al enemigo.
+- **Puntos de vida, PV** (`hp`): unidad única de vida y daño para jugadores y enemigos.
+- **Estamina** (`sta`): segunda barra de los enemigos de tier 2 en adelante; al vaciarla quedan **aturdidos**.
+
+### Estados y reglas de los enemigos
+- **Tier** (`tier`, 1-4): categoría de amenaza. Tier 1 en manada y sin estamina; tier 2 estándar; tier 3 amenazas con habilidades; tier 4 el guardián.
+- **Guardián** («boss», «jefe»; `type: 'boss'`): enemigo final de cada piso. En la interfaz y en los documentos siempre «guardián».
+- **Élite** (`elite`): tier 2 reforzado con borde dorado (`ELITE`).
+- **Aviso** (telegrafiado, `attackWarn`): «!» y preparación visible antes de cada ataque que hace daño.
+- **Interrumpir** (`interruptHit`): cortar el ataque que el enemigo prepara. Tier 1-2 siempre; tier 3 y guardián solo en su ventana de levantar.
+- **Levantar** (lanzar por los aires, «launch», `tryLaunch`): mandar a un enemigo al aire. **Lanzador** («launcher», `launcher: true`) es el golpe o habilidad que levanta. Ojo: `shotMode: 'launcher'` es el lanzagranadas de Coral y no tiene que ver.
+- **Levantable** (`levantable`, `guardianLevantable`): enemigo dentro de su **ventana de levantar** (`TIER_RULES.launchSta`); su barra de estamina se pinta en cian y el guardián muestra un icono de viento.
+- **En el aire** (`airborne`): enemigo levantado; cae despacio y, al tocar suelo, sufre la **caída** (`DMG.fallHp`, `DMG.fallSta`).
+- **Malabar aéreo** («juggle», `JUGGLE_VZ`): mantener a un enemigo en el aire a golpes o disparos.
+- **Aturdido** («stun», `stunT`): estado al vaciar la estamina; recibe más daño (`DMG.stunned`) y se le puede **ejecutar**.
+- **Ejecutar** («execute», `executeEnemy`): acabar de golpe con un enemigo aturdido en el suelo pulsando el ataque a su lado (o en el aire, enganchado con el salto). El Puño ejecutor de Brasa también ejecuta a los tier 1. Carga recursos de algunos personajes (furia de Ámbar, Poder del dragón de Brasa).
+- **Remate**: palabra reservada para el último golpe de un combo (`finisher`); para acabar con un aturdido se dice **ejecutar**.
+- **Contacto** (`isHot`, `CONTACT_ATTACK`): daño por tocar al enemigo. Solo durante la embestida avisada del ácaro y del embestidor, y siempre con el guardián.
+- **Volador** (`fly`, `flying`): el murciélago; solo le dañan los ataques a distancia y los lanzadores.
+- **Quemadura** (`BURN`), **congelado** (`frozenT`), **ralentizado** (`slowT`), **enredado** (`rootT`): estados alterados.
+
+### Enemigos (nombre de diseño → identificador)
+- **Ácaro** → `mite` (tier 1, embestida avisada) · **Limo** → `slime` (tier 1, escupitajo) · **Murciélago** → `bat` (tier 1, volador, onda de sonido)
+- **Embestidor** → `charger` (tier 2, embestida y zarpazo) · **Artillero** → `shooter` (tier 2, disparos)
+- **Gólem** → `golem` (tier 3, salto y pisotón) · **Divisor** → `splitter` (tier 3, se teletransporta, siembra bombas y se divide al morir)
+- **Guardián** → `boss` (tier 4)
+
+### Personajes y roles
+- **Rol** (`role`, visible como «Familia · Especialidad», p. ej. «Tanque · Mago»): Tanque (`tanque`), Ágil (`agil`), Brawler (`brawler`) y Tirador (`tirador`).
+- **Brawler** (anglicismo que se mantiene como nombre de rol): luchador cuerpo a cuerpo a puñetazos o garras, que salta en vez de esquivar. Brasa y Ámbar.
+- **Tanque**: personaje grande y lento con mucha vida que protege al grupo. Ceniza y Musgo.
+- **Ágil**: personaje pequeño y rápido con poca vida. Escarcha y Coral.
+- **Tirador**: personaje a distancia con disparo contundente. Marea y Ciruela.
+- **Peso** (`WEIGHT`: pesado, medio, ligero): cómo arranca, frena, gira y encaja empujones.
+- **Calor / sobrecalentamiento** (`heat`, `overheat`): recurso de la gatling de Ciruela; lleno, bloquea el arma.
+- **Furia** (`FURY`): barra y modo especial de Ámbar.
+- **Valoraciones** (`RATINGS`): daño, técnica y apoyo de 1 a 5, estimadas a mano.
+
+### Jugadores, controles e interfaz
+- **Caído** (`down`), **rescate** (`REVIVE`) y **fantasma** (`ghost`): un jugador sin vida queda caído; un compañero puede rescatarlo y, si se agota el tiempo, pasa a fantasma hasta la siguiente sala.
+- **Aliado IA** (`npc`): compañero controlado por la máquina en el modo «1 + IA».
+- **Marcador** («HUD», `drawHUD`): vida, recargas y recursos de cada jugador en pantalla.
+- **Mando** («gamepad», `pad0`-`pad3`), **Teclado A / B** (`kb1`, `kb2`), **táctil** (`touch`), **modo mando** (`padmode`).
+- **Tutorial previo**: pestañas Golpes, Habilidades y Estrategia antes de cada partida.
+- **Laboratorio** (`laboratorio-coop.html`): banco de pruebas de mecánicas sueltas.
+
+### Modo Asedio
+- **Oleada** (`wave`), **incursión** (grupo que entra por una brecha), **escaramuza** (aniquilar una incursión sin que llegue al patio).
+- **Zona** (Muralla oeste, Patio de armas, Muralla este) y **zona perdida** (cerrada para siempre).
+- **Piedra de paso**: punto de viaje entre zonas por votación.
+- **Objetivos**: torre de vigía, almacén, polvorín y Puerta. **Ranura** de trampa: pinchos, ballesta y brasero.
+- **Pertrechos**: virotes y leña que se cargan encima. **Oro** compartido. **Estabilidad del frente** (0-100).
+- **Portaestandarte**: élite con bandera que acelera a su escuadra. **Zapadores** y **lluvia de fuego**: eventos.
+- **Mejoras entre oleadas** (`SG_UPGRADES`).
+
+### Desarrollo
+- **Retirado** (`[RETIRADO aaaa-mm-dd]`): código comentado y sin efecto que se conserva.
+- **Huella numérica**: lista de valores calculados por el banco de pruebas para comprobar que un cambio no altera el balance.
+- **Determinista**: simulación con números aleatorios fijados, que da siempre el mismo resultado.
+

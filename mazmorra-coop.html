@@ -185,37 +185,124 @@ const THEMES = [
   { name: 'Catedral gótica', pal: PALETTES[3], motif: 'catedral' }
 ];
 const themeOf = depth => THEMES[(depth - 1) % THEMES.length];
+// ================= ENEMIGOS =================
 // Tier 1: simples, poca vida, sin estamina, en manada · Tier 2: estándar, varios ataques
-// Tier 3: amenazas con habilidades especiales · Tier 4: guardián del piso
+// Tier 3: amenazas con habilidades especiales · Tier 4: guardián del piso (identificador interno 'boss')
+// Unidades: vida (hp) y estamina (sta) en puntos de vida (PV) y de estamina, con el balance ya aplicado.
+// r: radio (px) · spd: velocidad (px/s) · cost: coste en el presupuesto de la sala · fly: altura de vuelo (px)
+// [RETIRADO 2026-11-08] tabla en unidades abstractas que luego se multiplicaban (vida ×4,4 con ENEMY_HP_MUL, estamina ×2 con ENEMY_STA_MUL):
+// const ENEMY = {
+//   mite:     { tier: 1, hp: 1,  sta: 0,  r: 12, spd: 105, color: '#d9f36b', cost: 0.4 },
+//   bat:      { tier: 1, hp: 1,  sta: 0,  r: 12, spd: 95,  color: '#8b7fb8', cost: 0.5, fly: 36 },
+//   slime:    { tier: 1, hp: 2,  sta: 0,  r: 18, spd: 62,  color: '#5fd068', cost: 0.5 },
+//   charger:  { tier: 2, hp: 5,  sta: 6,  r: 20, spd: 42,  color: '#ff8a3d', cost: 2 },
+//   shooter:  { tier: 2, hp: 4,  sta: 5,  r: 17, spd: 72,  color: '#a578ff', cost: 2 },
+//   golem:    { tier: 3, hp: 18, sta: 14, r: 30, spd: 34,  color: '#b08a5a', cost: 6 },
+//   splitter: { tier: 3, hp: 14, sta: 10, r: 23, spd: 52,  color: '#5eead4', cost: 6 },
+//   boss:     { tier: 4, hp: 40, sta: 24, r: 30, spd: 36,  color: '#e5484d', cost: 0 }
+// };
 const ENEMY = {
-  mite:     { tier: 1, hp: 1,  sta: 0,  r: 12, spd: 105, color: '#d9f36b', cost: 0.4 },
-  bat:      { tier: 1, hp: 1,  sta: 0,  r: 12, spd: 95,  color: '#8b7fb8', cost: 0.5, fly: 36 },
-  slime:    { tier: 1, hp: 2,  sta: 0,  r: 18, spd: 62,  color: '#5fd068', cost: 0.5 },
-  charger:  { tier: 2, hp: 5,  sta: 6,  r: 20, spd: 42,  color: '#ff8a3d', cost: 2 },
-  shooter:  { tier: 2, hp: 4,  sta: 5,  r: 17, spd: 72,  color: '#a578ff', cost: 2 },
-  golem:    { tier: 3, hp: 18, sta: 14, r: 30, spd: 34,  color: '#b08a5a', cost: 6 },
-  splitter: { tier: 3, hp: 14, sta: 10, r: 23, spd: 52,  color: '#5eead4', cost: 6 },
-  boss:     { tier: 4, hp: 40, sta: 24, r: 30, spd: 36,  color: '#e5484d', cost: 0 }
+  mite:     { tier: 1, hp: 4.4,  sta: 0,  r: 12, spd: 105, color: '#d9f36b', cost: 0.4 },
+  bat:      { tier: 1, hp: 4.4,  sta: 0,  r: 12, spd: 95,  color: '#8b7fb8', cost: 0.5, fly: 36 },
+  slime:    { tier: 1, hp: 8.8,  sta: 0,  r: 18, spd: 62,  color: '#5fd068', cost: 0.5 },
+  charger:  { tier: 2, hp: 22,   sta: 12, r: 20, spd: 42,  color: '#ff8a3d', cost: 2 },
+  shooter:  { tier: 2, hp: 17.6, sta: 10, r: 17, spd: 72,  color: '#a578ff', cost: 2 },
+  golem:    { tier: 3, hp: 79.2, sta: 28, r: 30, spd: 34,  color: '#b08a5a', cost: 6 },
+  splitter: { tier: 3, hp: 61.6, sta: 20, r: 23, spd: 52,  color: '#5eead4', cost: 6 },
+  boss:     { tier: 4, hp: 176,  sta: 48, r: 30, spd: 36,  color: '#e5484d', cost: 0 }
 };
-// ---------- Vida de los personajes (en puntos, ya no en corazones) ----------
-// Un antiguo corazón equivale a 20 puntos. El corazón se mantiene solo como símbolo de curación.
-const HEAL = { pickup: 40, floor: 40 }; // corazón recogido y curación al bajar de piso
-// Daño de cada ataque enemigo a los jugadores, en puntos (los élite pegan un 30 % más)
+// Escalado por piso y por jugadores (d = piso − 1, n = jugadores humanos, mínimo 1):
+//   tiers 1-3: vida = (hp + hpPerDepth × tier × d) × (1 + multiHp × (n − 1)) · estamina = sta + staPerDepth × tier × d
+//   guardián:  vida = (hp + hpPerDepth × d + hpPerPlayer × (n − 1)) × (1 + multiHp × (n − 1)) · estamina = sta + staPerDepth × d + staPerPlayer × (n − 1)
+//   velocidad: spd × (1 + spdPerDepth × d)
+const ENEMY_SCALE = {
+  hpPerDepth: 2.2, staPerDepth: 1, spdPerDepth: 0.08,
+  multiHp: 0.5, // cada jugador humano extra suma un 50 % de vida (premia combinar: lanzar, rematar en el aire, ejecutar); «1 + IA» cuenta como uno
+  guardian: { hpPerDepth: 44, hpPerPlayer: 66, staPerDepth: 8, staPerPlayer: 12 }
+};
+// Élite: versión reforzada de un tier 2 (probabilidad chance0 + chancePerDepth × piso por sala)
+const ELITE = { hp: 2.5, sta: 1.5, r: 1.35, dmg: 1.3, kb: 0.6, chance0: 0.12, chancePerDepth: 0.06 };
+// [RETIRADO 2026-11-08] multiplicadores sueltos, integrados en ENEMY, ENEMY_SCALE y ELITE:
+// const ELITE_DMG_MUL = 1.3;
+// const ENEMY_HP_MUL = 4.4; // vida de los enemigos respecto al daño de los jugadores
+// const ENEMY_STA_MUL = 2;  // estamina de los enemigos (doblada junto con la vida)
+// const MULTI_HP_MUL = 0.5; // con más jugadores, cada uno extra suma un 50 % de vida a los enemigos
+
+// ================= REGLAS POR TIER =================
+// launchSta: se le puede levantar por los aires e interrumpir con la estamina a esta fracción o menos y sin aturdir (null = siempre)
+// kbMul: empuje que recibe · kbFixed: empuje fijo (ignora el del golpe) · stunTime: s de aturdimiento al vaciar la estamina
+// stunnedDmg: recibe el extra de daño de aturdido (DMG.stunned) · shotStaMul: estamina que le quitan los disparos normales
+// drop: probabilidad de soltar un corazón al morir · contacto: solo hacen daño al tocar los ataques de CONTACT_ATTACK
+const TIER_RULES = {
+  1: { launchSta: null, kbMul: 1,   stunTime: 3.5, stunnedDmg: true,  shotStaMul: 1,   drop: 0.03 },
+  2: { launchSta: null, kbMul: 1,   stunTime: 3.5, stunnedDmg: true,  shotStaMul: 1,   drop: 0.12 },
+  3: { launchSta: 0.5,  kbMul: 0.5, stunTime: 3.5, stunnedDmg: true,  shotStaMul: 1,   drop: 0.12 },
+  4: { launchSta: 0.25, kbMul: 1, kbFixed: 30, stunTime: 2.5, stunnedDmg: false, shotStaMul: 0.3, drop: 0 }
+};
+function tierRule(e) { return TIER_RULES[e.tier] || TIER_RULES[1]; }
+
+// ================= DAÑO DE LOS ENEMIGOS A LOS JUGADORES =================
+// En PV directos; los élite hacen × ELITE.dmg. Cada ataque tiene su entrada: si falta, se avisa en la consola.
+// [RETIRADO 2026-11-08] tabla con «touch» genérico (también en enemigos cuyo contacto ya no hace daño):
+// const ENEMY_DMG = {
+//   mite:     { touch: 10 },
+//   slime:    { spit: 14 },
+//   bat:      { sonic: 12 },
+//   charger:  { touch: 22, swipe: 26 },
+//   shooter:  { touch: 12, shot: 16 },
+//   golem:    { touch: 24, leap: 32, slam: 36 },
+//   splitter: { touch: 16, bomb: 22 },
+//   boss:     { touch: 30, shot: 18 }
+// };
 const ENEMY_DMG = {
-  mite:     { touch: 10 },
-  slime:    { spit: 14 },
-  bat:      { sonic: 12 },
-  charger:  { touch: 22, swipe: 26 },
-  shooter:  { touch: 12, shot: 16 },
-  golem:    { touch: 24, leap: 32, slam: 36 },
-  splitter: { touch: 16, bomb: 22 },
-  boss:     { touch: 30, shot: 18 }
+  mite:     { dash: 10 },               // embestida avisada
+  slime:    { spit: 14 },               // escupitajo con aviso en el suelo
+  bat:      { sonic: 12 },              // onda de sonido
+  charger:  { dash: 22, swipe: 26 },    // embestida avisada y zarpazo
+  shooter:  { shot: 16 },               // disparo (de 1 en 1 o en abanico de 3)
+  golem:    { leap: 32, slam: 36 },     // salto y pisotón
+  splitter: { bomb: 22 },               // bombas sembradas
+  boss:     { contact: 30, shot: 18 }   // el guardián daña siempre al tocar; disparos en anillo y abanico
 };
-const ELITE_DMG_MUL = 1.3;
-function edmg(e, kind) { const t = ENEMY_DMG[e.type] || {}; return Math.round((t[kind] || t.touch || 20) * (e.elite ? ELITE_DMG_MUL : 1)); }
-const ENEMY_HP_MUL = 4.4; // vida de los enemigos respecto al daño de los jugadores
-const ENEMY_STA_MUL = 2;  // estamina de los enemigos (doblada junto con la vida)
-const MULTI_HP_MUL = 0.5; // con más jugadores, cada uno extra suma un 50 % de vida a los enemigos (premia combinar: lanzar, rematar en el aire, ejecutar)
+// Ataque que se aplica al tocar a un jugador (solo mientras isHot(e) lo permite)
+const CONTACT_ATTACK = { mite: 'dash', charger: 'dash', boss: 'contact' };
+const DMG_FALLBACK = 20; // red de seguridad si falta una entrada (se avisa una vez en la consola)
+const warnedOnce = new Set();
+function warnOnce(key, msg) { if (warnedOnce.has(key)) return; warnedOnce.add(key); console.warn(msg); }
+// [RETIRADO 2026-11-08] function edmg(e, kind) { const t = ENEMY_DMG[e.type] || {}; return Math.round((t[kind] || t.touch || 20) * (e.elite ? ELITE_DMG_MUL : 1)); }
+function edmg(e, kind) {
+  const t = ENEMY_DMG[e.type] || {};
+  let v = t[kind];
+  if (v == null) { warnOnce('edmg:' + e.type + ':' + kind, 'Mazmorra: falta ENEMY_DMG.' + e.type + '.' + kind); v = DMG_FALLBACK; }
+  return Math.round(v * (e.elite ? ELITE.dmg : 1));
+}
+function contactDmg(e) { return edmg(e, CONTACT_ATTACK[e.type] || 'contact'); }
+
+// ================= VIDA DE LOS PERSONAJES =================
+// En puntos de vida (PV), ya no en corazones: un antiguo corazón equivale a 20 PV. El corazón queda como símbolo de curación.
+const HEAL = { pickup: 40, floor: 40 }; // corazón recogido y curación al bajar de piso
+
+// ================= DAÑO DE LOS JUGADORES A LOS ENEMIGOS: FÓRMULA ÚNICA =================
+// Todo en PV (la misma unidad que la vida de ENEMY). Cada multiplicador vive aquí y solo aquí.
+//   Golpe:           PV = ch.melee × golpe.dmg × DMG.melee                    · estamina = la misma cantidad
+//   Golpe cargado:   PV = ch.melee × (1 + 2 × carga) × DMG.melee              (carga de 0 a 1)
+//   Habilidad:       PV = valor en AB × (ch.melee o ch.shot) × DMG.ability
+//   Disparo normal:  canal = DMG.shotAir (objetivo en el aire) o DMG.shotGround (en el suelo)
+//                    con estamina: estamina = estaMáx × ch.shotStagger × (daño ÷ ch.shot) × canal × TIER_RULES.shotStaMul
+//                                  PV = daño × canal × DMG.shotHpVsSta
+//                    sin estamina (tier 1): PV = daño × canal
+//   Disparo de habilidad (rebotante): igual que el normal con canal = DMG.ability
+//   Objetivo aturdido: PV × DMG.stunned (si TIER_RULES.stunnedDmg) · enredado por Raíces: estamina × AB.roots.staMul
+//   Caída tras un lanzamiento: PV = vidaMáx × DMG.fallHp · estamina = estaMáx × DMG.fallSta
+const DMG = {
+  melee: 0.6,          // golpes cuerpo a cuerpo (antes DMG.melee)
+  ability: 1.6,        // habilidades 1 y 2 (antes DMG.ability)
+  shotGround: 0.36,    // disparo normal a un enemigo en el suelo (antes SHOT_MUL 0,6 × SHOT_GROUND_MUL 0,6)
+  shotAir: 0.84,       // disparo normal a un enemigo en el aire (antes SHOT_MUL 0,6 × AIR_SHOT_MUL 1,4)
+  shotHpVsSta: 0.4,    // el disparo a un enemigo con estamina quita sobre todo estamina
+  stunned: 1.5,        // extra a los aturdidos si no se les ejecuta (antes DMG.stunned)
+  fallHp: 0.06, fallSta: 0.15 // golpe contra el suelo tras un lanzamiento (antes DMG.fallHp, DMG.fallSta)
+};
 // Peso al moverse: el peso se nota en las transiciones (arrancar, frenar, girar), no en la velocidad máxima.
 // accel/decel/turn: rapidez para alcanzar la dirección pedida (más alto = más inmediato; 95 % en unos 3/valor s)
 // kbMul: empuje que reciben · lean: inclinación hacia la marcha (px) · bob: balanceo al andar (px) · spring: rebote al arrancar y parar
@@ -224,11 +311,11 @@ const WEIGHT = {
   medium: { accel: 14, decel: 30, turn: 16, kbMul: 1,    lean: 3.5, bob: 1.8, stepRate: 10, damping: 16, startKick: 2.2, stopKick: 2.6, trail: false },
   light:  { accel: 40, decel: 70, turn: 55, kbMul: 1.3,  lean: 4.5, bob: 2.2, stepRate: 15, damping: 18, startKick: 2.6, stopKick: 2.2, trail: true }
 };
-// Reparto del daño (vida y estamina): los ataques básicos quitan poco y las habilidades premian
-const MELEE_MUL = 0.6;     // golpes cuerpo a cuerpo
-const SHOT_MUL = 0.6;      // disparos normales
-const AIR_SHOT_MUL = 1.4;  // extra de los disparos normales a enemigos en el aire
-const SHOT_GROUND_MUL = 0.6; // los disparos normales a enemigos en el suelo quitan aún menos
+// [RETIRADO 2026-11-08] reparto del daño en constantes sueltas; ahora en DMG (fórmula única):
+// const MELEE_MUL = 0.6;     // golpes cuerpo a cuerpo
+// const SHOT_MUL = 0.6;      // disparos normales
+// const AIR_SHOT_MUL = 1.4;  // extra de los disparos normales a enemigos en el aire
+// const SHOT_GROUND_MUL = 0.6; // los disparos normales a enemigos en el suelo quitan aún menos
 // Fijado automático de los cuerpo a cuerpo (tanques y Brawlers): eligen al enemigo más cercano dentro del cono hacia el que miras
 const AIM = {
   range: 280,      // hueco máximo (px, de borde a borde) para fijar a un enemigo
@@ -249,7 +336,7 @@ const AIM_R = {
   stickCone: 0.35,  // con el stick derecho: imán suave alrededor de donde apuntas (≈20°)
   mouseCone: 0.12,  // con ratón: imán mínimo (≈7°)
   angW: 1.2,        // cuánto pesa el ángulo frente a la distancia al puntuar candidatos
-  airBonus: 0.5,    // los enemigos en el aire puntúan el doble de bien (para los juggles)
+  airBonus: 0.5,    // los enemigos en el aire puntúan el doble de bien (para los malabares aéreos)
   switchMul: 0.8,   // sin disparar, cambia de objetivo si el nuevo puntúa un 20 % mejor
   snapAng: 0.4,     // disparando, cambia al instante si vas de lleno (≈23°) hacia otro enemigo más cercano que el actual
   stickyT: 0.6,     // tras dejar de disparar, la mira sigue pegada este tiempo
@@ -257,18 +344,18 @@ const AIM_R = {
   turn: 30          // giro de la mira hacia el objetivo (rad/s); el disparo sale siempre exacto al objetivo
 };
 const SHIELD_BASH = { name: 'Empujón de escudo', shape: 'thrust', len: 52, width: 52, dur: 0.16, dmg: 0.4, kb: 560 }; // golpe con el escudo alzado: empuja mucho, daña poco
-// Parámetros de las habilidades (el daño se multiplica por ABILITY_MUL)
+// Parámetros de las habilidades (el daño se multiplica por DMG.ability)
 const AB = {
   shield:    { r: 95, time: 3.5 },
   pillar:    { dist: 180, r: 62, delay: 0.35, dmg: 2 },
   taunt:     { r: 280, time: 4 },
   shieldThrow: { speed: 640, range: 360, r: 16, dmg: 1.6, sta: 1.4, kb: 320, bounceR: 230, bounces: 2, returnSpeed: 720, maxTime: 6, cd: 4,
                  chargeTime: 1, range1: 560, dmgMul1: 2, bounces1: 4 }, // cargado (mantener la habilidad 1 s): alcance 360→560, daño ×1→×2, rebotes 2→4 // Lanzar escudo (Ceniza, con el escudo bajado): recto, rebota en 2 y vuelve
-  // vine:   { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 300, tick: 0.25, tickDmg: 0.6 }, // valores anteriores
+  // vine:   { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 300, tick: 0.25, tickDmg: 0.6 }, // [RETIRADO] valores anteriores
   vine:      { len: 150, sweepTime: 0.9, dmg: 1.2, slow: 0.5, slowTime: 2, tetherTime: 5, tetherMax: 420, tick: 0.25, tickDmg: 0.9,
                tetherHeal: 1, relaunch: 1.5 }, // Liana giratoria (Musgo). tetherHeal: vida por tic a Musgo y al aliado unidos; relaunch: s antes de volver a lanzar al mismo enemigo
   wall:      { max: 220, bulletCost: 8, hitCost: 15, drain: 2, coverR: 26, coverCd: 1, regen: 28, regenDelay: 0.6, reflectDmg: 2.5, arc: 1.05, speed: 0.6,
-               // chargeTime: 1.2, chargeDist0: 100, chargeDist1: 240, chargeSpeed: 520, chargeDmg: 0.5, chargeKb: 680 }, // valores anteriores de la embestida
+               // chargeTime: 1.2, chargeDist0: 100, chargeDist1: 240, chargeSpeed: 520, chargeDmg: 0.5, chargeKb: 680 }, // [RETIRADO] valores anteriores de la embestida
                chargeTime: 1.2, chargeDist0: 130, chargeDist1: 300, chargeSpeed: 560, chargeDmg: 0.9, chargeDmg1: 2.2, chargeKb: 760,
                chargeInvAfter: 0.35, chargeWaveR0: 55, chargeWaveR1: 95, chargeWaveDmg: 0.8, chargeWaveKb: 420, // embestida reforzada: más daño y recorrido, invulnerable y onda al terminar
                flingKb0: 1150, flingKb1: 1700, flingSpread: 0.3, slamSpeed: 380, slamDmg: 1.4, slamGetup: 0.7, bowlMul: 0.6, // knockback: arrastra delante del escudo y al final los despide (÷10 ≈ px recorridos); contra muro: daño y aturdido; contra otro enemigo: lo arrolla
@@ -276,7 +363,7 @@ const AB = {
   grenade:   { range: 320, r: 55, dmg: 1, fly: 0.55 },
   ricochet:  { chargeTime: 1, maxMul: 2, groundHops: 2, firstMul: 1.6 }, // el primer objetivo siempre recibe ×1,6 // Disparo rebotante (Marea): mantener carga hasta ×2 de daño; en el suelo salta a dos más
   frostburst: { range: 360, r: 50, dmg: 1, time: 2.5, chargeTime: 1.2, maxMul: 1.6 }, // Estallido helado (Escarcha): congela; en el aire, se rompe
-  // roots:  { dist: 160, r: 80, delay: 0.3, time: 2.5, sta: 0.3 }, // versión anterior: zona a distancia
+  // roots:  { dist: 160, r: 80, delay: 0.3, time: 2.5, sta: 0.3 }, // [RETIRADO] versión anterior: zona a distancia
   roots:     { r0: 110, r1: 220, charge: 1.0, delay: 0.12, time: 2, sta: 0.3, staMul: 1.6 }, // Raíces (Musgo): se cargan manteniendo; área a su alrededor que crece de r0 a r1; staMul: estamina extra que pierden mientras están enredados
   pull:      { r: 190, sta: 0.2 },
   blink:     { dist: 180, width: 34, sta: 0.3, dmg: 1 },
@@ -288,21 +375,21 @@ const AB = {
                overheatHeat: 0.5 },          // sobrecalentada: descarga de emergencia como si tuviera este calor y corta el bloqueo
   overdrive: { r: 100, dmg: 2, kb: 420, time: 3 }, // Purga: onda de calor que daña y empuja; luego dispara más rápido sin calentarse
   // ---- Coral · Demoledora (lanzagranadas) ----
-  // [sustituido] bomb: { range: 270, r: 40, dmg: 1.5, sta: 0.16, kb: 240, juggle: 0.55, fly0: 0.22, fly1: 0.45, arc: 70, reloadDelay: 0.45, reloadEach: 0.5, tapMax: 0.2 },
+  // [RETIRADO] bomb: { range: 270, r: 40, dmg: 1.5, sta: 0.16, kb: 240, juggle: 0.55, fly0: 0.22, fly1: 0.45, arc: 70, reloadDelay: 0.45, reloadEach: 0.5, tapMax: 0.2 },
   bomb:      { range: 270, r: 60, dmg: 2.4, sta: 0.22, kb: 300, juggle: 0.55, fly0: 0.22, fly1: 0.45, arc: 70,  // granada de impacto: en arco, pasa por encima y estalla al tocar
                bounces: 2, bounceK: 0.5, bounceMin: 50, bounceArc: 26, bounceDur: 0.2, nearK: 0.5, // rebota hasta 2 veces por el suelo si no cae junto a nadie
                tapMax: 0.2 },                                        // pulsación corta = granada (sin cargador)
   sticky:    { d0: 90, d1: 300, chargeTime: 0.8, fly: 0.42, arc: 80, max: 3, attachR: 20, // carga pegajosa: mantener aleja la mira; se pega a enemigo, aliado o suelo
                ammo: 3, reload: 2.5,                                   // cargador propio: 3 cargas; se repone 1 cada 2,5 s
-               r: 55, dmg: 2, sta: 0.35, stackR: 0.25,                 // al detonar: daño y estamina (× ABILITY_MUL); cada carga extra en el mismo enemigo suma daño y +25 % de radio
-               // [sustituido] allyR: 85, allyMul: 1.5 },
+               r: 55, dmg: 2, sta: 0.35, stackR: 0.25,                 // al detonar: daño y estamina (× DMG.ability); cada carga extra en el mismo enemigo suma daño y +25 % de radio
+               // [RETIRADO] allyR: 85, allyMul: 1.5 },
                allyR: 85, allyMul: 1.9 },                              // bomba humana: pegada a un compañero, estalla a su alrededor, lanza a todos y a él no le hace nada (×1,9 de daño para premiar el combo)
   doll:      { hop: 0.3, rest: 0.07, step: 46, h: 20, life: 7, max: 2, seek: 420, touch: 8, // muñeco bomba: salta hacia el enemigo fijado y estalla al tocarlo
-               r: 58, dmg: 2.2, sta: 2.2 },                             // explosión (× ABILITY_MUL): daña y lanza por los aires
+               r: 58, dmg: 2.2, sta: 2.2 },                             // explosión (× DMG.ability): daña y lanza por los aires
   recoil:    { reach: 34, r: 58, dmg: 1.6, sta: 0.3, kb: 620, push: 700, inv: 0.25 }, // escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás
   detonator: { cd: 0.6 },
   mortar:    { cd: 9, range: 360, near: 240, r: 85, n: 6, delay0: 0.35, step: 0.22, shellR: 42, dmg: 1.2, sta: 0.12, fall: 0.3 }, // Lluvia de mortero
-  // ---- Coral · Chamuscado: marca de calor en los enemigos (de 0 a 3 llamitas) [sin uso desde la Demoledora] ----
+  // ---- Coral · Chamuscado: marca de calor en los enemigos (de 0 a 3 llamitas) [RETIRADO: sin uso desde la Demoledora] ----
   scorch:    { max: 3, time: 4, fade: 1.5,      // cada llamita dura 4 s; después se apagan de una en una cada 1,5 s
                perShot: 0.5,                      // disparo normal Al rojo: 1 llamita cada 2 impactos
                burn: 0.25,                        // quemadura: vida por segundo y por llamita
@@ -373,24 +460,24 @@ const FURY = {
 // Doble salto de Escarcha: cada pulsación del botón de movimiento salta con una voltereta (dos saltos hasta aterrizar)
 const FLIP = { h1: 50, h2: 40, g: 900, speed: 230, drag: 1.0, spin: 0.42, maxT: 1.6 }; // maxT: ningún salto dura más de esto // alturas del 1.º y 2.º salto, gravedad, impulso lateral, frenado, duración de la vuelta
 // Estalactita de hielo: cae sobre donde estás y explota con daño de área (no te hace daño a ti ni a tus aliados)
-// versión anterior (sin efecto): const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 10 };
+// [RETIRADO] versión anterior: const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 10 };
 const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160 };
-// versión anterior (sin efecto): const SNOW_FROZEN_DMG = 10;
-const FROZEN_BREAK = { bossDmg: 30 }; // congelado que se rompe (estalactita y bola de nieve): los no-jefes mueren de un golpe; los jefes reciben este daño
-// Disparo básico de Escarcha: la habilidad secundaria cambia entre estos tres modos
+// [RETIRADO] versión anterior: const SNOW_FROZEN_DMG = 10;
+const FROZEN_BREAK = { bossDmg: 30 }; // congelado que se rompe (estalactita y bola de nieve): los que no son guardián mueren de un golpe; el guardián recibe este daño
+// Disparo básico de Escarcha: la habilidad secundaria cambia entre estos dos modos (los Misiles de cristal están retirados al final del archivo)
 const FROST_MODE = [
   { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo; cada tic quita más estamina, hasta el doble. Si aturde, congela' },
   { key: 'snow', name: 'Bola de nieve', icon: 'snowball', desc: 'Mantén para cargar tamaño y alcance; rebota una vez; destroza a los congelados' }
 ];
 const BEAM_RAMP = { time: 3, mul: 2, base: 0.85 }; // base: fracción del daño de estamina base del rayo   // la estamina de cada tic sube lineal hasta ×2 tras 3 s de rayo continuo
-const ABILITY_MUL = 1.6;   // habilidades 1 y 2
-const STUN_DMG_MUL = 1.5;  // daño extra que reciben los enemigos aturdidos (salvo el guardián) si no se les ejecuta
+// [RETIRADO 2026-11-08] const ABILITY_MUL = 1.6;   // habilidades 1 y 2 → DMG.ability
+// [RETIRADO 2026-11-08] const STUN_DMG_MUL = 1.5;  // extra a los aturdidos → DMG.stunned
 const AIR_G = 380;        // gravedad reducida de los enemigos lanzados
 const AIR_FALL_MAX = 70;  // velocidad máxima de caída: bajan flotando despacio
 const AIR_MAX_Z = 180;    // altura máxima, para que no salgan de la sala
 const LAUNCH_VZ = 340;    // impulso vertical del lanzador
 const JUGGLE_VZ = 170;  // impulso de cada disparo que mantiene al enemigo en el aire
-const FALL_HP = 0.06, FALL_STA = 0.15; // daño al caer al suelo: fracción de la vida y de la estamina máximas
+// [RETIRADO 2026-11-08] const FALL_HP = 0.06, FALL_STA = 0.15; // → DMG.fallHp y DMG.fallSta
 
 // ---------- Personajes ----------
 // De momento todos comparten estadísticas: cambia aquí cada valor para diferenciarlos.
@@ -427,7 +514,7 @@ const BASE_STATS = {
     heavy:     { name: 'Golpe demoledor',  shape: 'arc',    range: 60, arc: 1.5,  dur: 0.2,  dmg: 2,   kb: 520, launcher: true }, // remate de los tanques: lanza si tiene la mitad de estamina o menos
     quake:     { name: 'Onda de choque',   shape: 'spin',   range: 74,            dur: 0.2,  dmg: 1.5, kb: 380 }  // remate de los Brawlers
   },
-  // Habilidades de relleno, iguales para todos de momento
+  // Habilidades por defecto: ningún personaje las usa ahora (todos indican las suyas); se quedan como respaldo
   priType: 'beam', secType: 'area', // tipo de cada habilidad: 'beam' / 'rush' y 'area' / 'drop'
   priDmg: 3, priLen: 240, priWidth: 26, priCd: 3,    // primaria: línea hacia delante
   secDmg: 0, secRadius: 90, secCd: 5                 // secundaria: área que lanza por los aires, sin daño
@@ -473,35 +560,37 @@ const BRAWLER_KIT = {
   toward:    { name: 'Puño adelantado',   shape: 'thrust', len: 70, width: 26, dur: 0.16, dmg: 1.5, kb: 280, lunge: 320 },
   away:      { name: 'Gancho ascendente', shape: 'thrust', len: 52, width: 34, dur: 0.16, dmg: 1,   kb: 440, lunge: -300, launcher: true }
 };
+// Familias (clave = rol visible en minúsculas y sin tilde): cada personaje hereda su familia y luego indica lo que cambia.
+// [RETIRADO 2026-11-08] claves antiguas: grande → tanque, golpe → brawler (agil y tirador no cambian)
 const ROLES = {
-  grande:  { role: 'Tanque',  size: 1.35, hp: 160, speed: 135, canShoot: false, autoLock: true, finisher: 'heavy', moveType: 'block', weight: 'heavy' }, // bloquean en vez de esquivar
+  tanque:  { role: 'Tanque',  size: 1.35, hp: 160, speed: 135, canShoot: false, autoLock: true, finisher: 'heavy', moveType: 'block', weight: 'heavy' }, // bloquean en vez de esquivar
   agil:    { role: 'Ágil',    size: 0.75, hp: 60, speed: 225, moveCd: 0.45, shotType: 'hitscan', canMelee: false, weight: 'light' },
   // Brawlers: la habilidad 1 es una embestida que lanza al primer enemigo; la 2, una caída Izuna con un enemigo en el aire
-  golpe:   { role: 'Brawler', melee: 4, canShoot: false, autoLock: true, finisher: 'normal', meleeKit: BRAWLER_KIT, meleeStyle: 'fist', priType: 'rush', priLen: 260, rushSpeed: 680, secType: 'drop', secCd: 4, dropDmg: 5, dropSta: 0.75, dropRadius: 60 },
+  brawler: { role: 'Brawler', melee: 4, canShoot: false, autoLock: true, finisher: 'normal', meleeKit: BRAWLER_KIT, meleeStyle: 'fist', priType: 'rush', priLen: 260, rushSpeed: 680, secType: 'drop', secCd: 4, dropDmg: 5, dropSta: 0.75, dropRadius: 60 },
   tirador: { role: 'Tirador', shot: 2, shotType: 'hitscan', shotStagger: 0.34, canMelee: false }
 };
 const CHARS = [
-  { name: 'Ceniza',   color: '#a9a2b4', mark: 'bars',    family: 'grande', role: 'Tanque · Bastión', meleeKit: SHIELD_KIT, meleeStyle: 'shield',
+  { name: 'Ceniza',   color: '#a9a2b4', mark: 'bars',    family: 'tanque', role: 'Tanque · Bastión', meleeKit: SHIELD_KIT, meleeStyle: 'shield',
     priType: 'raiseShield', priCd: 0.3, secType: 'taunt', secCd: 12, secAlt: 'shieldThrow', chargedMelee: 'seismic', // habilidad 2: Provocación con el escudo alzado; Lanzar escudo con él bajado
     moveType: 'stride', moveSpeed: 320, moveTime: 0.12, moveCd: 0.9 }, // el bloqueo pasa al escudo en alto; zancada corta (≈38 px)
-  { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'grande', role: 'Tanque · Mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
+  { name: 'Musgo',    color: '#3cc9a0', mark: 'square',  family: 'tanque', role: 'Tanque · Mago', meleeKit: STAFF_KIT, meleeStyle: 'staff',
     priType: 'vine', priCd: 7, secType: 'roots', secCd: 9, chargedMelee: 'arcane',
     moveType: 'teleport', moveDist: 60, moveTime: 0.12, moveCd: 0.25, moveCharges: 3, moveRecharge: 1.8 }, // teletransporte corto con 3 cargas; moveCd es solo la pausa entre usos
   { name: 'Escarcha', color: '#bfeaf5', mark: 'diamond', family: 'agil', role: 'Ágil · Escarcha', priType: 'frostburst', priCd: 7, secType: 'frostMode', secCd: 0.3,
     shotStyle: 'book', shotMode: 'frost', shotCd: 0.1, shot: 1, shotStagger: 0.06, chargeTime: 1.2, beamRange: 300, moveType: 'flip', moveCd: 0.1, moveInvuln: false }, // ondas mágicas continuas; cargando, bola de nieve
-  // [sustituido] Coral antes del rediseño del chamuscado:
+  // [RETIRADO] Coral antes del rediseño del chamuscado:
   // { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual' }, // dos pistolitas
-  // [sustituido] Coral del chamuscado (pistolas con calor):
+  // [RETIRADO] Coral del chamuscado (pistolas con calor):
   // { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Ráfaga', shotMode: 'heat', shotCd: 0.15, overheatTime: 1.6, shotStagger: 0.1, priType: 'volley', secType: 'overdrive', shotStyle: 'dual',
   //   secAlt: 'detonate', secAltBy: 'heat', secAltLabels: ['con poco calor', 'al rojo'], // habilidad 2: Purga; Al rojo y con chamuscados en la sala, Detonar
   //   scorches: true, crossTrigger: true, moveType: 'roll' }, // dos pistolitas; Al rojo chamusca; disparar al rodar = Gatillo cruzado
-  { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Demoledora', shotMode: 'launcher', shotStyle: 'launcher', shotCd: 0.25, stickyAmmo: AB.sticky.ammo, // [antes] shotCd: 0.3, ammo: 4
-    priType: 'detonator', priCd: AB.detonator.cd, secType: 'mortar', secCd: AB.mortar.cd, dollShot: true }, // [antes] recoilShot: true (Escopetazo) // lanzagranadas de tambor; cargado, carga pegajosa; tras rodar, escopetazo
-  { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'golpe', chargedMelee: 'uppercut', role: 'Brawler · Ejecutor',
+  { name: 'Coral',    color: '#ef5da8', mark: 'dot',     family: 'agil', role: 'Ágil · Demoledora', shotMode: 'launcher', shotStyle: 'launcher', shotCd: 0.25, stickyAmmo: AB.sticky.ammo, // [RETIRADO] shotCd: 0.3, ammo: 4
+    priType: 'detonator', priCd: AB.detonator.cd, secType: 'mortar', secCd: AB.mortar.cd, dollShot: true }, // [RETIRADO] recoilShot: true (Escopetazo) // lanzagranadas de tambor; cargado, carga pegajosa; tras rodar, escopetazo
+  { name: 'Brasa',    color: '#ff5a36', mark: 'tri',     family: 'brawler', chargedMelee: 'uppercut', role: 'Brawler · Ejecutor',
     meleeKit: Object.assign({}, BRAWLER_KIT, FIST_KIT), finisher: 'flurry',
     priType: 'reaper', priCd: 5, secType: 'dragon', secCd: 1,
     moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
-  { name: 'Ámbar',    color: '#f5c542', mark: 'star',    family: 'golpe', chargedMelee: 'starfall', role: 'Brawler · Sombra',
+  { name: 'Ámbar',    color: '#f5c542', mark: 'star',    family: 'brawler', chargedMelee: 'starfall', role: 'Brawler · Sombra',
     meleeKit: CLAW_KIT, meleeStyle: 'claw', finisher: 'heavy',
     moveType: 'jump', moveCd: 0.75, fury: true }, // salta en vez de esquivar; con la barra de furia llena entra en modo furia (FURY)
   { name: 'Marea',    color: '#3f8ff5', mark: 'ring',    family: 'tirador', role: 'Tirador · Rebote',
@@ -517,15 +606,16 @@ const CHARS = [
     priType: 'turret', secType: 'overcharge', priCd: 1, secCd: 10,
     shotMode: 'auto', shotCd: 0.3, shot: 1.5, shotStagger: 0.18, shotStyle: 'gatling', postMoveMissile: true, gatling: true } // gatling: coge velocidad al mantener y se sobrecalienta (AB.gatling)
 ].map(c => Object.assign({}, BASE_STATS, ROLES[c.family], c));
-// Estimación de diseño, de 1 a 5, a partir de golpes, habilidades y estados de cada personaje.
+// Estimación de diseño, de 1 a 5, a partir de golpes, habilidades y estados de cada personaje (revisada el 2026-11-08).
 // dmg: daño sostenido · tec: técnica (estados, lanzar por los aires, atraer, inmovilizar) · sup: soporte (defensa, curación, apoyo a aliados)
 const RATINGS = {
   Ceniza:   { dmg: 2, tec: 4, sup: 5 }, // martillo de poco daño; lanza con el martillo y el sísmico; escudo que cubre al grupo y Provocación
   Musgo:    { dmg: 3, tec: 4, sup: 3 }, // orbe arcano y liana que dañan; raíces inmovilizan y la onda empuja a todos; la liana une aliados
-  Escarcha: { dmg: 4, tec: 5, sup: 2 }, // disparo continuo y misiles; congela y ralentiza, lo que ayuda al grupo
-  Coral:    { dmg: 4, tec: 3, sup: 1 }, // dos pistolas en ráfaga; el abanico al rojo lanza
+  Escarcha: { dmg: 4, tec: 5, sup: 2 }, // rayo continuo y bola de nieve; congela, rompe congelados y la estalactita controla zonas
+  Coral:    { dmg: 4, tec: 3, sup: 1 }, // lanzagranadas de impacto, carga pegajosa (también en aliados), muñeco bomba y lluvia de mortero; varias explosiones lanzan
+  // [RETIRADO 2026-11-08] comentario de la Coral de pistolas: // dos pistolas en ráfaga; el abanico al rojo lanza
   Brasa:    { dmg: 5, tec: 5, sup: 1 }, // ráfaga de remate y ejecución; embestida, uppercut y caída lanzan
-  Ámbar:    { dmg: 4, tec: 4, sup: 1 }, // combo rápido de garras; tajo sombra atraviesa y lanza; sin apoyo al grupo
+  Ámbar:    { dmg: 4, tec: 4, sup: 1 }, // combo rápido de garras; tajo sombra atraviesa; modo furia con Garra taladro e Izuna de furia; sin apoyo al grupo
   Marea:    { dmg: 5, tec: 4, sup: 1 }, // revólver de mayor daño sostenido; la granada lanza y los rebotes encadenan
   Ciruela:  { dmg: 4, tec: 2, sup: 5 }  // gatling y torreta; la sobrecarga cura a los aliados cerca
 };
@@ -1824,7 +1914,7 @@ function makeEncounter(r) {
   if (budget >= 7 && rng() < t3chance) { t3.push({ type: rng() < 0.5 ? 'golem' : 'splitter', elite: false }); budget -= 6; }
   const n2 = Math.max(r.dist > 0 ? 1 : 0, Math.floor(budget * (0.3 + rng() * 0.25) / 2));
   for (let i = 0; i < n2 && budget >= 2; i++) { rest.push({ type: rng() < 0.5 ? 'charger' : 'shooter', elite: false }); budget -= 2; }
-  if (rest.length && rng() < 0.12 + 0.06 * depth) rest[0].elite = true;
+  if (rest.length && rng() < ELITE.chance0 + ELITE.chancePerDepth * depth) rest[0].elite = true;
   while (budget >= 0.4 && rest.length < 22) { const t = rng() < 0.25 ? 'bat' : (rng() < 0.5 ? 'slime' : 'mite'); rest.push({ type: t, elite: false }); budget -= ENEMY[t].cost; }
   for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
   if (rest.length + t3.length >= 8 && rng() < 0.6) { const h = Math.ceil(rest.length / 2); return [rest.slice(0, h), rest.slice(h).concat(t3)]; }
@@ -1897,15 +1987,23 @@ function spawnWave() {
   }
 }
 
+// Redondeo a 6 decimales antes de Math.ceil: evita que el ruido de coma flotante suba un punto entero
+function snap(v) { return Math.round(v * 1e6) / 1e6; }
 function makeEnemy(type, x, y, elite) {
   const b = ENEMY[type], dp = floor.depth - 1, np = Math.max(1, humans().length);
-  let hp = b.hp + dp * b.tier * 0.5, sta = b.sta ? b.sta + dp * b.tier * 0.5 : 0;
-  if (type === 'boss') { hp = b.hp + dp * 10 + (np - 1) * 15; sta = b.sta + dp * 4 + (np - 1) * 6; }
-  hp *= ENEMY_HP_MUL * (1 + MULTI_HP_MUL * (np - 1)); sta *= ENEMY_STA_MUL;
-  if (elite) { hp = Math.ceil(hp * 2.5); sta = Math.ceil(sta * 1.5); }
+  // [RETIRADO 2026-11-08] escalado en unidades abstractas (multiplicadas después por ENEMY_HP_MUL y ENEMY_STA_MUL):
+  // let hp = b.hp + dp * b.tier * 0.5, sta = b.sta ? b.sta + dp * b.tier * 0.5 : 0;
+  // if (type === 'boss') { hp = b.hp + dp * 10 + (np - 1) * 15; sta = b.sta + dp * 4 + (np - 1) * 6; }
+  // hp *= ENEMY_HP_MUL * (1 + MULTI_HP_MUL * (np - 1)); sta *= ENEMY_STA_MUL;
+  // if (elite) { hp = Math.ceil(hp * 2.5); sta = Math.ceil(sta * 1.5); }
+  const SC = ENEMY_SCALE, G = SC.guardian;
+  let hp = b.hp + SC.hpPerDepth * b.tier * dp, sta = b.sta ? b.sta + SC.staPerDepth * b.tier * dp : 0;
+  if (type === 'boss') { hp = b.hp + G.hpPerDepth * dp + G.hpPerPlayer * (np - 1); sta = b.sta + G.staPerDepth * dp + G.staPerPlayer * (np - 1); }
+  hp *= 1 + SC.multiHp * (np - 1);
+  if (elite) { hp = Math.ceil(snap(hp * ELITE.hp)); sta = Math.ceil(snap(sta * ELITE.sta)); }
   return {
-    type, tier: b.tier, x, y, r: b.r * (elite ? 1.35 : 1), hp, maxHp: hp, sta, maxSta: sta,
-    spd: b.spd * (1 + 0.08 * dp), color: b.color, elite,
+    type, tier: b.tier, x, y, r: b.r * (elite ? ELITE.r : 1), hp, maxHp: hp, sta, maxSta: sta,
+    spd: b.spd * (1 + SC.spdPerDepth * dp), color: b.color, elite,
     spawnT: 0.7, flash: 0, kbx: 0, kby: 0, t: 1 + Math.random() * 1.2, anim: Math.random() * 6, state: 'walk',
     cd: 1 + Math.random(), cd2: 2, rot: 0, phase: Math.random() * 6, dirx: 0, diry: 0, face: 0, dead: false,
     z: b.fly || 0, flyZ: b.fly || 0, vz: 0, airborne: false, flying: !!b.fly, stunT: 0, getup: 0, calm: 0, swipeCd: 0, shots: 0,
@@ -2210,8 +2308,8 @@ function updateStalacs(dt) {
     s.z = STAL.z0 * (1 - k * k); // cae cada vez más deprisa
     if (k < 1) continue;
     s.done = true;
-    const dmg = STAL.dmg * ABILITY_MUL;
-    // versión anterior (sin efecto):
+    const dmg = STAL.dmg * DMG.ability;
+    // [RETIRADO] versión anterior:
     // for (const e of liveTargets()) {
     // if (Math.hypot(e.x - s.x, e.y - s.y) >= STAL.r + e.r) continue;
     // const frozen = e.frozenT > 0 && e.frozenBurst;   // congelado por la habilidad 1 de Escarcha
@@ -2746,7 +2844,7 @@ function testLaunch(p) {
 function abilityType(p, slot) {
   if (p.ch.fury && p.furyT > 0) return slot === 'pri' ? 'drill' : 'furyDrop'; // Ámbar en furia: habilidades cambiadas
   if (slot === 'pri') return p.ch.priType;
-  // [sustituido] if (p.ch.secAlt && !p.shieldUp) return p.ch.secAlt; // Ceniza: con el escudo bajado, la habilidad 2 lanza el escudo
+  // [RETIRADO] if (p.ch.secAlt && !p.shieldUp) return p.ch.secAlt; // Ceniza: con el escudo bajado, la habilidad 2 lanza el escudo
   if (p.ch.secAlt && (p.ch.secAltBy === 'heat' ? p.hotMode : !p.shieldUp)) return p.ch.secAlt; // Ceniza: escudo bajado → Lanzar escudo; Coral: Al rojo → Detonar
   return p.ch.secType;
 }
@@ -2911,7 +3009,7 @@ function updateDrill(p, dt) {
   R.tick -= dt;
   if (R.tick <= 0) { // ráfaga de golpes del taladro
     R.tick = D.tick;
-    const dmg = c.melee * D.dmg * MELEE_MUL * ABILITY_MUL;
+    const dmg = c.melee * D.dmg * DMG.melee * DMG.ability;
     let any = false;
     for (const e of R.caught) {
       if (e.dead) continue;
@@ -2928,7 +3026,7 @@ function endDrill(p) {
   const R = p.drill, D = FURY.drill, c = p.ch;
   p.drill = null;
   if (!R) return;
-  const dmg = c.melee * D.endDmg * MELEE_MUL * ABILITY_MUL;
+  const dmg = c.melee * D.endDmg * DMG.melee * DMG.ability;
   let n = 0;
   for (const e of R.caught) { // remate: los suelta lanzándolos por los aires
     if (e.dead) continue;
@@ -3002,11 +3100,11 @@ function updateFuryDrop(p, dt) {
   // impacto
   e.z = 0; e.vz = 0; e.airborne = false; e.getup = G.getup; e.grabbed = false;
   p.z = 0; p.drop = null; p.inv = Math.max(p.inv, 0.5);
-  damageEnemy(e, e.x, e.y - 1, c.dropDmg * ABILITY_MUL * G.dmgMul, e.maxSta * G.sta, 0);
+  damageEnemy(e, e.x, e.y - 1, c.dropDmg * DMG.ability * G.dmgMul, e.maxSta * G.sta, 0);
   scorchLand(e);
   for (const o of liveTargets()) { // la onda del impacto daña y lanza a los de alrededor
     if (o === e || o.airborne || Math.hypot(o.x - e.x, o.y - e.y) > G.radius + o.r) continue;
-    damageEnemy(o, e.x, e.y, G.areaDmg * ABILITY_MUL, G.areaDmg * ABILITY_MUL, G.kb);
+    damageEnemy(o, e.x, e.y, G.areaDmg * DMG.ability, G.areaDmg * DMG.ability, G.kb);
     if (!o.dead && o.type !== 'boss') tryLaunch(o, true);
   }
   effects.push({ type: 'ring', x: e.x, y: e.y, r: G.radius, t: 0, dur: 0.45, color: FURY.color });
@@ -3032,7 +3130,7 @@ function updateSpecial(p, dt) {
       if (e.airborne || R.hit.has(e) || Math.hypot(e.x - p.x, e.y - p.y) > e.r + p.r + 14) continue;
       R.hit.add(e);
       // const dmg = W.chargeDmg * (1 + R.lv); // daño anterior
-      const dmg = (W.chargeDmg + (W.chargeDmg1 - W.chargeDmg) * R.lv) * p.ch.melee * MELEE_MUL;
+      const dmg = (W.chargeDmg + (W.chargeDmg1 - W.chargeDmg) * R.lv) * p.ch.melee * DMG.melee;
       damageEnemy(e, p.x, p.y, dmg, dmg * 1.5, 0); hitstop = Math.max(hitstop, 0.04);
       // if (!e.dead) { const kb = W.chargeKb * (0.6 + 0.6 * R.lv) * (e.type === 'boss' ? 0.2 : 1); e.kbx = R.dx * kb; e.kby = R.dy * kb; impactFx(p, e, true); } // empuje anterior (se quedaba corto)
       if (!e.dead) {
@@ -3054,14 +3152,14 @@ function updateSpecial(p, dt) {
     }
     if (collide(p, true) || R.left <= 0 || !p.shieldUp) { // fin de la embestida: onda de choque e invulnerabilidad un instante más
       p.shieldCharge = null;
-      const wr = W.chargeWaveR0 + (W.chargeWaveR1 - W.chargeWaveR0) * R.lv, wd = W.chargeWaveDmg * (1 + R.lv) * p.ch.melee * MELEE_MUL;
+      const wr = W.chargeWaveR0 + (W.chargeWaveR1 - W.chargeWaveR0) * R.lv, wd = W.chargeWaveDmg * (1 + R.lv) * p.ch.melee * DMG.melee;
       const flung = new Set();
       for (const e of (R.carry || [])) { // los que llevaba por delante salen despedidos
         if (e.dead || e.airborne) continue;
         damageEnemy(e, p.x, p.y, wd, wd, 0); if (e.dead) continue; // también reciben la onda de choque
         const px = -R.dy, py = R.dx, side = Math.sign((e.x - p.x) * px + (e.y - p.y) * py) || 0;
         let kb = W.flingKb0 + (W.flingKb1 - W.flingKb0) * R.lv;
-        if (e.elite) kb *= 0.6; if (e.tier === 3) kb *= 0.5;
+        if (e.elite) kb *= ELITE.kb; kb *= tierRule(e).kbMul; // [RETIRADO 2026-11-08] if (e.elite) kb *= 0.6; if (e.tier === 3) kb *= 0.5;
         e.kbx = (R.dx + px * side * W.flingSpread) * kb; e.kby = (R.dy + py * side * W.flingSpread) * kb;
         e.hitstun = Math.max(e.hitstun || 0, 0.45); e.slammed = false; flung.add(e);
         shieldFlung.push({ e, t: 0.6, by: p, bowl: true });
@@ -3108,7 +3206,7 @@ function updateSpecial(p, dt) {
     const ux = d > 1 ? dx / d : p.ax, uy = d > 1 ? dy / d : p.ay;
     p.x = e.x - ux * (e.r + p.r + 6); p.y = e.y - uy * (e.r + p.r + 6); collide(p, true); p.ax = ux; p.ay = uy;
     if (d > 20) effects.push({ type: 'dragon', x: ox, y: oy, ax: ux, ay: uy, len: d, w: 40, t: 0, dur: 0.35, color: c.color }); // estela del teletransporte
-    const dmg = AB.dragon.l3.dmg * ABILITY_MUL;
+    const dmg = AB.dragon.l3.dmg * DMG.ability;
     fireHit(e, p, dmg, 220, p.x, p.y, { sta: AB.dragon.sta, fx: 'heavy' });
     effects.push({ type: 'kanji', x: e.x, y: upY(e.y, 34 + (e.z || 0)), t: 0, dur: 0.9 });
     shake = Math.max(shake, 6);
@@ -3127,7 +3225,7 @@ function updateSpecial(p, dt) {
     if (Math.random() < 0.8) particles.push({ x: p.x, y: p.y - 12, vx: 0, vy: 0, life: 0.25, max: 0.25, color: p.color, s: 7 });
     for (const e of liveTargets()) {
       if (e.airborne || Math.hypot(e.x - p.x, e.y - p.y) > e.r + p.r + 4) continue;
-      damageEnemy(e, p.x - r.dx * 10, p.y - r.dy * 10, c.priDmg * ABILITY_MUL, c.priDmg * ABILITY_MUL, 120);
+      damageEnemy(e, p.x - r.dx * 10, p.y - r.dy * 10, c.priDmg * DMG.ability, c.priDmg * DMG.ability, 120);
       if (!e.dead && tryLaunch(e, true)) { p.lockOn = true; p.target = e; } // lo lanza aunque tenga estamina
       shake = Math.max(shake, 6); burst(e.x, e.y - 12, '#ffffff', 10);
       p.rush = null; break;
@@ -3149,9 +3247,9 @@ function updateSpecial(p, dt) {
   if (k < 1) return true;
   e.z = 0; e.vz = 0; e.airborne = false; e.getup = 0.6; e.grabbed = false;
   p.z = 0; p.drop = null; p.inv = Math.max(p.inv, 0.4);
-  damageEnemy(e, e.x, e.y - 1, c.dropDmg * ABILITY_MUL, e.maxSta * c.dropSta, 0);
+  damageEnemy(e, e.x, e.y - 1, c.dropDmg * DMG.ability, e.maxSta * c.dropSta, 0);
   scorchLand(e); // Caída Izuna con un chamuscado: Meteorito
-  for (const o of liveTargets()) if (o !== e && !o.airborne && Math.hypot(o.x - e.x, o.y - e.y) < c.dropRadius + o.r) damageEnemy(o, e.x, e.y, ABILITY_MUL, ABILITY_MUL, 260);
+  for (const o of liveTargets()) if (o !== e && !o.airborne && Math.hypot(o.x - e.x, o.y - e.y) < c.dropRadius + o.r) damageEnemy(o, e.x, e.y, DMG.ability, DMG.ability, 260);
   effects.push({ type: 'ring', x: e.x, y: e.y, r: c.dropRadius, t: 0, dur: 0.35, color: p.color });
   burst(e.x, e.y - 6, '#d8cfe6', 20); burst(e.x, e.y - 12, p.color, 14);
   shake = Math.max(shake, 10); hitstop = 0.08;
@@ -3174,7 +3272,7 @@ function useAbility(p, slot) {
   if (!fn || fn(p) === false) return;
   p.idleT = 0; // usar habilidades también retrasa la recarga automática
   if (t0 === 'drill' || t0 === 'furyDrop') { setCd(p, slot, t0 === 'drill' ? FURY.drill.cd : FURY.grab.cd); return; } // habilidades de furia: recarga propia
-  // [sustituido] setCd(p, slot, slot === 'pri' ? p.ch.priCd : (t0 === 'shieldThrow' ? AB.shieldThrow.cd : p.ch.secCd));
+  // [RETIRADO] setCd(p, slot, slot === 'pri' ? p.ch.priCd : (t0 === 'shieldThrow' ? AB.shieldThrow.cd : p.ch.secCd));
   setCd(p, slot, slot === 'pri' ? p.ch.priCd : (secAltCd(t0) || p.ch.secCd));
 }
 function lockNearestOf(p, list) {
@@ -3187,7 +3285,7 @@ function castBeam(p) {
   const c = p.ch, len = beamLength(p.x, p.y, p.ax, p.ay, c.priLen);
   for (const e of liveTargets()) {
     const dx = e.x - p.x, dy = e.y - p.y, t = Math.max(0, Math.min(len, dx * p.ax + dy * p.ay));
-    if (Math.hypot(e.x - (p.x + p.ax * t), e.y - (p.y + p.ay * t)) < c.priWidth / 2 + e.r) damageEnemy(e, p.x, p.y, c.priDmg * ABILITY_MUL, c.priDmg * ABILITY_MUL, 200);
+    if (Math.hypot(e.x - (p.x + p.ax * t), e.y - (p.y + p.ay * t)) < c.priWidth / 2 + e.r) damageEnemy(e, p.x, p.y, c.priDmg * DMG.ability, c.priDmg * DMG.ability, 200);
   }
   effects.push({ type: 'beam', x: p.x, y: p.y, ax: p.ax, ay: p.ay, len, w: c.priWidth, t: 0, dur: 0.3, color: p.color });
   for (let d = 0; d < len; d += 18) burst(p.x + p.ax * d, p.y + p.ay * d - 12, p.color, 1);
@@ -3226,7 +3324,7 @@ function updateVines(dt) {
       const v = p.vine; v.t += dt;
       const ang = v.a0 + Math.PI * 2 * Math.min(1, v.t / V.sweepTime), tx = p.x + Math.cos(ang) * V.len, ty = p.y + Math.sin(ang) * V.len;
       v.ang = ang;
-      for (const e of liveTargets()) if (!v.hit.has(e) && segD(e.x, e.y, p.x, p.y, tx, ty) < e.r + 6) { v.hit.add(e); vineHit(p, e, V.dmg * ABILITY_MUL); }
+      for (const e of liveTargets()) if (!v.hit.has(e) && segD(e.x, e.y, p.x, p.y, tx, ty) < e.r + 6) { v.hit.add(e); vineHit(p, e, V.dmg * DMG.ability); }
       const ally = players.find(a => a !== p && !a.down && segD(a.x, a.y, p.x, p.y, tx, ty) < a.r + 4);
       if (ally) { // se engancha: cuerda de energía entre los dos
         p.vine = null; p.tether = { other: ally, t: V.tetherTime, tick: 0, launched: new Map(), healAcc: 0, healTxt: 0 };
@@ -3248,12 +3346,12 @@ function updateVines(dt) {
       T.tick -= dt;
       if (T.tick <= 0) {
         T.tick = V.tick;
-        // for (const e of liveTargets()) if (!e.airborne && segD(e.x, e.y, p.x, p.y, o.x, o.y) < e.r + 6) vineHit(p, e, V.tickDmg * ABILITY_MUL); // versión anterior
+        // for (const e of liveTargets()) if (!e.airborne && segD(e.x, e.y, p.x, p.y, o.x, o.y) < e.r + 6) vineHit(p, e, V.tickDmg * DMG.ability); // [RETIRADO] versión anterior
         for (const e of liveTargets()) {
           if (e.airborne || segD(e.x, e.y, p.x, p.y, o.x, o.y) >= e.r + 6) continue;
           const last = T.launched.get(e);
-          if (last != null && time - last < V.relaunch) { damageEnemy(e, p.x, p.y, V.tickDmg * ABILITY_MUL, V.tickDmg * ABILITY_MUL, 60); continue; } // recién lanzado: solo daña
-          T.launched.set(e, time); vineHit(p, e, V.tickDmg * ABILITY_MUL); // daña y lanza por los aires
+          if (last != null && time - last < V.relaunch) { damageEnemy(e, p.x, p.y, V.tickDmg * DMG.ability, V.tickDmg * DMG.ability, 60); continue; } // recién lanzado: solo daña
+          T.launched.set(e, time); vineHit(p, e, V.tickDmg * DMG.ability); // daña y lanza por los aires
         }
         // la liana cura un poco a los dos unidos (el texto sale una vez por segundo para no saturar)
         let got = 0;
@@ -3454,7 +3552,7 @@ const shieldFlung = [];
 function shieldSlam(p, e, dx, dy) {
   const W = AB.wall;
   e.slammed = true;
-  damageEnemy(e, e.x - dx * 10, e.y - dy * 10, W.slamDmg * p.ch.melee * MELEE_MUL, W.slamDmg * p.ch.melee * MELEE_MUL * 2, 0);
+  damageEnemy(e, e.x - dx * 10, e.y - dy * 10, W.slamDmg * p.ch.melee * DMG.melee, W.slamDmg * p.ch.melee * DMG.melee * 2, 0);
   e.kbx = e.kby = 0; if (!e.dead) e.getup = Math.max(e.getup || 0, W.slamGetup);
   burst(e.x + dx * e.r, upY(e.y + dy * e.r, 12), '#d8cfe6', 16); effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 16, t: 0, dur: 0.25, color: '#ffffff' });
   shake = Math.max(shake, 7); hitstop = Math.max(hitstop, 0.07); SFX.hit(true);
@@ -3472,7 +3570,7 @@ function updateShieldFlung(dt) {
     if (f.bowl) for (const o of liveTargets()) { // arrolla a otros enemigos por el camino
       if (o === e || o.airborne || o.type === 'boss' || o.bowled === f || Math.hypot(o.x - e.x, o.y - e.y) > o.r + e.r) continue;
       o.bowled = f;
-      const d = W.slamDmg * 0.5 * f.by.ch.melee * MELEE_MUL;
+      const d = W.slamDmg * 0.5 * f.by.ch.melee * DMG.melee;
       damageEnemy(o, e.x, e.y, d, d, 0);
       if (!o.dead) { const kb = sp * W.bowlMul; o.kbx = ux * kb; o.kby = uy * kb; o.hitstun = Math.max(o.hitstun || 0, 0.35); shieldFlung.push({ e: o, t: 0.5, by: f.by, bowl: false }); }
       burst(o.x, upY(o.y, 12), '#d8cfe6', 8); shake = Math.max(shake, 4); SFX.hit(false);
@@ -3496,7 +3594,7 @@ function castShieldThrow(p) {
   if (lv >= 1) shake = Math.max(shake, 4);
 }
 function shieldThrowHit(p, S, e) {
-  const T0 = AB.shieldThrow, dmg = T0.dmg * ABILITY_MUL * (S.mul || 1);
+  const T0 = AB.shieldThrow, dmg = T0.dmg * DMG.ability * (S.mul || 1);
   S.hit.add(e);
   damageEnemy(e, S.x - S.dx * 12, S.y - S.dy * 12, dmg, dmg * T0.sta, T0.kb, true); // cuenta como ataque a distancia (le da al murciélago)
   effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 10, t: 0, dur: 0.2, color: '#dff3ff' });
@@ -3567,7 +3665,7 @@ function drawThrownShield(p) {
   ctx.restore();
 }
 // Raíces (Musgo): brotan en una zona a distancia e inmovilizan a los enemigos, quitándoles estamina
-// function rootsPoint(p) { const d = beamLength(p.x, p.y, p.ax, p.ay, AB.roots.dist); return [p.x + p.ax * d, p.y + p.ay * d]; } // versión anterior
+// function rootsPoint(p) { const d = beamLength(p.x, p.y, p.ax, p.ay, AB.roots.dist); return [p.x + p.ax * d, p.y + p.ay * d]; } // [RETIRADO] versión anterior
 // function castRoots(p) { const [x, y] = rootsPoint(p); pZones.push({ x, y, r: AB.roots.r, t: 0, delay: AB.roots.delay, owner: p, kind: 'roots' }); }
 // Ahora se cargan: mientras mantienes el botón, el área a tu alrededor crece; al soltar, brotan en toda ella
 function rootsR(p) { const R = AB.roots, k = Math.min(1, (p.castT || 0) / R.charge); return R.r0 + (R.r1 - R.r0) * k; }
@@ -3588,7 +3686,7 @@ function updatePZones(dt) {
       burst(z.x, z.y - 6, '#5fd068', 18); shake = Math.max(shake, 3);
       continue;
     }
-    const p = z.owner, launched = [], dmg = AB.pillar.dmg * ABILITY_MUL;
+    const p = z.owner, launched = [], dmg = AB.pillar.dmg * DMG.ability;
     for (const e of liveTargets()) if (Math.hypot(e.x - z.x, e.y - z.y) < z.r + e.r) {
       damageEnemy(e, z.x, z.y, dmg, dmg, 0);
       if (e.dead) continue;
@@ -3620,7 +3718,7 @@ function castBlink(p) {
   const d = beamLength(p.x, p.y, p.ax, p.ay, AB.blink.dist), x0 = p.x, y0 = p.y;
   for (const e of liveTargets()) {
     const dx = e.x - x0, dy = e.y - y0, t = Math.max(0, Math.min(d, dx * p.ax + dy * p.ay));
-    if (Math.hypot(e.x - (x0 + p.ax * t), e.y - (y0 + p.ay * t)) < AB.blink.width / 2 + e.r) damageEnemy(e, x0, y0, AB.blink.dmg * ABILITY_MUL, e.maxSta * AB.blink.sta, 60);
+    if (Math.hypot(e.x - (x0 + p.ax * t), e.y - (y0 + p.ay * t)) < AB.blink.width / 2 + e.r) damageEnemy(e, x0, y0, AB.blink.dmg * DMG.ability, e.maxSta * AB.blink.sta, 60);
   }
   burst(x0, y0 - 12, '#bfeaf5', 12);
   p.x = x0 + p.ax * d; p.y = y0 + p.ay * d; collide(p, true); p.inv = Math.max(p.inv, 0.25);
@@ -3657,7 +3755,7 @@ function castVolley(p) {
     if (air && !best.dead && !(best.suspendT > 0)) best.vz = Math.max(best.vz, LAUNCH_VZ * V.airLift); // lo sube para el remate
     if (!air) hits.set(best, (hits.get(best) || 0) + 1);
   }
-  // [sustituido] if (S.hot) for (const [e, k] of hits) if (k >= V.hotRays && !e.dead) tryLaunch(e, true); // Al rojo: ráfaga concentrada que lanza
+  // [RETIRADO] if (S.hot) for (const [e, k] of hits) if (k >= V.hotRays && !e.dead) tryLaunch(e, true); // Al rojo: ráfaga concentrada que lanza
   if (S.hot) for (const [e, k] of hits) { // Al rojo: ráfaga concentrada que lanza; a los chamuscados les basta un rayo menos
     if (e.dead) continue;
     const need = (e.scorch || 0) >= 2 ? V.hotRays - AB.scorch.volleyRays : V.hotRays;
@@ -3679,7 +3777,7 @@ function coralBlast(x, y, r, hp, sta, kb, opt) {
     damageEnemy(e, x, y, hp * mul, (opt.staFrac ? e.maxSta * opt.staFrac : sta) * mul, e.airborne ? 0 : kb, true);
     if (e.dead) continue;
     hit.push(e);
-    if (e.airborne) { if (!bossStunnedAir(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * (opt.juggle || AB.bomb.juggle)); }
+    if (e.airborne) { if (!guardianAturdidoEnAire(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * (opt.juggle || AB.bomb.juggle)); }
     else if (opt.launchAll || opt.host === e) tryLaunch(e, true);
   }
   effects.push({ type: 'ring', x, y, r, t: 0, dur: 0.3, color: opt.color || '#ffb347' });
@@ -3698,7 +3796,7 @@ function coralAimPoint(p, range, near) {
 function stickyLv(p) { return Math.min(1, Math.max(0, (p.chargeT - AB.bomb.tapMax) / AB.sticky.chargeTime)); }
 function stickyPoint(p) { const S = AB.sticky, d = beamLength(p.x, p.y, p.ax, p.ay, S.d0 + (S.d1 - S.d0) * stickyLv(p)); return [p.x + p.ax * d, p.y + p.ay * d]; }
 // Lanzagranadas: pulsación corta = granada de impacto; mantener = carga pegajosa; tras rodar = escopetazo
-// [sustituido] versión con tambor de 4 granadas compartido por granada y carga:
+// [RETIRADO] versión con tambor de 4 granadas compartido por granada y carga:
 // function updateLauncher(p, inp, aP, dt) {
 //   const c = p.ch, B = AB.bomb;
 //   // recarga de una en una cuando dejas de disparar un momento
@@ -3783,11 +3881,11 @@ function updateCBombs(dt) {
     }
     if (!boom) continue;
     g.done = true;
-    // [sustituido] const air = g.z > 30;
+    // [RETIRADO] const air = g.z > 30;
     if (air) { // estalla en el aire: solo alcanza a los que están a esa altura
       for (const e of liveTargets()) if (e.airborne && Math.hypot(e.x - g.x, e.y - g.y) < B.r + e.r && Math.abs(e.z + 12 - g.z) < 60) {
         damageEnemy(e, g.x, g.y, B.dmg, e.maxSta * B.sta, 0, true);
-        if (!e.dead && !bossStunnedAir(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * B.juggle);
+        if (!e.dead && !guardianAturdidoEnAire(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * B.juggle);
       }
       effects.push({ type: 'ring', x: g.x, y: g.y, r: B.r * 0.6, t: 0, dur: 0.25, color: '#ffb347' });
       burst(g.x, g.y - g.z, '#ffb347', 12); shake = Math.max(shake, 4); SFX.hit(true);
@@ -3828,7 +3926,7 @@ function castDetonator(p) {
   for (const k of mine) { const key = k.host || k; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(k); }
   const launched = [];
   for (const [key, list] of groups) {
-    const k0 = list[0], n = list.length, dmg = S.dmg * ABILITY_MUL;
+    const k0 = list[0], n = list.length, dmg = S.dmg * DMG.ability;
     if (k0.kind === 'ally') { // bomba humana: gran explosión alrededor del compañero, lanza a todos y a él no le hace nada
       const q = k0.host, hit = coralBlast(q.x, q.y, S.allyR * (1 + S.stackR * (n - 1)), dmg * S.allyMul * n, dmg * S.allyMul * n, 380, { launchAll: true, juggle: 0.8, color: '#ff6fb5' });
       launched.push(...hit);
@@ -3860,7 +3958,7 @@ function summonDoll(p) {
 }
 function dollBoom(d) {
   if (d.done) return; d.done = true;
-  const D = AB.doll, dmg = D.dmg * ABILITY_MUL, hit = coralBlast(d.x, d.y, D.r, dmg, D.sta * ABILITY_MUL, 260, { launchAll: true, juggle: 0.8, color: '#ffd54a' });
+  const D = AB.doll, dmg = D.dmg * DMG.ability, hit = coralBlast(d.x, d.y, D.r, dmg, D.sta * DMG.ability, 260, { launchAll: true, juggle: 0.8, color: '#ffd54a' });
   floatText(d.x, d.y - 40, '¡Bum!', '#ffd54a'); hitstop = Math.max(hitstop, 0.05);
   if (!d.owner.down) lockNearestOf(d.owner, hit.filter(e => !e.dead && e.airborne));
 }
@@ -3916,7 +4014,7 @@ function recoilBlast(p) {
   for (const e of liveTargets()) {
     if (Math.hypot(e.x - x, e.y - y) > R.r + e.r) continue;
     damageEnemy(e, p.x, p.y, R.dmg, e.maxSta * R.sta, R.kb, true);
-    if (!e.dead && e.airborne && !bossStunnedAir(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * 0.6);
+    if (!e.dead && e.airborne && !guardianAturdidoEnAire(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * 0.6);
   }
   p.kbx -= p.ax * R.push; p.kby -= p.ay * R.push; p.inv = Math.max(p.inv, R.inv); p.recoilT = 0.2;
   effects.push({ type: 'muzzle', x: p.x + p.ax * (p.r + 12), y: p.y - 14 + p.ay * (p.r + 12) * 0.8, ang: Math.atan2(p.ay, p.ax), t: 0, dur: 0.14, color: '#ffd54a', s: 1.6 });
@@ -3945,7 +4043,7 @@ function updateShells(dt) {
     s.z = Math.max(0, (s.delay - s.t) / M.fall) * 260; // cae en los últimos instantes
     if (s.t < s.delay) continue;
     s.done = true;
-    coralBlast(s.x, s.y, M.shellR, M.dmg * ABILITY_MUL, 0, 160, { juggle: 0.5, staFrac: M.sta });
+    coralBlast(s.x, s.y, M.shellR, M.dmg * DMG.ability, 0, 160, { juggle: 0.5, staFrac: M.sta });
   }
   shells = shells.filter(s => !s.done);
 }
@@ -4014,7 +4112,7 @@ function drawCoralAir() {
     else { ctx.fillStyle = '#ff4fa0'; ellipse(k.x + 4, yy + 13 + Math.sin((k.t || 0) * 3) * 1.5, 2.2, 3.2); } // goterón
     stickyBomb(k.x, yy, 10, 0, (k.t || 0) + k.x * 0.01, k.owner.slotColor);
   }
-  // [sustituido] dibujo anterior de la carga pegajosa (bolita rosa pequeña):
+  // [RETIRADO] dibujo anterior de la carga pegajosa (bolita rosa pequeña):
   // for (const k of stickies) {
   // const yy = k.y - 12 - k.z + (k.kind === 'ground' ? 9 : 0);
   // if (k.kind === 'ground') { ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(k.x, k.y, 6, 2.6); }
@@ -4062,7 +4160,7 @@ function updateScorch(dt) {
 // Choque térmico: un chamuscado congelado (o un congelado al que chamuscan) revienta el hielo
 function thermalShock(e) {
   const n = scorchN(e); if (n < 1 || e.dead) return false;
-  const T = AB.thermal, dmg = T.dmg * n * ABILITY_MUL;
+  const T = AB.thermal, dmg = T.dmg * n * DMG.ability;
   e.scorch = 0; e.frozenT = 0; e.frozenAir = false;
   damageEnemy(e, e.x, e.y + 1, dmg, e.maxSta * 0.25 * T.sta * n, 0, true);
   if (!e.dead && e.maxSta > 0 && e.type !== 'boss' && !(e.stunT > 0)) stunEnemy(e);
@@ -4078,9 +4176,9 @@ function thermalShock(e) {
 function scorchLand(e) {
   const n = scorchN(e); if (n < 1 || e.dead) return;
   const M = AB.meteor; e.scorch = 0;
-  damageEnemy(e, e.x, e.y + 1, M.self * n * ABILITY_MUL, M.self * n * ABILITY_MUL, 0, true);
+  damageEnemy(e, e.x, e.y + 1, M.self * n * DMG.ability, M.self * n * DMG.ability, 0, true);
   for (const o of liveTargets()) if (o !== e && !o.airborne && Math.hypot(o.x - e.x, o.y - e.y) < M.r + o.r) {
-    damageEnemy(o, e.x, e.y, M.dmg * n * ABILITY_MUL, M.dmg * n * ABILITY_MUL, M.kb, true); addScorch(o, M.add);
+    damageEnemy(o, e.x, e.y, M.dmg * n * DMG.ability, M.dmg * n * DMG.ability, M.kb, true); addScorch(o, M.add);
   }
   effects.push({ type: 'ring', x: e.x, y: e.y, r: M.r, t: 0, dur: 0.4, color: '#ff7a3d' });
   burst(e.x, e.y - 6, '#ff8f3d', 20); floatText(e.x, upY(e.y, 46), '¡Meteorito!', '#ff9d6b');
@@ -4090,7 +4188,7 @@ function scorchLand(e) {
 function igniteExec(e) {
   const n = scorchN(e); if (n < 1) return;
   const I = AB.igniteExec; e.scorch = 0;
-  for (const o of liveTargets()) if (o !== e && Math.hypot(o.x - e.x, o.y - e.y) < I.r + o.r) { damageEnemy(o, e.x, e.y, I.dmg * ABILITY_MUL, I.dmg * ABILITY_MUL, 200, true); addScorch(o, I.add); }
+  for (const o of liveTargets()) if (o !== e && Math.hypot(o.x - e.x, o.y - e.y) < I.r + o.r) { damageEnemy(o, e.x, e.y, I.dmg * DMG.ability, I.dmg * DMG.ability, 200, true); addScorch(o, I.add); }
   effects.push({ type: 'ring', x: e.x, y: e.y, r: I.r, t: 0, dur: 0.4, color: '#ff7a3d' });
   burst(e.x, e.y - 10, '#ff8f3d', 18); floatText(e.x, upY(e.y, 60), 'Remate ígneo', '#ff9d6b');
 }
@@ -4116,7 +4214,7 @@ function updateEmbers(dt) {
     if (b.tick > 0) continue;
     b.tick = E.tick;
     for (const e of liveTargets()) if (!e.airborne && !e.flying && Math.hypot(e.x - b.x, e.y - b.y) < E.r + e.r) {
-      damageEnemy(e, b.x, b.y, E.dmg * ABILITY_MUL, E.dmg * ABILITY_MUL, 0); addScorch(e, E.add);
+      damageEnemy(e, b.x, b.y, E.dmg * DMG.ability, E.dmg * DMG.ability, 0); addScorch(e, E.add);
     }
   }
   embers = embers.filter(b => b.t < E.life);
@@ -4146,7 +4244,7 @@ function castDetonate(p) {
   p.heat = 0; p.overheat = 0; p.heatDelay = 0;
   for (const e of list) {
     if (e.dead) continue;
-    const n = scorchN(e), dmg = D.dmg * n * ABILITY_MUL;
+    const n = scorchN(e), dmg = D.dmg * n * DMG.ability;
     e.scorch = 0;
     damageEnemy(e, e.x, e.y + 1, dmg, dmg * D.sta, 0, true);
     for (const o of liveTargets()) if (o !== e && !list.includes(o) && Math.hypot(o.x - e.x, o.y - e.y) < D.r + o.r) damageEnemy(o, e.x, e.y, dmg * D.splash, dmg * D.splash, 220, true);
@@ -4163,7 +4261,7 @@ function castDetonate(p) {
 // Purga (Coral): vacía el calor y durante unos segundos dispara más rápido sin calentarse
 function castOverdrive(p) { // Purga: suelta todo el calor en una onda alrededor que daña y empuja
   p.heat = 0; p.overheat = 0; p.overdriveT = AB.overdrive.time;
-  const R = AB.overdrive.r, dmg = AB.overdrive.dmg * ABILITY_MUL;
+  const R = AB.overdrive.r, dmg = AB.overdrive.dmg * DMG.ability;
   for (const e of liveTargets()) if (Math.hypot(e.x - p.x, e.y - p.y) < R + e.r) damageEnemy(e, p.x, p.y, dmg, dmg, AB.overdrive.kb);
   effects.push({ type: 'ring', x: p.x, y: p.y, r: R, t: 0, dur: 0.35, color: p.color });
   burst(p.x, p.y - 12, '#ff8f6b', 22); shake = Math.max(shake, 6);
@@ -4310,7 +4408,7 @@ function castReaper(p) {
 }
 // Al llegar: golpe en cono hacia el objetivo. Ejecuta al objetivo si es ejecutable y a los tier 1 del cono; daña al resto
 function reaperStrike(p, main) {
-  const a = Math.atan2(p.ay, p.ax), R = AB.reaper.len, dmg = AB.reaper.dmg * ABILITY_MUL;
+  const a = Math.atan2(p.ay, p.ax), R = AB.reaper.len, dmg = AB.reaper.dmg * DMG.ability;
   let reaped = 0;
   for (const e of liveTargets()) {
     const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
@@ -4386,7 +4484,7 @@ function castDragon(p) {
   }
 }
 function dragonBallBoom(f, main) {
-  const L1 = AB.dragon.l1, dmg = L1.dmg * ABILITY_MUL;
+  const L1 = AB.dragon.l1, dmg = L1.dmg * DMG.ability;
   for (const e of liveTargets()) {
     if (e !== main && Math.hypot(e.x - f.x, e.y - f.y) > L1.splash + e.r) continue;
     fireHit(e, f.owner, e === main ? dmg : dmg * 0.5, e === main ? 260 : 140, f.x, f.y, { sta: AB.dragon.sta, fx: e === main ? 'heavy' : 'light', ranged: true }); // explosión de la bola de fuego: proyectil
@@ -4423,7 +4521,7 @@ function updateDragonFx(dt) {
       for (const e of liveTargets()) {
         if ((f.cd.get(e) || 0) > f.t) continue;
         const q = pts.find((q, i) => i % 3 === 0 && Math.hypot(e.x - q.x, e.y - q.y) < e.r + L2.hitR);
-        if (q) { fireHit(e, f.owner, L2.dmg * ABILITY_MUL, 200, q.x - Math.cos(f.ang) * 20, q.y - Math.sin(f.ang) * 20, { sta: AB.dragon.sta, fx: 'light' }); f.cd.set(e, f.t + L2.hitCd); }
+        if (q) { fireHit(e, f.owner, L2.dmg * DMG.ability, 200, q.x - Math.cos(f.ang) * 20, q.y - Math.sin(f.ang) * 20, { sta: AB.dragon.sta, fx: 'light' }); f.cd.set(e, f.t + L2.hitCd); }
       }
       if (Math.random() < 0.7) { const q = pts[pts.length - 1]; particles.push({ x: q.x, y: upY(q.y, q.h), vx: (Math.random() - 0.5) * 30, vy: -30, life: 0.3, max: 0.3, color: Math.random() < 0.5 ? '#ffd54a' : '#ff6a2a', s: 5 }); }
     }
@@ -4567,7 +4665,7 @@ function castFrostburst(p) {
   const tg = frostTarget(p);
   if (!tg) return false;
   const R = frostburstR(p);
-  const dmg = AB.frostburst.dmg * ABILITY_MUL;
+  const dmg = AB.frostburst.dmg * DMG.ability;
   for (const e of liveTargets()) {
     if (Math.hypot(e.x - tg.x, e.y - tg.y) > R + e.r) continue;
     damageEnemy(e, tg.x, tg.y, dmg, dmg, 0);
@@ -4687,7 +4785,7 @@ function updateGrenades(dt) {
     g.x = g.x0 + (g.x1 - g.x0) * k; g.y = g.y0 + (g.y1 - g.y0) * k; g.z = Math.sin(k * Math.PI) * 90 + (1 - k) * 20;
     if (k < 1) continue;
     g.done = true;
-    const p = g.owner, dmg = AB.grenade.dmg * ABILITY_MUL, L = [];
+    const p = g.owner, dmg = AB.grenade.dmg * DMG.ability, L = [];
     for (const e of liveTargets()) if (Math.hypot(e.x - g.x, e.y - g.y) < AB.grenade.r + e.r) {
       damageEnemy(e, g.x, g.y, dmg, dmg, 0, true);
       if (e.dead) continue;
@@ -4836,7 +4934,7 @@ function releaseChargedMelee(p, lv) {
     floatText(p.x, p.y - 46 * p.ch.size, 'Embestida de escudo', p.slotColor); SFX.swing(true);
     return;
   }
-  const c = p.ch, type = c.chargedMelee, cfg = CHARGED[type], dmg = c.melee * (1 + 2 * lv) * MELEE_MUL, force = false; // sin lanzamiento forzado: regla general
+  const c = p.ch, type = c.chargedMelee, cfg = CHARGED[type], dmg = c.melee * (1 + 2 * lv) * DMG.melee, force = false; // sin lanzamiento forzado: regla general
   floatText(p.x, p.y - 46 * c.size, CHARGED_TEXT[type][0], p.slotColor); SFX.swing(true);
   p.atkCd = c.meleeCd * 1.5; p.combo = 0; p.comboT = 0;
   if (type === 'seismic') { // Martillo sísmico: golpe al suelo delante, en área
@@ -4886,7 +4984,7 @@ function updateFlurry(p, dt) {
   if (last) p.flurry = null;
 }
 function starfallImpact(p, lv) {
-  const c = p.ch, cfg = CHARGED.starfall, R = cfg.r0 + (cfg.r1 - cfg.r0) * lv, dmg = c.melee * (1 + 2 * lv) * MELEE_MUL;
+  const c = p.ch, cfg = CHARGED.starfall, R = cfg.r0 + (cfg.r1 - cfg.r0) * lv, dmg = c.melee * (1 + 2 * lv) * DMG.melee;
   let hit = false;
   for (const e of liveTargets()) if (Math.hypot(e.x - p.x, e.y - p.y) < R + e.r) { damageEnemy(e, p.x, p.y, dmg, dmg, 200); impactFx(p, e, true); hit = true; } // daña al caer, sin lanzar
   if (hit && c.priType === 'rush') { p.priCd = 0; floatText(p.x, p.y - 62 * c.size, (ABILITY_TEXT[abilityType(p, 'pri')] || ['Embestida'])[0] + ' lista', p.slotColor); } // recarga la Embestida (en furia, la Garra taladro)
@@ -5013,7 +5111,7 @@ function drawPreviews() {
       circle(x, y, AB.grenade.r);
     }
     else if (type === 'roots') { // área a su alrededor que crece mientras se carga
-      // const [x, y] = rootsPoint(p); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(x, y); ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); circle(x, y, AB.roots.r); // versión anterior
+      // const [x, y] = rootsPoint(p); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(x, y); ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]); circle(x, y, AB.roots.r); // [RETIRADO] versión anterior
       const R = rootsR(p), full = R >= AB.roots.r1;
       ctx.save(); ctx.globalAlpha = 0.35; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(p.x, p.y, AB.roots.r1, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); // tamaño máximo
       ctx.save(); ctx.fillStyle = '#5fd068'; ctx.globalAlpha = full ? 0.2 + 0.08 * Math.sin(time * 12) : 0.14; ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fill(); ctx.restore();
@@ -5626,7 +5724,7 @@ function healPlayer(p, amt) {
 function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
   if (p.down || p.inv > 0 || p.jump || p.rush || p.drop || p.drill || p.leap || p.dragonRush || p.reapDash || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
-  if (dmg == null) dmg = srcEnemy ? edmg(srcEnemy, 'touch') : 20;
+  if (dmg == null) dmg = srcEnemy ? contactDmg(srcEnemy) : DMG_FALLBACK;
   const heavyHit = dmg >= HURT.heavyDmg;
   p.hp -= dmg; p.inv = HURT.inv; p.mercyT = HURT.inv; p.hurtFx = 0.5; p.hitFlash = 0.1; SFX.hurt();
   p.hitstunT = (heavyHit ? HURT.stunHeavy : HURT.stun) * (HURT.stunMul[p.ch.weight] || 1);
@@ -5657,7 +5755,7 @@ function impactFx(p, e, heavy, light) {
   if (!e.dead) applyHitstun(e, heavy);
 }
 // Hitstun: los tier 1 y 2 siempre se interrumpen; los tier 3 solo con golpes pesados; el guardián nunca
-// [sustituido] versión anterior: solo tier 1-2 y tier 3 con golpes pesados; el guardián nunca
+// [RETIRADO] versión anterior: solo tier 1-2 y tier 3 con golpes pesados; el guardián nunca
 // function applyHitstun(e, heavy) {
 //   if (e.type === 'boss' || e.state === 'leap' || e.state === 'blinkOut' || e.state === 'blinkIn') return;
 //   if (e.tier === 3 && !heavy) return;
@@ -5686,7 +5784,7 @@ function interruptHit(e, heavy) {
 function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   if (e.dead || e.spawnT > 0) return;
   if (e.flying && !ranged) return; // volador: solo le hacen daño los ataques a distancia (disparos y proyectiles)
-  if (e.stunT > 0 && e.type !== 'boss') hpDmg *= STUN_DMG_MUL; // aturdido: recibe más daño
+  if (e.stunT > 0 && tierRule(e).stunnedDmg) hpDmg *= DMG.stunned; // aturdido: recibe más daño (el guardián no)
   if (furyBy && furyBy.ch.fury) furyGain(furyBy, Math.min(hpDmg, Math.max(0, e.hp))); // Ámbar: el daño que hace llena la furia
   if (e.frozenAir && e.frozenT > 0) { shatterEnemy(e); return; } // congelado en el aire: cualquier golpe lo rompe
   e.hitLean = (e.x - sx) >= 0 ? -0.22 : 0.22; // se inclina hacia atrás, alejándose del golpe
@@ -5695,15 +5793,17 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   if (e.rootT > 0) staDmg *= AB.roots.staMul; // enredado por las raíces de Musgo: pierde más estamina
   if (e.maxSta > 0 && !(e.stunT > 0)) { e.sta = Math.max(0, e.sta - staDmg); if (e.sta <= 0) stunEnemy(e); }
   const dx = e.x - sx, dy = e.y - sy, d = Math.hypot(dx, dy) || 1;
-  let kb = e.type === 'boss' ? 30 : (e.elite ? kbBase * 0.6 : kbBase);
-  if (e.tier === 3) kb *= 0.5;
+  // [RETIRADO 2026-11-08] let kb = e.type === 'boss' ? 30 : (e.elite ? kbBase * 0.6 : kbBase); if (e.tier === 3) kb *= 0.5;
+  const TR = tierRule(e);
+  let kb = TR.kbFixed != null ? TR.kbFixed : (e.elite ? kbBase * ELITE.kb : kbBase);
+  if (TR.kbFixed == null) kb *= TR.kbMul;
   if (e.airborne || e.state === 'leap') kb *= 0.15;
   e.kbx = dx / d * kb; e.kby = dy / d * kb;
   burst(e.x, upY(e.y, 12 + e.z), '#ffffff', 6); shake = Math.max(shake, 2);
   if (e.hp <= 0) killEnemy(e, false);
 }
 function meleeHit(p, e, s) {
-  const dmg = p.ch.melee * s.def.dmg * MELEE_MUL, heavy = s.kind === 'heavy' || s.def.dmg >= 1.5;
+  const dmg = p.ch.melee * s.def.dmg * DMG.melee, heavy = s.kind === 'heavy' || s.def.dmg >= 1.5;
   if (e.flying && !s.def.launcher) { // volador: el golpe normal no le hace nada, y se avisa
     if (!s.noted) { s.noted = true; floatText(e.x, upY(e.y, 16 + (e.z || 0)), 'Solo a distancia', '#c9b8ff'); }
     return;
@@ -5712,50 +5812,51 @@ function meleeHit(p, e, s) {
   impactFx(p, e, heavy, s.kind === 'flurry');
   if (e.dead) return;
   if (s.def.launcher && tryLaunch(e, s.def.forceLaunch)) { p.lockOn = true; p.target = e; } // quien lo lanza lo fija al instante
-  if (e.airborne && !bossStunnedAir(e)) e.vz = Math.max(e.vz, s.kind === 'uppercut' ? 260 : 120);
+  if (e.airborne && !guardianAturdidoEnAire(e)) e.vz = Math.max(e.vz, s.kind === 'uppercut' ? 260 : 120);
 }
 // ability: disparo que viene de una habilidad (rebotante); si no, es un disparo normal
 function shotHit(p, e, dmg, kb, sx, sy, ability, staMul) {
   if (e.dead) return;
   // de momento no se ejecuta en el aire: el disparo hace daño normal (con el extra por aturdimiento)
-  const mul = ability ? ABILITY_MUL : SHOT_MUL * (e.airborne ? AIR_SHOT_MUL : SHOT_GROUND_MUL);
+  // [RETIRADO 2026-11-08] const mul = ability ? ABILITY_MUL : SHOT_MUL * (e.airborne ? AIR_SHOT_MUL : SHOT_GROUND_MUL);
+  const mul = ability ? DMG.ability : (e.airborne ? DMG.shotAir : DMG.shotGround);
   if (e.maxSta > 0) { // cada disparo quita una fracción fija de la barra; la carga la multiplica
-    const sta = e.maxSta * p.ch.shotStagger * (dmg / p.ch.shot) * (e.type === 'boss' ? 0.3 : 1) * mul * (staMul || 1);
-    damageEnemy(e, sx, sy, dmg * 0.4 * mul, sta, kb, true);
+    const sta = e.maxSta * p.ch.shotStagger * (dmg / p.ch.shot) * tierRule(e).shotStaMul * mul * (staMul || 1);
+    damageEnemy(e, sx, sy, dmg * DMG.shotHpVsSta * mul, sta, kb, true);
   }
   else damageEnemy(e, sx, sy, dmg * mul, 0, kb, true); // tier 1: sin estamina, el disparo quita vida normal
-  if (!e.dead && e.airborne && !bossStunnedAir(e)) e.vz = Math.max(e.vz, JUGGLE_VZ); // lo mantiene flotando
+  if (!e.dead && e.airborne && !guardianAturdidoEnAire(e)) e.vz = Math.max(e.vz, JUGGLE_VZ); // lo mantiene flotando
   if (!ability && p.ch.scorches && coralHot(p)) addScorch(e, AB.scorch.perShot); // Coral Al rojo: chamusca
 }
 function stunEnemy(e) {
-  e.stunT = e.type === 'boss' ? 2.5 : 3.5; e.sta = 0;
+  e.stunT = tierRule(e).stunTime; e.sta = 0;
   if (e.state === 'leap') e.z = 0;
   e.state = 'walk'; e.t = 1;
   floatText(e.x, upY(e.y, 40 + e.z), 'Aturdido', '#ffd54a'); burst(e.x, upY(e.y, 20 + e.z), '#ffd54a', 10);
 }
-// Guardián: solo se le puede levantar por los aires con la estamina al 50 % o menos
-const BOSS_LAUNCH_STA = 0.25; // guardián: levantable e interrumpible solo con la estamina al 25 % o menos
-const T3_LAUNCH_STA = 0.5;     // tier 3: levantable e interrumpible a mitad de barra o menos
+// [RETIRADO 2026-11-08] umbrales sueltos y funciones por tipo; ahora todo sale de TIER_RULES:
+// const BOSS_LAUNCH_STA = 0.25; // guardián: levantable e interrumpible solo con la estamina al 25 % o menos
+// const T3_LAUNCH_STA = 0.5;     // tier 3: levantable e interrumpible a mitad de barra o menos
+// function bossLaunchable(e) { return e.type === 'boss' && e.stunT <= 0 && e.sta <= e.maxSta * BOSS_LAUNCH_STA; }
+// function levantable(e) { return e.tier === 3 && e.stunT <= 0 && e.sta <= e.maxSta * T3_LAUNCH_STA; }
+// function launchable(e, force) { if (e.airborne || e.state === 'leap') return false; if (e.type === 'boss') return bossLaunchable(e); if (e.tier === 3) return levantable(e); return true; }
+// function interruptible(e) { if (e.type === 'boss') return bossLaunchable(e); if (e.tier === 3) return levantable(e); return true; }
 const AIR_SLASH_Z = 150;       // altura máxima entre un personaje que salta y un enemigo aéreo para que su golpe conecte
-function bossLaunchable(e) { return e.type === 'boss' && e.stunT <= 0 && e.sta <= e.maxSta * BOSS_LAUNCH_STA; }
+// Ventana de levantar: con launchSta null siempre; si no, sin aturdir y con la estamina a esa fracción o menos
+function enVentana(e) { const R = tierRule(e); return R.launchSta == null || (e.stunT <= 0 && e.sta <= e.maxSta * R.launchSta); }
+// Tier 3 levantable ahora (para pintar su barra en el color «levantable»)
+function levantable(e) { return e.tier === 3 && enVentana(e); }
+// Guardián levantable ahora (marca de viento junto a su nombre)
+function guardianLevantable(e) { return e.tier === 4 && enVentana(e); }
 // Un guardián aturdido en el aire no se mantiene volando con golpes: cae
-function bossStunnedAir(e) { return e.type === 'boss' && e.airborne && e.stunT > 0; }
-// Lanzar por los aires: siempre es posible (salvo un enemigo que ya vuela, el gólem en pleno salto y el guardián por encima del 50 % de estamina)
+function guardianAturdidoEnAire(e) { return e.type === 'boss' && e.airborne && e.stunT > 0; }
+// Lanzar por los aires: nunca a un enemigo que ya vuela ni al gólem en pleno salto; el resto según TIER_RULES
 function launchable(e, force) {
   if (e.airborne || e.state === 'leap') return false;
-  if (e.type === 'boss') return bossLaunchable(e);
-  // [sustituido] antes el tier 3 siempre se podía lanzar: // return true;
-  if (e.tier === 3) return levantable(e);
-  return true;
+  return enVentana(e);
 }
-// Tier 3 levantable: barra en el color «levantable» (mitad o menos) y sin aturdir
-function levantable(e) { return e.tier === 3 && e.stunT <= 0 && e.sta <= e.maxSta * T3_LAUNCH_STA; }
-// ¿Un golpe puede interrumpir lo que está haciendo? Tier 1-2 siempre; tier 3 y guardián solo cuando son levantables
-function interruptible(e) {
-  if (e.type === 'boss') return bossLaunchable(e);
-  if (e.tier === 3) return levantable(e);
-  return true;
-}
+// ¿Un golpe puede interrumpir lo que está haciendo? Misma ventana que levantar (tier 1-2 siempre)
+function interruptible(e) { return enVentana(e); }
 // force: lanza aunque tenga más de la mitad de estamina (habilidad de área)
 function tryLaunch(e, force) {
   if (!launchable(e, force)) return false;
@@ -5835,7 +5936,7 @@ function grantDragonCharge(executor) {
     floatText(q.x, q.y - 62 * q.ch.size, 'Carga de dragón ' + q.dragonCharges + '/' + AB.dragon.max, '#ff8a3d');
   }
 }
-// Congelado que se rompe (estalactita y bola de nieve): muere de un golpe; los jefes reciben FROZEN_BREAK.bossDmg
+// Congelado que se rompe (estalactita y bola de nieve): muere de un golpe; el guardián recibe FROZEN_BREAK.bossDmg
 function breakFrozen(e, sx, sy, kb) {
   if (e.type === 'boss') { damageEnemy(e, sx, sy, FROZEN_BREAK.bossDmg, FROZEN_BREAK.bossDmg * 0.5, kb); return; }
   e.hp = 0; killEnemy(e, true);
@@ -5854,7 +5955,7 @@ function killEnemy(e, executed) {
       m.spawnT = 0.25; enemies.push(m);
     }
   }
-  if (e.tier < 4 && Math.random() < (e.tier === 1 ? 0.03 : 0.12)) pickups.push({ x: e.x, y: e.y, t: 0 });
+  if (tierRule(e).drop > 0 && Math.random() < tierRule(e).drop) pickups.push({ x: e.x, y: e.y, t: 0 }); // [RETIRADO 2026-11-08] if (e.tier < 4 && Math.random() < (e.tier === 1 ? 0.03 : 0.12))
 }
 
 // ---------- Enemigos ----------
@@ -5878,7 +5979,7 @@ function randomFloorNear(px, py, minD, maxD) {
 
 // Cada IA devuelve su velocidad deseada [vx, vy]
 const ENEMY_AI = {
-  // [desactivado] slime original, sustituido por el escupitajo: slime(e, p, d, nx, ny) { const s = e.spd * (0.7 + 0.3 * Math.sin(e.anim * 6)); return [nx * s, ny * s]; },
+  // [RETIRADO] slime original, sustituido por el escupitajo: slime(e, p, d, nx, ny) { const s = e.spd * (0.7 + 0.3 * Math.sin(e.anim * 6)); return [nx * s, ny * s]; },
   slime(e, p, d, nx, ny, dt) { // no hace daño al tocarte: su ataque es un escupitajo con aviso en el suelo
     e.spitCd -= dt;
     if (e.state === 'walk') {
@@ -6004,7 +6105,7 @@ const ENEMY_AI = {
   }
 };
 
-// Solo hacen daño de contacto durante la embestida que avisan (el jefe conserva el suyo)
+// Solo hacen daño de contacto durante la embestida que avisan (el guardián conserva el suyo: CONTACT_ATTACK)
 function isHot(e) {
   if (e.type === 'boss') return true;
   if (e.type === 'mite' || e.type === 'charger') return e.state === 'dash';
@@ -6020,12 +6121,12 @@ function updateEnemy(e, dt) {
   if (e.frozenT > 0 && !e.frozenAir) e.frozenT -= dt; // congelado en el aire: dura hasta que cae o recibe un disparo
   if (e.tauntT > 0) e.tauntT -= dt;
   if (e.grabbed) return; // lo lleva un Brawler en la caída Izuna
-  // [desactivado] antes el slime hacía daño al tocarte: // if (e.type === 'slime' && (e.z || 0) < 30) for (const pl of players) if (!pl.down && Math.hypot(pl.x - e.x, pl.y - e.y) < pl.r + e.r) hurtPlayer(pl, e.x, e.y, e);
+  // [RETIRADO] antes el slime hacía daño al tocarte: // if (e.type === 'slime' && (e.z || 0) < 30) for (const pl of players) if (!pl.down && Math.hypot(pl.x - e.x, pl.y - e.y) < pl.r + e.r) hurtPlayer(pl, e.x, e.y, e);
   e.flash -= dt; e.anim += dt; e.calm += dt;
   const dec = Math.max(0, 1 - 10 * dt);
   if (e.airborne) { // lanzado: indefenso mientras está en el aire
     if (e.frozenAir) e.vz = Math.min(e.vz, 0) - 900 * dt; // bloque de hielo: cae a plomo y se rompe al tocar el suelo
-    else if (bossStunnedAir(e)) e.vz = Math.max(-AIR_FALL_MAX, e.vz - AIR_G * dt); // guardián aturdido: cae, sin flotar ni subir
+    else if (guardianAturdidoEnAire(e)) e.vz = Math.max(-AIR_FALL_MAX, e.vz - AIR_G * dt); // guardián aturdido: cae, sin flotar ni subir
     else if (e.suspendT > 0) { e.suspendT -= dt; e.vz = 0; } // Suspensión: congelado en el aire
     else if (e.hang > 0) { e.hang -= dt; e.vz = Math.max(-JUMP.hangFall, e.vz - AIR_G * dt); } // alguien le pega en el aire: flota
     else e.vz = Math.max(-AIR_FALL_MAX, e.vz - AIR_G * dt);
@@ -6038,7 +6139,7 @@ function updateEnemy(e, dt) {
     if (e.z <= 0 && e.vz < 0) {
       if (e.frozenAir) { shatterEnemy(e); return; } // congelado en el aire: se rompe al caer
       e.z = 0; e.vz = 0; e.airborne = false; e.getup = 0.5; burst(e.x, e.y, '#d8cfe6', 8); shake = Math.max(shake, 3);
-      damageEnemy(e, e.x, e.y, Math.max(0.5, e.maxHp * FALL_HP), e.maxSta * FALL_STA, 0); // golpe contra el suelo
+      damageEnemy(e, e.x, e.y, Math.max(0.5, e.maxHp * DMG.fallHp), e.maxSta * DMG.fallSta, 0); // golpe contra el suelo
       scorchLand(e); // chamuscado: cae como un meteorito
     }
     return;
@@ -6084,7 +6185,7 @@ function updateHazards(dt) {
       const dx = p.x - h.x, dy = p.y - h.y, dd = Math.hypot(dx, dy);
       if (dd > h.r + p.r) continue;
       if (h.arc) { let da = Math.atan2(dy, dx) - h.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); if (Math.abs(da) > h.arc && dd > p.r + 10) continue; }
-      hurtPlayer(p, h.x, h.y, null, h.dmg || (h.owner ? edmg(h.owner, 'touch') : 20));
+      hurtPlayer(p, h.x, h.y, null, h.dmg || (h.owner ? contactDmg(h.owner) : DMG_FALLBACK));
     }
     for (const t of turrets) if (Math.hypot(t.x - h.x, t.y - h.y) <= h.r + 10) hurtTurret(t, 2);
     effects.push({ type: 'ring', x: h.x, y: h.y, r: h.r, t: 0, dur: 0.3, color: '#ff6b6b' });
@@ -6270,8 +6371,8 @@ function update(dt) {
       if (e.dead || e.spawnT > 0) continue;
       if (b.aim && !e.airborne && b.h > 40) continue; // ya va por encima de los enemigos del suelo
       if (Math.hypot(e.x - b.x, e.y - b.y) < e.r + b.r) {
-        // versión anterior (sin efecto):
-        // if (b.snow && e.frozenT > 0) { // bola de nieve contra congelado: tier 1-2 se rompen; tier 3-4 y jefes reciben daño extra
+        // [RETIRADO] versión anterior:
+        // if (b.snow && e.frozenT > 0) { // bola de nieve contra congelado: tier 1-2 se rompen; tier 3 y guardián reciben daño extra
         // if (b.hit.has(e)) continue; b.hit.add(e);
         // if (e.type !== 'boss' && e.tier <= 2) { e.hp = 0; killEnemy(e, true); }
         // else shotHit(b.owner, e, b.dmg + SNOW_FROZEN_DMG, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
@@ -6653,7 +6754,7 @@ function interactionChips(c) {
   if (c.moveType === 'dash' || c.moveType === 'stride' || c.moveType === 'roll') add('Invulnerable al esquivar');
   if (c.shotStyle === 'revolver') add('Tambor de 6');
   if (c.shotMode === 'launcher') add('Malabares explosivos');
-  // [sustituido] if (c.shotMode === 'heat') add('Sobrecalentamiento');
+  // [RETIRADO] if (c.shotMode === 'heat') add('Sobrecalentamiento');
   if (c.shotMode === 'heat') add(c.scorches ? 'Calor y chamuscado' : 'Sobrecalentamiento'); // Coral: una sola etiqueta para no desbordar la ficha
   if (c.shotMode === 'auto') add('Fuego continuo');
   if (c.stalactite) add('Estalactitas');
@@ -6797,7 +6898,7 @@ function drawDetail(ch) {
   dLabel('Habilidades', rx, ry, cw); ry += 14;
   const p1 = ABILITY_TEXT[ch.priType] || ['', ''], s2 = ABILITY_TEXT[ch.secType] || ['', ''];
   ry += dItem(ch, ch.priType, 'Habilidad 1', p1[0], abilityBody(ch.priType, ch.priCd), rx, ry, cw, 3) + 4;
-  // [sustituido] etiquetas fijas del escudo:
+  // [RETIRADO] etiquetas fijas del escudo:
   // ry += dItem(ch, ch.secType, ch.secAlt ? 'Habilidad 2 · escudo alzado' : 'Habilidad 2', s2[0], abilityBody(ch.secType, ch.secCd), rx, ry, cw, 3) + 4;
   // if (ch.secAlt) { const a2 = ABILITY_TEXT[ch.secAlt] || ['', '']; ry += dItem(ch, ch.secAlt, 'Habilidad 2 · escudo bajado', a2[0], abilityBody(ch.secAlt, AB.shieldThrow.cd), rx, ry, cw, 3) + 4; }
   const altL = ch.secAltLabels || ['escudo alzado', 'escudo bajado'];
@@ -7377,7 +7478,7 @@ function bookPos(p) {
 // Armas de los personajes a distancia: pistolitas (Coral), gatling (Ciruela) y libro mágico (Escarcha)
 function drawRangedWeapon(p) {
   const c = p.ch, st = c.shotStyle;
-  // [sustituido] if (st !== 'dual' && st !== 'gatling' && st !== 'book') return;
+  // [RETIRADO] if (st !== 'dual' && st !== 'gatling' && st !== 'book') return;
   if (st !== 'dual' && st !== 'gatling' && st !== 'book' && st !== 'launcher') return;
   const a = Math.atan2(p.ay, p.ax), ux = Math.cos(a), uy = Math.sin(a), lift = 14 * c.size + (p.z || 0);
   ctx.save(); ctx.lineCap = 'round';
@@ -7607,7 +7708,7 @@ function drawPlayer(p) {
       ctx.setLineDash([2, 5]); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffffff';
       ctx.beginPath(); ctx.moveTo(p.x, p.y - 2); ctx.lineTo(p.x, p.y - 14 * p.ch.size - pz + p.r); ctx.stroke(); ctx.restore();
     }
-    // const spinA = p.flip && p.flipAng ? p.flipAng : 0; // [antes] solo la voltereta de Escarcha giraba el cuerpo
+    // const spinA = p.flip && p.flipAng ? p.flipAng : 0; // [RETIRADO] solo la voltereta de Escarcha giraba el cuerpo
     const spinA = p.flip && p.flipAng ? p.flipAng : p.drill ? time * 45 : (p.drop && p.drop.fury && p.drop.phase !== 'dash' ? p.drop.spin : 0); // voltereta del doble salto, taladro e Izuna de furia: gira el cuerpo sobre su centro
     if (p.furyT > 0) { // furia: brillo bajo los pies que palpita
       ctx.save(); ctx.globalAlpha = 0.22 + 0.12 * Math.sin(time * 14); ctx.fillStyle = FURY.color;
@@ -7722,7 +7823,7 @@ function drawEnemyBars(e, top) {
   bar(x, top - 6, w, 4, e.hp / e.maxHp, '#ff5a6e');
   const lev = levantable(e), col = e.stunT > 0 ? '#ffffff' : ((e.tier === 2 || lev) ? '#6ee7ff' : '#f5c542'); // mismo color que el guardián
   bar(x, top, w, 3, e.sta / e.maxSta, col);
-  if (e.tier === 3) { ctx.fillStyle = lev ? '#6ee7ff' : '#f2eefa'; ctx.fillRect(x + w * T3_LAUNCH_STA - 1, top - 1, 2, 5); } // marca del 50 %
+  if (e.tier === 3) { ctx.fillStyle = lev ? '#6ee7ff' : '#f2eefa'; ctx.fillRect(x + w * TIER_RULES[3].launchSta - 1, top - 1, 2, 5); } // marca de levantable
 }
 // Icono de viento (guardián levantable): tres trazos curvos
 function drawWindIcon(x, y, s, col) {
@@ -7808,7 +7909,7 @@ function drawEnemy(e) {
   let alpha = 1;
   if (e.state === 'blinkOut') alpha = Math.max(0.08, e.t / 0.4); else if (e.state === 'blinkIn') alpha = Math.max(0.08, 1 - e.t / 0.3);
   ctx.globalAlpha = alpha;
-  // [desactivado] brillo verde del slime (ya no quema al tocarlo):
+  // [RETIRADO] brillo verde del slime (ya no quema al tocarlo):
   // if (e.type === 'slime') { const glow = 0.35 + 0.15 * Math.sin(time * 5 + e.phase), g = ctx.createRadialGradient(x, y, r * 0.3, x, y, r * 2.1); g.addColorStop(0, `rgba(120,255,140,${glow})`); g.addColorStop(1, 'rgba(120,255,140,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.1, 0, Math.PI * 2); ctx.fill(); }
   ctx.fillStyle = fill; ctx.strokeStyle = e.elite ? '#ffd54a' : (e.tier === 3 ? '#16121e' : 'rgba(0,0,0,0.45)');
   ctx.lineWidth = e.elite || e.tier === 3 ? 3 : 2;
@@ -8201,7 +8302,7 @@ function drawGame() {
   if (SIEGE.on) siegeDrawUI();
   const boss = enemies.find(e => e.type === 'boss' && e.spawnT <= 0);
   if (boss) {
-    const by = H - 22, bw = W - 280, on = bossLaunchable(boss);
+    const by = H - 22, bw = W - 280, on = guardianLevantable(boss);
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(140, by, bw, 8);
     ctx.fillStyle = '#e5484d'; ctx.fillRect(140, by, bw * Math.max(0, boss.hp) / boss.maxHp, 8);
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(140, by + 10, bw, 4);
@@ -8209,7 +8310,7 @@ function drawGame() {
     ctx.fillRect(140, by + 10, bw * boss.sta / boss.maxSta, 4);
     // marca fija del 50 %: por encima de ella el guardián no puede volar
     ctx.fillStyle = on ? '#6ee7ff' : '#f2eefa';
-    ctx.fillRect(140 + bw * BOSS_LAUNCH_STA - 1, by + 7, 2, 10);
+    ctx.fillRect(140 + bw * TIER_RULES[4].launchSta - 1, by + 7, 2, 10);
     // nombre del guardián; con la estamina al 50 % o menos, icono de viento a su lado
     ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
     const label = 'Guardián del piso', ty = by - 5;
@@ -9047,7 +9148,7 @@ function sgObj(z, kind, name, tx, ty, r, hp) {
   z.objs.push(o); return o;
 }
 // Mapas algo más grandes que la pantalla (también en el móvil apaisado), para que la cámara de grupo los recorra como en la mazmorra
-// [antes: murallas de 33 × 19 y patio de 29 × 21, que en pantallas anchas cabían enteros y la cámara no se movía]
+// [RETIRADO: murallas de 33 × 19 y patio de 29 × 21, que en pantallas anchas cabían enteros y la cámara no se movía]
 function sgWallZone(id, east) {
   const C = 45, R = 25, my = 12, M = x => east ? C - 1 - x : x; // la muralla este es la oeste en espejo
   const gaps = [[M(0), my - 1], [M(0), my], [M(0), my + 1], [M(44), my - 1], [M(44), my], [M(44), my + 1]];
@@ -9264,7 +9365,7 @@ function sgAdopt(e, z) { // enemigos que aparecen sin plan (los que suelta el sp
   SIEGE.all.push(e);
 }
 function sgObjHit(o, e) {
-  const S = SIEGE, dmg = SG.objDmg[e.tier] * (e.elite ? 1.3 : 1);
+  const S = SIEGE, dmg = SG.objDmg[e.tier] * (e.elite ? ELITE.dmg : 1);
   if (o.destroyed) return;
   o.hp -= dmg; o.hitT = S.time; o.flash = 0.15;
   if (o.zone === S.cur) {
