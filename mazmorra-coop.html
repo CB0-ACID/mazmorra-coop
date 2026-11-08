@@ -971,9 +971,9 @@ const SFX = {
 // la melodía que se hizo famosa como «Stranger in Paradise».
 //   menu    → la sección central de la danza (otro segmento), con arpa, flauta y cuerdas
 //   calm    → explorar: el tema principal lento, en menor, con celesta, drones y mucha reverberación
-//   fight   → combate: el tema en Re menor, ensanchado (notas al doble de largo) sobre cuerdas en ostinato, metales, coro y timbales
+//   fight   → combate: el tema en Re menor, ensanchado (notas al doble de largo), en crescendo: de cuerdas suaves a metales, tambores y coro
 //   boss    → guardián: el tema en Do menor armónica, rápido, metales y coro, con fases según la vida del guardián
-//   room / boss_win → fanfarrias en La mayor: la del guardián empieza igual que la de sala y sigue con la segunda frase del tema
+//   room / boss_win → codas lentas que cierran en La mayor y devuelven a la exploración; la del guardián, más larga y elaborada
 // Reacciona a la partida en tiempo real (musicMix): capas por intensidad (enemigos vivos), fases del guardián (<50 % coro y cuerdas agudas;
 // <25 % sube medio tono y acelera), y poca vida (algún jugador por debajo del 35 %): latido, sonido apagado y algo más de tempo.
 // Cómo se escriben: cada ficha es una semicorchea (16 por compás). Una nota ('D5', 'F#4', 'Bb3'), varias a la vez unidas con '+' ('D4+F#4+A4'),
@@ -1058,6 +1058,26 @@ const MUSIC_DEF = {
       { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'pad', gain: 0.03 },
       { drums: bars('T . . . . . . . . . . . . . . .', '. . . . . . . . . . . . w . . .'), gain: 0.3 }
     ] },
+  // Combate en crescendo (musicMix): empieza tranquilo con las cuerdas cantando el tema y, según dura la pelea (más deprisa cuanto más
+  // enemigos), entran el pulso de cuerdas, los metales con la melodía, los tambores y al final coro, violines agudos y platillos; el tempo sube de 0,86 a 1,04
+  fight: { bpm: 120, loop: true, verb: 0.35, fadeIn: 1.2, loopStart: 32,
+    chords: ['Dm', 'A', 'Em', 'Em', 'A', 'A', 'Dm', 'Dm', 'G', 'G', 'A', 'A', 'Bdim', 'A'],
+    voices: [
+      { notes: restBars(2) + ' | ' + augment(THEME_FIGHT), shift: -7, inst: 'strings', gain: 0.1, layer: 'soft' }, // apertura: cuerdas suaves
+      { notes: restBars(2) + ' | ' + augment(THEME_FIGHT), shift: -7, inst: 'brass', gain: 0.14, layer: 'brass' }, // metales: el tema en Re menor
+      { notes: restBars(2) + ' | ' + augment(THEME_FIGHT), shift: 5, inst: 'strings', gain: 0.06, layer: 'peak' }, // violines una octava arriba
+      { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'choir', gain: 0.045, layer: 'peak' },
+      { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'pad', gain: 0.03, layer: 'soft' },
+      { notes: 'R - - - - - - - R - - - 5 - - -', base: 38, inst: 'lowstr', gain: 0.12 },
+      { notes: '1 . 8 . 5 . 8 . 1 . 8 . 5 . 8 .', base: 50, inst: 'ost', gain: 0.04, layer: 'pulse' }, // pulso a corcheas
+      { notes: '. 1 . 1 . 1 . 1 . 1 . 1 . 1 . 5', base: 50, inst: 'ost', gain: 0.04, layer: 'drive' }, // completa las semicorcheas
+      { drums: 'T . . . . . . . . . . . . . . .', gain: 0.6 },
+      { drums: '. . . . . . . . T . . . . . T .', gain: 0.8, layer: 'pulse' },
+      { drums: 'k . . k . . k . k . . k s . k .', gain: 0.75, layer: 'drums' },
+      { drums: oneShot(224, { 20: 'w', 32: 'T' }), gain: 0.5 }, // entrada suave
+      { drums: oneShot(224, { 32: 'c', 128: 'c' }), gain: 0.8, layer: 'peak' } // platillos al llegar al clímax
+    ] },
+/* Combate anterior (siempre intenso desde el principio), sustituido por el crescendo. Se deja comentado:
   fight: { bpm: 120, loop: true, verb: 0.3, fadeIn: 0.3, loopStart: 32,
     chords: ['Dm', 'A', 'Em', 'Em', 'A', 'A', 'Dm', 'Dm', 'G', 'G', 'A', 'A', 'Bdim', 'A'],
     voices: [
@@ -1070,6 +1090,7 @@ const MUSIC_DEF = {
       { drums: 'k . . k . . k . k . . k s . k .', gain: 0.75, layer: 'drive' },
       { drums: oneShot(224, { 0: 'b+c+T', 24: 'r', 26: 'r', 28: 's', 29: 's', 30: 's', 31: 's', 32: 'c', 128: 'c' }), gain: 0.8 } // entrada y platillos
     ] },
+*/
   boss: { bpm: 136, loop: true, verb: 0.3, fadeIn: 0.2, loopStart: 16,
     chords: ['Cm', 'Fm', 'G', 'Cm', 'Fm', 'G', 'Ab', 'Fm', 'G', 'Cm', 'Fm', 'G', 'Ab'],
     voices: [
@@ -1084,6 +1105,35 @@ const MUSIC_DEF = {
       { drums: oneShot(208, { 16: 'c', 112: 'c' }), gain: 0.6, layer: 'peak' }, // platillo al empezar cada vuelta del tema
       { drums: oneShot(208, { 0: 'b+c+T', 8: 'r', 10: 'r', 12: 's', 13: 's', 14: 's', 15: 's' }), gain: 0.8 }
     ] },
+  // Codas (sustituyen a las fanfarrias): cierran el combate con calma y emoción y desembocan en la música de exploración.
+  // Terminan en La mayor; la exploración entra por debajo del acorde final con su pedal de La y su Re menor.
+  // Coda de sala: el final del tema («a stranger in paradise») lento, Fa → Mi → La mayor
+  room: { bpm: 70, loop: false, verb: 0.65, len: 28, overlap: 1.6, chords: ['F', 'A'],
+    voices: [
+      { notes: 'C5 - - B4 A4 - - - G#4 - - - A4 - - - | - - - - - - - - - - - -', inst: 'strings', gain: 0.1 },
+      { notes: delayStr('C5 - - B4 A4 - - - G#4 - - - A4 - - - | - - - - - - - - - - - -', 3), shift: 12, inst: 'celesta', gain: 0.04 },
+      { notes: 'F3+A3+C4 - - - - - - - E3+G#3+B3 - - - - - - - | A3+C#4+E4 - - - - - - - - - - -', inst: 'pad', gain: 0.04 },
+      { notes: '. . . . . . . . E4+G#4+B4 - - - - - - - | A4+C#5+E5 - - - - - - - - - - -', inst: 'choir', gain: 0.035 },
+      { notes: 'F2 - - - - - - - E2 - - - - - - - | A1 - - - - - - - - - - -', inst: 'lowstr', gain: 0.1 },
+      { notes: '. . . . . . . . . . . . . . . . | A3 C#4 E4 A4 C#5 E5 . . . . . .', inst: 'harp', gain: 0.06 },
+      { drums: '. . . . . . . . . . . w . . . . | T . . . . . . . . . . .', gain: 0.4 }
+    ] },
+  // Coda del guardián: más larga y elaborada. La segunda frase del tema entera, una respuesta que asciende sobre Mi7
+  // y un acorde final de La mayor con arpa y celesta que se queda flotando
+  boss_win: { bpm: 66, loop: false, verb: 0.7, len: 64, overlap: 2.2, chords: ['Dm', 'F', 'E', 'A'],
+    voices: [
+      { notes: bars('F5 - - - C5 - B4 - A4 - F4 - F4 - B4 -', 'C5 - B4 - A4 - G#4 - A4 - G#4 - F4 - - -', 'E4 - - - G#4 - B4 - D5 - - - C#5 - B4 -', 'A4 - - - - - - - - - - - - - - -'),
+        inst: 'strings', gain: 0.1 },
+      { notes: delayStr(bars('F5 - - - C5 - B4 - A4 - F4 - F4 - B4 -', 'C5 - B4 - A4 - G#4 - A4 - G#4 - F4 - - -', restBars(2)), 3), shift: 12, inst: 'celesta', gain: 0.035 },
+      { notes: bars(restBars(2), 'E4 - - - G#4 - B4 - D5 - - - C#5 - B4 -', 'A4 - - - - - - - - - - - - - - -'), shift: -12, inst: 'choir', gain: 0.05 },
+      { notes: bars('D4+F4+A4 - - - - - - - - - - - - - - -', 'F3+A3+C4 - - - - - - - E3+G#3+B3 - - - - - - -', 'E3+G#3+B3+D4 - - - - - - - - - - - - - - -', 'A3+C#4+E4+A4 - - - - - - - - - - - - - - -'),
+        inst: 'pad', gain: 0.045 },
+      { notes: bars('D2 - - - - - - - D2 - - - - - - -', 'F2 - - - - - - - E2 - - - - - - -', 'E2 - - - - - - - - - - - - - - -', 'A1 - - - - - - - - - - - - - - -'), inst: 'lowstr', gain: 0.11 },
+      { notes: bars(restBars(2), '1 3 5 8 1 3 5 8 1 3 5 8 1 3 5 8', '1 3 5 8 . . . . . . . . . . . .'), base: 52, inst: 'harp', gain: 0.06 },
+      { notes: bars(restBars(3), 'A5 . . . E6 . . . A6 . . . . . . .'), inst: 'celesta', gain: 0.05 },
+      { drums: bars('T . . . . . . . . . . . . . . .', restBars(1), '. . . . . . . . . . . w . . . .', 'T . . . . . . . . . . . . . . .'), gain: 0.4 }
+    ] }
+  /* Fanfarrias anteriores (estilo triunfal), sustituidas por las codas. Se dejan comentadas:
   // Fanfarria de sala: la primera frase del tema, rápida, que resuelve en La mayor
   room: { bpm: 150, loop: false, verb: 0.35, len: 24, chords: ['Bm', 'A'],
     voices: [
@@ -1110,6 +1160,7 @@ const MUSIC_DEF = {
       { drums: bars('T . . . r . T . . . r . s s s s', 'T+c . . . s . . . T . . . s . r r', 'T . . . s . . . T . T . s . r r',
         'T . . . s . . . T T T T T T T T', 'T+c+b . . . . . . . . . . . . . . .', '. . . . . . . .'), gain: 0.9 }
     ] }
+  */
 };
 /* Música anterior (Re menor, composición propia), sustituida por las variaciones de Borodin. Se deja comentada:
 const MUSIC_DEF = {
@@ -1284,10 +1335,10 @@ function compileMusic(def) {
       }).filter(Boolean);
     }
   }
-  return { bpm: def.bpm, loop: def.loop, verb: def.verb || 0.3, fadeIn: def.fadeIn || 0.3, loopStart: def.loopStart || 0, len, steps, layers: [...layers] };
+  return { bpm: def.bpm, loop: def.loop, verb: def.verb || 0.3, fadeIn: def.fadeIn || 0.3, loopStart: def.loopStart || 0, overlap: def.overlap || 0, len, steps, layers: [...layers] };
 }
 let MUSIC = null; // pistas compiladas (al primer uso)
-const MUS = { mode: null, track: null, bus: null, layers: {}, lv: {}, step: 0, next: 0, fanUntil: 0, duck: 1, tempo: 1, trans: 0, transWant: 0,
+const MUS = { mode: null, track: null, bus: null, layers: {}, lv: {}, step: 0, next: 0, fanUntil: 0, duck: 1, tempo: 1, trans: 0, transWant: 0, build: 0, dt: 0,
   filter: null, verb: null, cut: 18000, last: 0, dyn: { danger: 0, inten: 0, bossFrac: 1 }, get on() { return AUD.on && AUD.musOn; } };
 // function setMusicOn(v) { MUS.on = v; try { localStorage.setItem('mz-music', v ? '1' : '0'); } catch (_) {} } // sustituido por Opciones > Sonido
 // Cadena: pista → filtro (se cierra con poca vida) → musicNode; y un envío a la reverberación (respuesta de impulso generada)
@@ -1391,7 +1442,7 @@ function musicSwitch(mode) {
     setTimeout(() => old.disconnect(), 1400);
   }
   MUS.mode = mode; MUS.bus = null; MUS.track = null; MUS.layers = {}; MUS.lv = {};
-  MUS.tempo = 1; MUS.trans = MUS.transWant = 0;
+  MUS.tempo = mode === 'fight' ? 0.86 : 1; MUS.trans = MUS.transWant = 0; MUS.build = 0; // el combate arranca despacio y sin tensión
   if (!mode) return;
   const tr = MUS.track = MUSIC[mode];
   MUS.bus = actx.createGain(); MUS.bus.connect(MUS.filter);
@@ -1416,13 +1467,25 @@ function musicDyn(dt) {
 function musicMix(t) {
   const D = MUS.dyn, mode = MUS.mode, sm = x => Math.min(1, Math.max(0, x));
   const want = { drive: 1, peak: 0 }; let tempo = 1; MUS.transWant = 0;
-  if (mode === 'fight') { want.drive = 0.4 + 0.6 * D.inten; want.peak = sm((D.inten - 0.45) / 0.4); tempo = 1 + 0.04 * D.inten + 0.05 * D.danger; }
+  if (mode === 'fight') {
+    // Crescendo: «build» sube con el tiempo de pelea (cerca de un minuto con pocos enemigos, unos 20 s con muchos o con poca vida) y nunca baja
+    MUS.build = Math.min(1, MUS.build + MUS.dt * (0.6 + 1.2 * D.inten + 0.8 * D.danger) / 35);
+    const b = MUS.build;
+    want.base = 0.6 + 0.4 * sm(b / 0.6);          // el conjunto sube de volumen
+    want.soft = 1 - 0.7 * sm((b - 0.4) / 0.35);   // las cuerdas de la apertura ceden la melodía
+    want.pulse = sm((b - 0.1) / 0.25);            // pulso de cuerdas y timbales
+    want.brass = sm((b - 0.35) / 0.3);            // los metales toman el tema
+    want.drive = sm((b - 0.5) / 0.25);            // semicorcheas
+    want.drums = sm((b - 0.45) / 0.3);            // tambores
+    want.peak = sm((b - 0.75) / 0.2);             // clímax: coro, violines agudos y platillos
+    tempo = 0.86 + 0.18 * sm(b / 0.9) + 0.04 * D.danger;
+  }
   else if (mode === 'boss') {
     const ph = D.bossFrac; want.peak = ph < 0.5 ? 1 : 0.2; tempo = 1 + 0.05 * D.danger;
     if (ph < 0.25) { MUS.transWant = 1; tempo += 0.07; } // fase final: medio tono arriba y más deprisa
   }
   for (const n in MUS.layers) {
-    if (n === 'base') continue;
+    if (n === 'base' && want.base === undefined) continue;
     const v = want[n] !== undefined ? want[n] : 1;
     if (Math.abs(v - MUS.lv[n]) > 0.02) { MUS.lv[n] = v; MUS.layers[n].gain.setTargetAtTime(v, t, 0.6); }
   }
@@ -1435,7 +1498,7 @@ function musicUpdate() {
   if (!actx) return;
   if (!MUSIC) { MUSIC = {}; for (const k in MUSIC_DEF) MUSIC[k] = compileMusic(MUSIC_DEF[k]); }
   musicGraph();
-  const t = actx.currentTime, dt = Math.min(0.25, t - MUS.last); MUS.last = t;
+  const t = actx.currentTime, dt = Math.min(0.25, t - MUS.last); MUS.last = t; MUS.dt = dt;
   musicDyn(dt);
   const want = !MUS.on || t < MUS.fanUntil ? null : musicWanted();
   if (want !== MUS.mode) musicSwitch(want);
@@ -1456,12 +1519,12 @@ function musicUpdate() {
     MUS.step++; if (MUS.step >= tr.len) MUS.step = tr.loopStart; MUS.next += sd;
   }
 }
-// Fanfarria: corta la pista de fondo, suena una vez y después entra la de exploración
+// Coda (antes fanfarria): corta la pista de fondo, suena una vez y la exploración entra por debajo de su acorde final
 function musicFanfare(kind) {
   if (!actx || !MUS.on) return;
   musicUpdate(); // asegura las pistas compiladas y la cadena
   const tr = MUSIC[kind === 'boss' ? 'boss_win' : 'room'], t = actx.currentTime + 0.05, sd = 60 / tr.bpm / 4;
-  MUS.fanUntil = t + tr.len * sd + (kind === 'boss' ? 0.4 : 0.1);
+  MUS.fanUntil = t + tr.len * sd - tr.overlap; // la exploración empieza antes de que se apague el último acorde
   musicSwitch(null);
   if (muted) return;
   const bus = actx.createGain(), send = actx.createGain(); bus.gain.value = MUSIC_VOL * 1.1; send.gain.value = tr.verb;
