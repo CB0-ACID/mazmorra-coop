@@ -17,7 +17,7 @@
     let th = 0;
     for (const h of hazards) {
       if (h.cancel || h.done || !seen(b, h, now)) continue;
-      if (b.parryPlan && h.owner && h.owner.type === 'boss') { // Ceniza con escudo: no se aparta del golpe del guardián si le llega por delante (lo para)
+      if (b.parryPlan && h.owner && h.owner.type === 'boss' && parryTry(b, h)) { // Ceniza con escudo: no se aparta del golpe del guardián si le llega por delante (lo para), si decide intentarlo
         let da = Math.atan2(h.y - p.y, h.x - p.x) - Math.atan2(p.ay, p.ax); da = Math.atan2(Math.sin(da), Math.cos(da));
         if (Math.abs(da) <= AB.wall.arc * 0.85) continue;
       }
@@ -48,10 +48,20 @@
     return th;
   }
   // ¿Golpe a punto de llegar por delante? (para el bloqueo perfecto: ventana de 0,2 s)
+  // Bloqueo perfecto «humano»: no siempre se intenta (parryRate) y el momento de alzar el escudo varía (lead: s antes del golpe).
+  // La ventana perfecta es de 0,2 s: si se alza antes, el bloqueo sigue parando el daño pero no es perfecto
+  function parryTry(b, h) {
+    b.parry = b.parry || new Map();
+    let d = b.parry.get(h);
+    if (!d) { d = { go: Math.random() < (SK.parryRate == null ? 1 : SK.parryRate), lead: (SK.parryLead || [0.05, 0.18])[0] + Math.random() * ((SK.parryLead || [0.05, 0.18])[1] - (SK.parryLead || [0.05, 0.18])[0]) }; b.parry.set(h, d); }
+    if (b.parry.size > 300) b.parry.clear();
+    return d.go ? d : null;
+  }
   function imminent(b, p, now) {
     for (const h of hazards) {
       if (h.cancel || h.done || !seen(b, h, now)) continue;
-      const left = h.delay - h.t; if (left > 0.18 || left < 0) continue;
+      const d = parryTry(b, h); if (!d) continue;
+      const left = h.delay - h.t; if (left > d.lead || left < 0) continue;
       if (Math.hypot(p.x - h.x, p.y - h.y) < h.r + p.r + 6) return true;
     }
     for (const u of bullets) {

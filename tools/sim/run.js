@@ -3,11 +3,13 @@
 'use strict';
 const { makeSim, newMetrics, runRoom } = require('./sim');
 const ci = +process.argv[2], level = process.argv[3] || 'experto', NS = +process.argv[4] || 10;
+// parryRate/parryLead: bloqueo perfecto de Ceniza a escala humana (cuántos intenta y con qué margen alza el escudo; ventana perfecta 0,2 s)
 const SKILLS = {
-  experto: { react: 0.15, notice: 0.95, abilities: true, dodge: true },
-  medio: { react: 0.35, notice: 0.7, abilities: true, dodge: true }
+  experto: { react: 0.15, notice: 0.95, abilities: true, dodge: true, parryRate: 0.7, parryLead: [0.05, 0.3] },
+  medio: { react: 0.35, notice: 0.7, abilities: true, dodge: true, parryRate: 0.4, parryLead: [0.05, 0.45] }
 };
 const S = makeSim(SKILLS[level]);
+if (process.env.SIMPATCH) S.sim.ev(process.env.SIMPATCH); // cambio de equilibrio de prueba (solo en la simulación)
 const { sim, G } = S;
 const name = sim.ev(`CHARS[${ci}].name`);
 const W = (list) => list.map(t => ({ type: t.replace('*', ''), elite: t.endsWith('*') }));
