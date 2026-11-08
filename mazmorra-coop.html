@@ -604,7 +604,8 @@ const BRAWLER_KIT = {
 // Familias (clave = rol visible en minúsculas y sin tilde): cada personaje hereda su familia y luego indica lo que cambia.
 // [RETIRADO 2026-11-08] claves antiguas: grande → tanque, golpe → brawler (agil y tirador no cambian)
 const ROLES = {
-  tanque:  { role: 'Tanque',  size: 1.35, hp: 160, speed: 135, canShoot: false, autoLock: true, finisher: 'heavy', moveType: 'block', weight: 'heavy' }, // bloquean en vez de esquivar
+  // [RETIRADO 2026-11-08] tanque: hp: 160 (con 160 PV caían por desgaste: reciben de 5 a 10 veces más daño por sala que el resto)
+  tanque:  { role: 'Tanque',  size: 1.35, hp: 200, speed: 135, canShoot: false, autoLock: true, finisher: 'heavy', moveType: 'block', weight: 'heavy' }, // bloquean en vez de esquivar
   agil:    { role: 'Ágil',    size: 0.75, hp: 60, speed: 225, moveCd: 0.45, shotType: 'hitscan', canMelee: false, weight: 'light' },
   // Brawlers: la habilidad 1 es una embestida que lanza al primer enemigo; la 2, una caída Izuna con un enemigo en el aire
   brawler: { role: 'Brawler', melee: 4, canShoot: false, autoLock: true, finisher: 'normal', meleeKit: BRAWLER_KIT, meleeStyle: 'fist', priType: 'rush', priLen: 260, rushSpeed: 680, secType: 'drop', secCd: 4, dropDmg: 5, dropSta: 0.75, dropRadius: 60 },
