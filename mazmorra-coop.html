@@ -2164,7 +2164,7 @@ function enterRoom(r, dir) {
     if (entry === 'left' || entry === 'right') { p.x = bx; p.y = by + off; } else { p.x = bx + off; p.y = by; }
     p.kbx = p.kby = 0; p.slash = null; p.moveT = 0; p.rush = null; p.drop = null; p.drill = null; p.z = 0; p.jump = null; p.flip = null; p.flipAng = 0; p.leap = null; p.dragonRush = null; p.reapDash = null; p.shieldCharge = null; p.shieldOn = false; p.shieldOut = null; p.coverBy = null; p.covering = null; p.vine = null; p.tether = null; p.mvx = p.mvy = 0; p.flurry = null; p.mHold = null; p.mCharging = false;
   });
-  if (!r.cleared) { if (!r.waves) r.waves = makeEncounter(r); r.wave = 0; spawnWave(); }
+  if (!r.cleared) { if (!r.waves) r.waves = makeEncounter(r); r.wave = 0; r.addT = null; spawnWave(); }
   if (r.type === 'treasure' && !r.looted) {
     r.looted = true; const c = Math.max(1, n);
     for (let i = 0; i < c; i++) pickups.push({ x: (MID_X + 0.5) * T + (i - (c - 1) / 2) * 34, y: (MID_Y + 0.5) * T, t: Math.random() * 6 });
@@ -2173,6 +2173,51 @@ function enterRoom(r, dir) {
   if (r.type === 'boss' && !r.cleared) showBanner(BOSS[bossKindFor(floor.depth)].name); // [antes: 'El guardián del piso']
   fade = 0.35;
   snapCamera();
+}
+
+// Refuerzos en la sala del guardián (2026-11-08): cada cierto tiempo entran enemigos normales de tier 1 y 2.
+// Con 1 o 2 jugadores salen 2; con 3 o 4, salen 4. Para que no se acumulen, nunca hay más de «cap» grupos vivos a la vez.
+// Al caer el guardián, los refuerzos que queden se deshacen.
+const BOSS_ADDS = { first: 12, every: 20, everyRage: 16, cap: 2, t2Chance: 0.5,
+                    t1: ['slime', 'mite'], t2: ['charger', 'shooter'], minPlayerD: 170, minBossD: 130, near: 560 };
+function bossAddCount() { return Math.max(1, humans().length) <= 2 ? 2 : 4; }
+function spawnBossAdds() {
+  const n = bossAddCount(), alive = enemies.filter(e => e.bossAdd && !e.dead).length;
+  const k = Math.min(n, n * BOSS_ADDS.cap - alive); if (k <= 0) return false;
+  const boss = enemies.find(e => e.type === 'boss' && !e.dead), live = players.filter(p => !p.down);
+  const gx = live.length ? live.reduce((a, p) => a + p.x, 0) / live.length : room.entryX, gy = live.length ? live.reduce((a, p) => a + p.y, 0) / live.length : room.entryY;
+  let free = [];
+  for (let y = 1; y < ROWS - 1; y++) for (let x = 1; x < COLS - 1; x++) {
+    if (room.tiles[y][x] !== 0) continue;
+    const cx = (x + 0.5) * T, cy = (y + 0.5) * T;
+    if (players.some(p => !p.down && Math.hypot(p.x - cx, p.y - cy) < BOSS_ADDS.minPlayerD)) continue;
+    if (boss && Math.hypot(boss.x - cx, boss.y - cy) < BOSS_ADDS.minBossD) continue;
+    free.push([cx, cy]);
+  }
+  const near = free.filter(([cx, cy]) => Math.hypot(cx - gx, (cy - gy) / 0.8) < BOSS_ADDS.near);
+  if (near.length >= k * 2) free = near;
+  if (!free.length) return false;
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  for (let i = 0; i < k; i++) {
+    const t2 = k >= 2 ? (i % 2 === 1) : Math.random() < BOSS_ADDS.t2Chance; // mitad tier 1, mitad tier 2
+    const [x, y] = free.splice(Math.floor(Math.random() * free.length), 1)[0] || [gx, gy];
+    const e = makeEnemy(pick(t2 ? BOSS_ADDS.t2 : BOSS_ADDS.t1), x, y, false); e.bossAdd = true; enemies.push(e);
+    if (!free.length) break;
+  }
+  showBanner('¡Refuerzos!'); SFX.launch();
+  return true;
+}
+function updateBossAdds(dt) {
+  if (SIEGE.on || room.type !== 'boss' || room.cleared) return;
+  const boss = enemies.find(e => e.type === 'boss' && !e.dead);
+  if (!boss) { // guardián vencido: los refuerzos se deshacen
+    for (const e of enemies) if (e.bossAdd && !e.dead) { e.dead = true; burst(e.x, upY(e.y, 14), e.color, 10); }
+    return;
+  }
+  if (boss.spawnT > 0) return;
+  if (room.addT == null) room.addT = BOSS_ADDS.first;
+  room.addT -= dt;
+  if (room.addT <= 0) { spawnBossAdds(); room.addT = boss.hp < boss.maxHp / 2 ? BOSS_ADDS.everyRage : BOSS_ADDS.every; }
 }
 
 function spawnWave() {
@@ -6894,6 +6939,7 @@ function update(dt) {
     }
   }
   pBullets = pBullets.filter(b => b.life > 0);
+  updateBossAdds(dt); // refuerzos de tier 1 y 2 durante la pelea con el guardián
   enemies = enemies.filter(e => !e.dead);
 
   for (let i = pickups.length - 1; i >= 0; i--) {
