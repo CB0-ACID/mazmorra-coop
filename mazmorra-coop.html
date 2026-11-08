@@ -971,7 +971,7 @@ const SFX = {
 // la melodía que se hizo famosa como «Stranger in Paradise».
 //   menu    → la sección central de la danza (otro segmento), con arpa, flauta y cuerdas
 //   calm    → explorar: el tema principal lento, en menor, con celesta, drones y mucha reverberación
-//   fight   → combate: el tema en Re menor, ensanchado (notas al doble de largo), en crescendo: de cuerdas suaves a metales, tambores y coro
+//   fight   → combate: el tema en Re menor con sintetizadores (arpegio, bajo, batería electrónica) y capas orquestales; entra con energía
 //   boss    → guardián: el tema en Do menor armónica, rápido, metales y coro, con fases según la vida del guardián
 //   room / boss_win → codas lentas que cierran en La mayor y devuelven a la exploración; la del guardián, más larga y elaborada
 // Reacciona a la partida en tiempo real (musicMix): capas por intensidad (enemigos vivos), fases del guardián (<50 % coro y cuerdas agudas;
@@ -1014,6 +1014,13 @@ const THEME_FIGHT = bars(
   'A4 - F#4 - F#4 - B4 - - - - - . . . .',
   'C5 - B4 - A4 - - - G#4 - A4 - G#4 - - -',
   'F#4 - - - - - . . . . G#4 - A4 - C5 -');
+// Puente del combate (Re menor): la cabeza del tema («Si-Si-Fa#», tres notas) en secuencia que sube sobre Sib → Do → Rem → La
+const FIGHT_BRIDGE = bars(
+  'F4 - - - F4 - - - C5 - - - Bb4 - - -',
+  'G4 - - - G4 - - - D5 - - - C5 - - -',
+  'A4 - - - A4 - - - E5 - - - F5 - - -',
+  'E5 - - - C#5 - - - A4 - - - C#5 - E5 -');
+const fillBars = (n, at, fill) => Array.from({ length: n }, (_, i) => at.includes(i) ? fill : restBars(1)).join(' | '); // un compás de redoble en los compases indicados
 // Guardián: La menor armónica (Fa natural, Sol#); se transporta a Do menor
 const THEME_BOSS = bars(
   'B4 - - . B4 - - . F5 - - - - - - -',
@@ -1058,6 +1065,31 @@ const MUSIC_DEF = {
       { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'pad', gain: 0.03 },
       { drums: bars('T . . . . . . . . . . . . . . .', '. . . . . . . . . . . . w . . .'), gain: 0.3 }
     ] },
+  // Combate estilo nave en batalla (inspirado en cómo FTL monta su música de combate): entra con energía desde el primer compás.
+  // Sintetizadores: arpegio secuenciado con filtro y eco, bajo que pulsa a corcheas, batería electrónica y la melodía en un lead de sierras;
+  // por encima, capas orquestales (metales, coro, cuerdas) que abren la intensidad y el paso del tiempo.
+  // Forma: entrada (2 compases) → A: tema (6) → B: tema una octava arriba con metales (6) → C: puente que sube por secuencias (4) → vuelve a A.
+  fight: { bpm: 128, loop: true, verb: 0.25, delay: 0.22, fadeIn: 0.15, loopStart: 32,
+    chords: ['Dm', 'A', 'Em', 'A', 'Dm', 'G', 'A', 'Bdim', 'Em', 'A', 'Dm', 'G', 'A', 'Bdim', 'Bb', 'C', 'Dm', 'A'],
+    voices: [
+      { notes: bars(restBars(2), THEME_FIGHT, restBars(10)), shift: -7, inst: 'lead', gain: 0.1 },             // A: el tema en Re menor
+      { notes: bars(restBars(8), THEME_FIGHT, restBars(4)), shift: 5, inst: 'lead', gain: 0.085 },             // B: una octava arriba
+      { notes: bars(restBars(8), THEME_FIGHT, restBars(4)), shift: -7, inst: 'brass', gain: 0.11, layer: 'peak' }, // B: metales doblando abajo
+      { notes: bars(restBars(14), FIGHT_BRIDGE), inst: 'lead', gain: 0.09 },                                   // C: puente
+      { notes: bars(restBars(14), FIGHT_BRIDGE), shift: -12, inst: 'strings', gain: 0.06, layer: 'peak' },
+      { notes: '1 5 8 5 3 5 8 5 1 5 8 5 3 5 8 5', base: 62, inst: 'arp', gain: 0.045 },                       // arpegio secuenciado
+      { notes: '8 . 5 . 3 . 8 . 5 . 3 . 8 . 3 5', base: 74, inst: 'arp', gain: 0.03, layer: 'drive' },        // contra-arpegio agudo
+      { notes: 'R . R . R . O . R . R . 5 . O .', base: 38, inst: 'synbass', gain: 0.13 },
+      { notes: 'R - - - - - - - - - - - - - - -', base: 38, inst: 'lowstr', gain: 0.05 },
+      { notes: '1+3+5 - - - - - - - - - - - - - - -', base: 57, inst: 'choir', gain: 0.04, layer: 'peak' },
+      { drums: 'K . . . K . . . K . . . K . K .', gain: 0.9 },
+      { drums: '. . . . S . . . . . . . S . . .', gain: 0.75 },
+      { drums: '. . H . . . H . . . H . . . H .', gain: 0.7 },
+      { drums: 'H H . H H H . H H H . H H H O H', gain: 0.35, layer: 'drive' },
+      { drums: fillBars(18, [1, 7, 13, 17], '. . . . . . . . S . S S T T T T'), gain: 0.7 },                  // redobles al cerrar cada sección
+      { drums: oneShot(288, { 0: 'c', 32: 'c', 128: 'c', 224: 'c' }), gain: 0.7 }                              // platillo al empezar cada sección
+    ] },
+/* Combate en crescendo lento (empezaba tranquilo y tardaba en arrancar), sustituido por el estilo nave en batalla. Se deja comentado:
   // Combate en crescendo (musicMix): empieza tranquilo con las cuerdas cantando el tema y, según dura la pelea (más deprisa cuanto más
   // enemigos), entran el pulso de cuerdas, los metales con la melodía, los tambores y al final coro, violines agudos y platillos; el tempo sube de 0,86 a 1,04
   fight: { bpm: 120, loop: true, verb: 0.35, fadeIn: 1.2, loopStart: 32,
@@ -1077,6 +1109,7 @@ const MUSIC_DEF = {
       { drums: oneShot(224, { 20: 'w', 32: 'T' }), gain: 0.5 }, // entrada suave
       { drums: oneShot(224, { 32: 'c', 128: 'c' }), gain: 0.8, layer: 'peak' } // platillos al llegar al clímax
     ] },
+*/
 /* Combate anterior (siempre intenso desde el principio), sustituido por el crescendo. Se deja comentado:
   fight: { bpm: 120, loop: true, verb: 0.3, fadeIn: 0.3, loopStart: 32,
     chords: ['Dm', 'A', 'Em', 'Em', 'A', 'A', 'Dm', 'Dm', 'G', 'G', 'A', 'A', 'Bdim', 'A'],
@@ -1335,7 +1368,7 @@ function compileMusic(def) {
       }).filter(Boolean);
     }
   }
-  return { bpm: def.bpm, loop: def.loop, verb: def.verb || 0.3, fadeIn: def.fadeIn || 0.3, loopStart: def.loopStart || 0, overlap: def.overlap || 0, len, steps, layers: [...layers] };
+  return { bpm: def.bpm, loop: def.loop, verb: def.verb || 0.3, delay: def.delay || 0, fadeIn: def.fadeIn || 0.3, loopStart: def.loopStart || 0, overlap: def.overlap || 0, len, steps, layers: [...layers] };
 }
 let MUSIC = null; // pistas compiladas (al primer uso)
 const MUS = { mode: null, track: null, bus: null, layers: {}, lv: {}, step: 0, next: 0, fanUntil: 0, duck: 1, tempo: 1, trans: 0, transWant: 0, build: 0, dt: 0,
@@ -1348,6 +1381,9 @@ function musicGraph() {
   const sr = actx.sampleRate, n = Math.floor(sr * 3.2), ir = actx.createBuffer(2, n, sr);
   for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let y = 0; for (let i = 0; i < n; i++) { y = y * 0.55 + (Math.random() * 2 - 1) * 0.45; d[i] = y * Math.pow(1 - i / n, 2.6); } }
   MUS.verb = actx.createConvolver(); MUS.verb.buffer = ir; MUS.verb.connect(MUS.filter);
+  // eco a contratiempo (corchea con puntillo) para los arpegios del combate
+  MUS.delay = actx.createDelay(1.5); const fb = actx.createGain(), dl = mFilter('lowpass', 2800, 0.5); fb.gain.value = 0.35;
+  MUS.delay.connect(dl); dl.connect(fb); fb.connect(MUS.delay); dl.connect(MUS.filter);
 }
 // ---- Instrumentos (osciladores, filtros y envolventes; cada nota crea sus nodos y se suelta sola)
 function mEnv(g, t, peak, a, hold, rel) { // ataque, mantenimiento y caída; devuelve cuándo termina
@@ -1366,6 +1402,17 @@ function mLfo(t, end, rate, depth, delay) { // vibrato (en cents)
 }
 function mFilter(type, f, q) { const b = actx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; }
 const INST = {
+  // Sintetizadores del combate
+  arp(out, t, f, dur, g) { const lp = mFilter('lowpass', 4200, 7), e = actx.createGain(), end = t + Math.min(dur, 0.2);
+    lp.frequency.setValueAtTime(4200, t); lp.frequency.exponentialRampToValueAtTime(650, t + 0.13);
+    e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(g, t + 0.004); e.gain.exponentialRampToValueAtTime(0.0001, end);
+    mOsc(t, end, f, 'sawtooth', 0, lp); mOsc(t, end, f, 'square', 7, lp); lp.connect(e); e.connect(out); },
+  synbass(out, t, f, dur, g) { const lp = mFilter('lowpass', 1800, 5), e = actx.createGain(), end = t + Math.min(dur, 0.26);
+    lp.frequency.setValueAtTime(1800, t); lp.frequency.exponentialRampToValueAtTime(220, t + 0.16);
+    e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(g, t + 0.004); e.gain.setValueAtTime(g, end - 0.05); e.gain.exponentialRampToValueAtTime(0.0001, end);
+    mOsc(t, end, f, 'sawtooth', 0, lp); mOsc(t, end, f, 'square', -5, lp); mOsc(t, end, f / 2, 'sine', 0, e); lp.connect(e); e.connect(out); },
+  lead(out, t, f, dur, g) { const lp = mFilter('lowpass', 3400, 1.2), e = actx.createGain(), end = mEnv(e, t, g, 0.012, dur, 0.16), lfo = mLfo(t, end, 5.6, 14, 0.22);
+    for (const d of [-8, 8]) mOsc(t, end, f, 'sawtooth', d, lp, lfo); mOsc(t, end, f / 2, 'square', 0, lp, lfo); lp.connect(e); e.connect(out); },
   strings(out, t, f, dur, g) { const lp = mFilter('lowpass', 2600, 0.7), e = actx.createGain(), end = mEnv(e, t, g, 0.12, dur, 0.35), lfo = mLfo(t, end, 5.5, 7, 0.3);
     for (const d of [-9, 0, 9]) mOsc(t, end, f, 'sawtooth', d, lp, lfo); lp.connect(e); e.connect(out); },
   pad(out, t, f, dur, g) { const lp = mFilter('lowpass', 1100, 0.5), e = actx.createGain(), end = mEnv(e, t, g, 0.9, dur, 1.2);
@@ -1416,6 +1463,11 @@ function mDrum(out, t, d, k, pc, trans) {
     s.connect(f); f.connect(g); g.connect(out); s.start(t); s.stop(t + 1.2); }
   else if (d === 'b') mSweep(out, t, 1.6, 60, 28, 0.7 * k, 'sine');
   else if (d === 'h') mNoiseRaw(out, t, 0.05, 8000, 'highpass', 0.06 * k);
+  // batería electrónica del combate
+  else if (d === 'K') { mSweep(out, t, 0.32, 165, 44, 0.75 * k, 'sine'); mNoiseRaw(out, t, 0.015, 3500, 'highpass', 0.25 * k); }
+  else if (d === 'S') { mNoiseRaw(out, t, 0.2, 1900, 'bandpass', 0.38 * k, 0.6); mSweep(out, t, 0.1, 230, 160, 0.2 * k, 'triangle'); }
+  else if (d === 'H') mNoiseRaw(out, t, 0.035, 9500, 'highpass', 0.09 * k);
+  else if (d === 'O') mNoiseRaw(out, t, 0.28, 7500, 'highpass', 0.08 * k);
 }
 function mHeart(t, g) { // latido de poca vida: «pum-pum» grave, sin filtrar
   mSweep(musicNode, t, 0.22, 70, 42, 0.5 * g, 'sine'); mSweep(musicNode, t + 0.19, 0.2, 62, 40, 0.32 * g, 'sine');
@@ -1442,11 +1494,12 @@ function musicSwitch(mode) {
     setTimeout(() => old.disconnect(), 1400);
   }
   MUS.mode = mode; MUS.bus = null; MUS.track = null; MUS.layers = {}; MUS.lv = {};
-  MUS.tempo = mode === 'fight' ? 0.86 : 1; MUS.trans = MUS.transWant = 0; MUS.build = 0; // el combate arranca despacio y sin tensión
+  MUS.tempo = 1; MUS.trans = MUS.transWant = 0; MUS.build = 0;
   if (!mode) return;
   const tr = MUS.track = MUSIC[mode];
   MUS.bus = actx.createGain(); MUS.bus.connect(MUS.filter);
   const send = actx.createGain(); send.gain.value = tr.verb; MUS.bus.connect(send); send.connect(MUS.verb);
+  if (tr.delay) { const ds = actx.createGain(); ds.gain.value = tr.delay; MUS.bus.connect(ds); ds.connect(MUS.delay); MUS.delay.delayTime.setValueAtTime(60 / tr.bpm * 0.75, t); }
   for (const n of tr.layers) { const g = actx.createGain(); g.gain.value = n === 'base' ? 1 : 0; g.connect(MUS.bus); MUS.layers[n] = g; MUS.lv[n] = g.gain.value; }
   MUS.bus.gain.setValueAtTime(0, t); MUS.bus.gain.linearRampToValueAtTime(MUSIC_VOL * MUS.duck, t + tr.fadeIn);
   MUS.step = 0; MUS.next = t + 0.08;
@@ -1468,6 +1521,14 @@ function musicMix(t) {
   const D = MUS.dyn, mode = MUS.mode, sm = x => Math.min(1, Math.max(0, x));
   const want = { drive: 1, peak: 0 }; let tempo = 1; MUS.transWant = 0;
   if (mode === 'fight') {
+    // Arranca con energía; las capas extra se abren con los enemigos vivos y con el tiempo de pelea (del todo en unos 16 s)
+    MUS.build = Math.min(1, MUS.build + MUS.dt / 16);
+    want.drive = Math.max(0.5 + 0.5 * D.inten, sm(MUS.build * 1.5));
+    want.peak = Math.max(sm((D.inten - 0.3) / 0.4), sm((MUS.build - 0.4) / 0.6));
+    tempo = 1 + 0.03 * D.inten + 0.04 * D.danger;
+  }
+  /* Mezcla del combate en crescendo lento, sustituida. Se deja comentada:
+  if (mode === 'fight') {
     // Crescendo: «build» sube con el tiempo de pelea (cerca de un minuto con pocos enemigos, unos 20 s con muchos o con poca vida) y nunca baja
     MUS.build = Math.min(1, MUS.build + MUS.dt * (0.6 + 1.2 * D.inten + 0.8 * D.danger) / 35);
     const b = MUS.build;
@@ -1480,6 +1541,7 @@ function musicMix(t) {
     want.peak = sm((b - 0.75) / 0.2);             // clímax: coro, violines agudos y platillos
     tempo = 0.86 + 0.18 * sm(b / 0.9) + 0.04 * D.danger;
   }
+  */
   else if (mode === 'boss') {
     const ph = D.bossFrac; want.peak = ph < 0.5 ? 1 : 0.2; tempo = 1 + 0.05 * D.danger;
     if (ph < 0.25) { MUS.transWant = 1; tempo += 0.07; } // fase final: medio tono arriba y más deprisa
