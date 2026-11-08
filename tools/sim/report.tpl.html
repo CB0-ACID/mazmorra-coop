@@ -106,20 +106,53 @@ ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72
 ul.plain li { font-size: 15px; }
 code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; background: var(--line); padding: 1px 5px; border-radius: 4px; }
 @media (max-width: 520px) { .brow { grid-template-columns: 78px 1fr 54px; } }
+.bc span { font-size: 11px; margin-right: 2px; }
+.bc.ok { color: var(--good); } .bc.hi { color: var(--warn); } .bc.lo { color: var(--bad); } .bc.na { color: var(--muted); }
+td.sep { width: 10px; padding: 0; border-bottom: 0; }
+.bands th.grp { text-align: center; border-bottom: 1px solid var(--line); }
+.src { font-size: 13px; color: var(--muted); }
+.src a { color: var(--accent); }
+.phase { font: 600 12px/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
 </style>
 <div class="wrap">
 
 <header class="head">
   <span class="eyebrow">Mazmorra Coop · simulación de equilibrio · 8 de noviembre de 2026</span>
   <h1>Balance de personajes</h1>
-  <p class="lede">Simulé partidas reales con el código del juego (rama main), con un bot que juega cada personaje en solitario. Ahora que el bot tirador también se acerca a rematar, quedan dos grupos: arriba los brawlers, Coral, Marea y Ciruela; abajo los tanques y Escarcha. La ejecución al guardián es el factor que más pesa.</p>
+  <p class="lede">Simulé partidas reales con el código del juego (rama main), con un bot que juega cada personaje en solitario. Medido contra franjas objetivo de éxito, el juego es demasiado fácil con cinco personajes (Brasa, Ámbar, Coral, Marea y Ciruela ganan a todos los guardianes y casi todas las partidas) y demasiado difícil con tres (Ceniza, Musgo y Escarcha no completan ninguna). Primero hay que igualar a los personajes y después ajustar la dificultad con el contenido.</p>
   <div class="facts"><span><b>{{NSIM}}</b> combates y partidas</span><span><b>8</b> personajes</span><span><b>2</b> niveles de bot (experto y medio)</span><span><b>15</b> semillas por escenario</span><span>Escenarios: muñeco, 4 encuentros de prueba, 4 guardianes y partida completa de 4 pisos</span></div>
 </header>
 
 <section>
+  <span class="eyebrow">Criterio</span>
+  <h2>Franjas objetivo de éxito</h2>
+  <p>La meta no es que un personaje se pase más los retos, sino que cada reto tenga un porcentaje de éxito pensado y que todos los personajes caigan dentro. Un 100 % es tan mala señal como un 0 %: sin tensión, o sin opciones. La dificultad la pone el contenido; el personaje solo cambia cómo se juega.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Reto (en solitario)</th><th class="num">Bot experto</th><th class="num">Bot medio</th></tr></thead>
+    <tbody><tr><th class="rowh">Sala normal</th><td class="num">95–100 %</td><td class="num">85–95 %</td></tr>
+    <tr><th class="rowh">Guardián de piso</th><td class="num">75–90 %</td><td class="num">50–70 %</td></tr>
+    <tr><th class="rowh">Partida completa (pisos 1-4)</th><td class="num">30–60 %</td><td class="num">5–25 %</td></tr></tbody>
+  </table></div>
+  <ul class="plain">
+    <li>Entre personajes, como mucho unos 15–20 puntos de diferencia en cada reto. Incluso Slay the Spire 2 tiene unos 15 puntos entre su mejor y su peor personaje según estimaciones de la comunidad, y se considera desequilibrio.</li>
+    <li>La habilidad tiene que contar: el bot experto debe rendir claramente mejor que el medio. Si rinden igual, el personaje no premia jugar bien.</li>
+    <li>El bot mide diferencias, no cifras absolutas. King predice la tasa de éxito humana en Candy Crush a partir de la de sus bots, pero calibrándola con datos de jugadores. Aquí lo calibraremos con el registro de partidas reales.</li>
+    <li>Para facilitar el juego a quien lo necesite, mejor ayudar a quien falla (como el Modo Dios de Hades, que suma resistencia tras cada muerte) que subir a todos los personajes.</li>
+  </ul>
+  <p class="src">Fuentes: <a href="https://gamedeveloper.com/design/how-i-slay-the-spire-i-s-devs-use-data-to-balance-their-roguelike-deck-builder">Mega Crit equilibra con datos (Game Developer)</a> · <a href="https://sts2-guide.pages.dev/guide/meta.html">Estimaciones de victorias en Slay the Spire 2</a> · <a href="https://www.Gwern.net/doc/reinforcement-learning/imitation-learning/2018-gudmundsson.pdf">Bots de King para predecir la dificultad (Gudmundsson et al., 2018)</a> · <a href="https://caniplaythat.com/2021/08/11/hades-god-mode-explained-by-supergiant-games">Modo Dios de Hades (Can I Play That)</a>. Las franjas son una propuesta inicial, no un estándar de la industria.</p>
+  <h3>Dónde está cada personaje hoy</h3>
+  <p>● dentro de la franja · ▲ por encima (demasiado fácil) · ▼ por debajo (demasiado difícil). La última columna indica si jugar mejor se nota.</p>
+  <div class="scroll"><table class="bands">
+    <thead><tr><th></th><th class="grp" colspan="3">Bot experto</th><th class="sep"></th><th class="grp" colspan="3">Bot medio</th><th class="sep"></th><th></th></tr>
+    <tr><th>Personaje</th><th class="num">Salas</th><th class="num">Guardianes</th><th class="num">Partida</th><th class="sep"></th><th class="num">Salas</th><th class="num">Guardianes</th><th class="num">Partida</th><th class="sep"></th><th>¿Premia la habilidad?</th></tr></thead>
+    <tbody>{{BANDS}}</tbody>
+  </table></div>
+</section>
+
+<section>
   <span class="eyebrow">Ranking</span>
   <h2>Clasificación general</h2>
-  <p>La puntuación combina daño relativo (45 %: DPS frente a la media de los ocho en cada escenario), supervivencia (35 %: victorias en los 8 encuentros con los dos niveles de bot) y progreso en partida completa (20 %: piso medio alcanzado).</p>
+  <p>Con el nuevo criterio, el ranking sirve para ver la distancia entre personajes, no como meta: el objetivo es que todos queden juntos. La puntuación combina daño relativo (45 %: DPS frente a la media de los ocho en cada escenario), supervivencia (35 %: victorias en los 8 encuentros con los dos niveles de bot) y progreso en partida completa (20 %: piso medio alcanzado).</p>
   <div class="scroll"><table>
     <thead><tr><th>#</th><th>Personaje</th><th>Nivel</th><th>Puntuación</th><th class="num">Daño relativo</th><th class="num">Victorias</th><th class="num">Piso medio</th><th class="num">Guardián medio</th></tr></thead>
     <tbody>{{RANK}}</tbody>
@@ -158,27 +191,34 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 </section>
 
 <section>
-  <span class="eyebrow">Conclusiones</span>
-  <h2>Qué está desequilibrado y qué haría</h2>
+  <span class="eyebrow">Soluciones</span>
+  <h2>Qué propongo, en dos fases</h2>
+  <p>Primero se iguala a los personajes, porque mientras haya 90 puntos de distancia entre ellos no se puede elegir una dificultad buena para todos. Después se ajusta la dificultad con el contenido (enemigos y guardianes) hasta que todos entren en las franjas.</p>
+  <div class="phase">Fase 1 · Igualar a los personajes</div>
   <div class="findings">
-    <div class="finding"><h3>La ejecución al guardián decide casi todo<span class="sev alta">Alta</span></h3>
-      <p>Ahora que los tiradores también se acercan a rematar, la ejecución (−25 % de la vida del guardián cada vez) es entre el 39 % y el 66 % del daño de seis de los ocho personajes. Quien aturde rápido vence a los guardianes en 10-25 s. Los tanques y Escarcha, que aturden poco, tardan entre 39 y 52 s.</p>
-      <p class="fix"><b>Propuesta:</b> bajarla al 12-15 %. Probado al 12 %: el orden se mantiene y los combates pasan a 15-45 s (Brasa y Ámbar 14-41 s, Marea y Ciruela 30-45 s, Coral 12-21 s), así que la diferencia entre personajes se reduce.</p></div>
-    <div class="finding"><h3>Los tanques son ahora el grupo débil<span class="sev alta">Alta</span></h3>
-      <p>Ceniza y Musgo quitan poca estamina (3-4 por segundo frente a 7-11 del resto), ejecutan unas 3 veces por minuto y reciben entre 127 y 147 PV por minuto de los guardianes. Ninguno completa una partida en solitario. Son los únicos a los que la ejecución apenas ayuda.</p>
-      <p class="fix"><b>Propuesta:</b> que reciban un 25 % menos de daño (probado al 30 %: Musgo pasa del 53 % al 90 % contra el Dragón) y que sus golpes quiten más estamina, por ejemplo ×1,5, para que también entren en el ciclo de aturdir y ejecutar. Antes conviene probar a mano el escudo alzado y la Provocación de Ceniza, que el bot no usa.</p></div>
-    <div class="finding"><h3>Escarcha sigue última<span class="sev alta">Alta</span></h3>
-      <p>Rematando mejora mucho contra tier 2 y 3 (15-24 s), pero con 60 PV y 1,5 DPS al muñeco sigue perdiendo contra el Dragón (33 %) y todas sus partidas acaban en el piso 1 o 2.</p>
-      <p class="fix"><b>Propuesta:</b> 80 PV y disparo ×1,6. Probado con el bot nuevo: salas reales del 67 % al 90 % de victorias, el Cañonero del 60 % al 100 % (44 s) y el Dragón del 33 % al 50 %. Con eso queda al nivel de los tanques sin pasar a nadie.</p></div>
-    <div class="finding"><h3>Coral es ahora la más rápida y no recibe daño<span class="sev media">Media</span></h3>
-      <p>Vence a los cuatro guardianes en 10-12 s sin recibir un solo golpe, con 15-18 ejecuciones por minuto. Sus explosiones quitan estamina al guardián al 100 %, porque la reducción del guardián (<code>shotStaMul</code> 0,3) solo se aplica a los disparos normales. Aun así, con el bot medio no completa ninguna partida: con 60 PV no perdona errores en las salas.</p>
-      <p class="fix"><b>Propuesta:</b> aplicar a sus explosiones una parte de la reducción de estamina del guardián (por ejemplo ×0,5). Con la ejecución al 12 % ya baja a 12-21 s, pero sigue siendo la más rápida.</p></div>
-    <div class="finding"><h3>Marea y Ciruela cumplen su papel y son las más seguras<span class="sev media">Datos</span></h3>
-      <p>Rematando de cerca, vencen a los guardianes en 18-29 s, completan el 100 % de las partidas con el bot experto y reciben 9-13 PV por minuto de los guardianes. Ciruela ya no se eterniza: pasa de 95 a 41 s por sala. Ya rompen bien la estamina, así que descarto subir el <code>shotStaMul</code> del guardián.</p></div>
-    <div class="finding"><h3>Brawlers: el riesgo ya existe frente a los tiradores<span class="sev media">Opcional</span></h3>
-      <p>Brasa y Ámbar reciben 46-64 PV por minuto de los guardianes, frente a 9-13 de Marea y Ciruela, así que ya son más arriesgados que los tiradores. Quitarles la invulnerabilidad en las embestidas a ras de suelo (Embestida, Garra taladro, carrera del dragón, golpe del segador) sigue siendo una opción si quieres más riesgo, pero ya no es prioritario.</p></div>
-    <div class="finding"><h3>Las notas de diseño no reflejan el daño real<span class="sev media">Datos</span></h3>
-      <p>Las notas de daño de <code>RATINGS</code> (Ceniza 2, Escarcha 4, Marea 5…) no coinciden con lo medido. Conviene actualizarlas cuando cerremos los cambios.</p></div>
+    <div class="finding"><h3>Ejecución al guardián: del 25 % al 12-15 %<span class="sev alta">Alta</span></h3>
+      <p>Es entre el 39 % y el 66 % del daño de los cinco personajes de arriba, y es lo que les deja vencer a los guardianes en 10-25 s sin riesgo. Bajarla reduce lo que depende de aturdir rápido, que es justo lo que separa a los dos grupos.</p>
+      <p class="fix"><b>Probado al 12 %:</b> los combates pasan a 15-45 s y el orden se mantiene (Brasa y Ámbar 14-41 s, Marea y Ciruela 30-45 s, Coral 12-21 s).</p></div>
+    <div class="finding"><h3>Tanques: −25 % de daño recibido y ×1,5 de estamina en sus golpes<span class="sev alta">Alta</span></h3>
+      <p>Ceniza y Musgo están por debajo en todas las partidas (0 % con los dos bots): reciben 127-147 PV por minuto de los guardianes y quitan poca estamina (3-4 por segundo frente a 7-11 del resto), así que casi no ejecutan.</p>
+      <p class="fix"><b>Probado −30 % de daño:</b> Musgo pasa del 53 % al 90 % contra el Dragón. La estamina extra los mete en el ciclo de aturdir y ejecutar. Conviene probar a mano el escudo alzado y la Provocación de Ceniza, que el bot no usa.</p></div>
+    <div class="finding"><h3>Escarcha: 80 PV y disparo ×1,6<span class="sev alta">Alta</span></h3>
+      <p>Por debajo de la franja con los guardianes (62 % y 48 %) y en las partidas (0 %).</p>
+      <p class="fix"><b>Probado:</b> salas reales del 67 % al 90 %, Cañonero del 60 % al 100 % y Dragón del 33 % al 50 %.</p></div>
+    <div class="finding"><h3>Coral: sus explosiones, con la mitad de estamina al guardián<span class="sev media">Media</span></h3>
+      <p>Hoy sus explosiones se saltan la reducción de estamina del guardián (<code>shotStaMul</code>) y lo aturde 15-18 veces por minuto. Su distancia entre bots (73 % frente a 0 % de partidas) es demasiado grande: castiga mucho a quien empieza. Con 60 PV, una opción es darle algo de margen en las salas a cambio de quitarle el aturdimiento fácil al guardián.</p></div>
+    <div class="finding"><h3>Que jugar bien se note con Brasa, Ámbar y Ciruela<span class="sev media">Media</span></h3>
+      <p>Con estos tres el bot medio rinde igual que el experto: la habilidad no cambia el resultado. En los brawlers es la invulnerabilidad durante la Embestida, la Garra taladro, la carrera del dragón y el golpe del segador; en Ciruela, la distancia y la torreta.</p>
+      <p class="fix"><b>Propuesta:</b> quitar la invulnerabilidad a esas cuatro embestidas a ras de suelo (mantenerla en los saltos y la Caída Izuna). Con Ciruela, esperar a la fase 2, porque subir la presión de los enemigos ya debería separar a quien esquiva bien.</p></div>
+  </div>
+  <div class="phase">Fase 2 · Ajustar la dificultad con el contenido</div>
+  <div class="findings">
+    <div class="finding"><h3>Subir la presión de enemigos y guardianes hasta entrar en las franjas<span class="sev alta">Alta</span></h3>
+      <p>Con los personajes ya juntos, el juego seguirá siendo demasiado fácil para la mayoría: hoy cinco de ocho completan el 73-100 % de las partidas, frente al 30-60 % objetivo. Se ajusta con el escalado por piso (<code>SC</code>): daño y vida de los enemigos, ritmo de ataque y refuerzos del guardián. Se repite la simulación hasta que la partida completa quede en 30-60 % (experto) y 5-25 % (medio) con todos.</p></div>
+    <div class="finding"><h3>Calibrar con tus partidas reales<span class="sev media">Datos</span></h3>
+      <p>El registro de partidas ya está en el juego. Con unas cuantas partidas reales por personaje veremos qué nivel de bot se parece más a un jugador y corregiremos las franjas si hace falta.</p></div>
+    <div class="finding"><h3>Más adelante: ayuda para quien falla, y notas de diseño reales<span class="sev media">Opcional</span></h3>
+      <p>Un modo de ayuda opcional al estilo Hades (resistencia que crece con cada derrota) cubre a quien lo necesite sin tocar el equilibrio base. Al cerrar los cambios, actualizar <code>RATINGS</code> con lo medido.</p></div>
   </div>
 </section>
 

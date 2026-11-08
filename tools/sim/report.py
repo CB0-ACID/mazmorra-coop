@@ -167,6 +167,29 @@ def whatif_table():
         out.append(f'<tr><th class="rowh"><i style="--c:{COL[n]}"></i>{n}</th><td>{lab.get(w["patch"], w["patch"])}</td>{cell("mix")}{cell("g1")}{cell("g4")}</tr>')
     return '\n'.join(out)
 
+BANDS = {'sala': {'experto': (0.95, 1.0), 'medio': (0.85, 0.95)}, 'g': {'experto': (0.75, 0.90), 'medio': (0.50, 0.70)}, 'run': {'experto': (0.30, 0.60), 'medio': (0.05, 0.25)}}
+def band_cell(v, lo, hi):
+    if v > hi + 1e-9: cls, tag = 'hi', '▲'
+    elif v < lo - 1e-9: cls, tag = 'lo', '▼'
+    else: cls, tag = 'ok', '●'
+    return f'<td class="num bc {cls}"><span>{tag}</span> {round(v * 100)} %</td>'
+def bands_table():
+    out = []
+    for n in CH:
+        cells = []
+        for lv in ['experto', 'medio']:
+            e = S[lv + ':' + n]
+            sala = sum(e['scen'][s]['win'] for s in ['t1', 't2', 't3', 'mix']) / 4
+            g = sum(e['scen'][s]['win'] for s in ['g1', 'g2', 'g3', 'g4']) / 4
+            run = e['runs']['cleared']
+            cells += [band_cell(sala, *BANDS['sala'][lv]), band_cell(g, *BANDS['g'][lv]), band_cell(run, *BANDS['run'][lv])]
+        ge = E(n)['runs']['cleared'] - M(n)['runs']['cleared']
+        gap = sum(E(n)['scen'][s]['win'] - M(n)['scen'][s]['win'] for s in SC) / 8
+        skill = ge * 0.6 + gap * 0.4
+        sk = '<td class="bc na">— caen con los dos</td>' if E(n)['runs']['cleared'] == 0 and M(n)['runs']['cleared'] == 0 else '<td class="bc lo"><span>▼</span> no premia</td>' if abs(ge) < 0.1 and abs(gap) < 0.05 else ('<td class="bc hi"><span>▲</span> castiga mucho</td>' if ge > 0.5 else '<td class="bc ok"><span>●</span> sí</td>')
+        out.append(f'<tr><th class="rowh"><i style="--c:{COL[n]}"></i>{n}</th>{"".join(cells[:3])}<td class="sep"></td>{"".join(cells[3:])}<td class="sep"></td>{sk}</tr>')
+    return '\n'.join(out)
+
 # cifras sueltas para el texto
 def T(n, g): return E(n)['scen'][g]['t']
 spread = {g: (max(T(n, g) for n in CH if T(n, g) and E(n)['scen'][g]['win'] >= 0.5) / min(T(n, g) for n in CH if T(n, g))) for g in ['g1', 'g2', 'g3', 'g4']}
@@ -179,7 +202,7 @@ rep = {
     '{{RANK}}': ranking_table(), '{{HEAT}}': heat(), '{{DUMMY}}': bars(dummy_rank, ' DPS'),
     '{{MIXDPS}}': bars(sorted(((n, E(n)['scen']['mix']['dps']) for n in CH), key=lambda a: -a[1]), ' DPS'),
     '{{BOSSDPS}}': bars(sorted(((n, sum(E(n)['scen'][g]['dps'] for g in ['g1','g2','g3','g4']) / 4) for n in CH), key=lambda a: -a[1]), ' DPS'),
-    '{{STACK}}': stacks(), '{{SURV}}': survival_table(), '{{FLOORS}}': floors_chart(), '{{CARDS}}': detail_cards(), '{{WHATIF}}': whatif_table(),
+    '{{STACK}}': stacks(), '{{SURV}}': survival_table(), '{{FLOORS}}': floors_chart(), '{{CARDS}}': detail_cards(), '{{WHATIF}}': whatif_table(), '{{BANDS}}': bands_table(),
     '{{NSIM}}': f'{nsim:,}'.replace(',', '.'), '{{SPREAD1}}': fmt(spread['g1'], 0), '{{SPREAD4}}': fmt(spread['g4'], 0),
 }
 for k, v in rep.items(): tpl = tpl.replace(k, v)
