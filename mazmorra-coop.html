@@ -443,9 +443,11 @@ const JUMP = {
 // Furia de Ámbar: la barra se llena con el daño que hace; llena, entra en modo furia unos segundos (humo, más velocidad
 // de movimiento y de ataque) y sus habilidades cambian: la 1 pasa a Garra taladro y la 2 a Izuna de furia (sin necesidad de lanzar)
 const FURY = {
-  max: 50,            // daño necesario para llenar la barra
-  execGain: 8,        // cada ejecución suma esto a la barra
-  idle: 2.5, drain: 10, // segundos sin pegar antes de que la barra empiece a vaciarse, y cuánto pierde por segundo
+  // [RETIRADO] versión anterior: max: 50, execGain: 8, idle: 2.5, drain: 10 (se llenaba demasiado despacio)
+  max: 32,            // daño necesario para llenar la barra
+  execGain: 12,       // cada ejecución suma esto a la barra
+  idle: 3.5, drain: 6, // segundos sin pegar antes de que la barra empiece a vaciarse, y cuánto pierde por segundo
+  fx: 0.9,            // duración del destello naranja en los bordes de la pantalla al entrar en furia
   time: 6.5,          // duración del modo furia
   speed: 1.3,         // velocidad de movimiento
   atk: 1.45,          // recuperación entre golpes (más alto = golpea más seguido)
@@ -964,6 +966,13 @@ const SFX = {
   beam() { if (sfxOk('beam', 0.1)) tone(0.08, 880 + Math.random() * 120, 1200, 0.05, 'sine'); },
   reload(done) { if (sfxOk('rld', 0.08)) { noise(0.04, done ? 3200 : 2200, done ? 2600 : 1600, 0.4, 'bandpass', 0.7); tone(0.05, done ? 900 : 520, done ? 1200 : 380, 0.25, 'square'); } },
   revolver(lv) { if (sfxOk('rev', 0.05)) { noise(0.2, 1400, 180, 0.75, 'lowpass', 0.8); tone(0.14, 170 - lv * 40, 45, 0.8, 'triangle'); noise(0.03, 6000, 3000, 0.4, 'highpass', 0.6); } },
+  // entrada en furia de Ámbar: rugido grave que sube, golpe sub y chispazo arriba
+  fury() {
+    if (!sfxOk('fury', 0.3)) return;
+    tone(0.5, 70, 160, 0.9, 'sawtooth'); tone(0.45, 105, 240, 0.5, 'square'); tone(0.6, 55, 30, 1, 'sine');
+    noise(0.55, 300, 2400, 0.55, 'bandpass', 0.9); noise(0.3, 7000, 2500, 0.3, 'highpass', 0.6);
+    setTimeout(() => { if (actx && !muted && AUD.sfxOn) { tone(0.4, 330, 660, 0.18, 'sawtooth'); tone(0.4, 495, 990, 0.12, 'triangle'); } }, 140);
+  },
   claw(heavy) { if (sfxOk('swing', 0.03)) { noise(heavy ? 0.14 : 0.07, heavy ? 5000 : 7000, heavy ? 1500 : 2500, heavy ? 0.45 : 0.3, 'highpass', 0.8); tone(0.05, 1400, 900, 0.08, 'triangle'); } }
 };
 // ---------- Música de fondo sintetizada (sin archivos): arreglo orquestal y dinámico ----------
@@ -2068,22 +2077,56 @@ function genTiles(r) {
   return t;
 }
 
-// Encuentro aleatorio: manadas de tier 1, algunos tier 2 y, según avanza el piso, una amenaza de tier 3
+// [RETIRADO] versión anterior (presupuesto; pocos tier 2 y el tier 3 llegaba tarde; incluía murciélagos):
+// // Encuentro aleatorio: manadas de tier 1, algunos tier 2 y, según avanza el piso, una amenaza de tier 3
+// function makeEncounter(r) {
+//   const rng = mulberry32(r.rng ^ 0x9e3779b9);
+//   if (r.type === 'boss') return [[{ type: 'boss', elite: false }]];
+//   const np = Math.max(1, humans().length), depth = floor.depth;
+//   let budget = 3 + r.dist * 0.8 + (depth - 1) * 2.5 + (np - 1) * 1.8;
+//   const t3 = [], rest = [];
+//   const t3chance = Math.min(0.75, 0.08 + 0.12 * r.dist + 0.2 * (depth - 1));
+//   if (budget >= 7 && rng() < t3chance) { t3.push({ type: rng() < 0.5 ? 'golem' : 'splitter', elite: false }); budget -= 6; }
+//   const n2 = Math.max(r.dist > 0 ? 1 : 0, Math.floor(budget * (0.3 + rng() * 0.25) / 2));
+//   for (let i = 0; i < n2 && budget >= 2; i++) { rest.push({ type: rng() < 0.5 ? 'charger' : 'shooter', elite: false }); budget -= 2; }
+//   if (rest.length && rng() < ELITE.chance0 + ELITE.chancePerDepth * depth) rest[0].elite = true;
+//   while (budget >= 0.4 && rest.length < 22) { const t = rng() < 0.25 ? 'bat' : (rng() < 0.5 ? 'slime' : 'mite'); rest.push({ type: t, elite: false }); budget -= ENEMY[t].cost; }
+//   for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
+//   if (rest.length + t3.length >= 8 && rng() < 0.6) { const h = Math.ceil(rest.length / 2); return [rest.slice(0, h), rest.slice(h).concat(t3)]; }
+//   return [rest.concat(t3)];
+// }
+
+// Encuentro aleatorio: más largo y duro desde el primer piso. Siempre hay varios tier 2, el tier 3 puede salir ya en el piso 1
+// y los encuentros grandes se reparten en dos o tres oleadas que van a más (los tier 3 entran en las últimas).
+// Sin murciélagos ni otros voladores de momento.
+const ENC = {
+  t1: { base: 4, dist: 1, depth: 2, np: 2, max: 20 },     // ácaros y limos
+  t2: { base: 2, dist: 0.7, depth: 1, np: 0.7, max: 9 },  // embestidores y artilleros
+  t3: { chance0: 0.5, dist: 0.15, depth: 0.2, max: 0.95,  // primer tier 3 (gólem o divisor), posible ya en el piso 1
+        second0: 0.2, secondDist: 0.1, secondDepth: 0.15 }, // segundo tier 3 en salas lejanas o pisos profundos
+  wave2: 6, wave3: 13                                     // enemigos a partir de los que el encuentro se reparte en 2 o 3 oleadas
+};
 function makeEncounter(r) {
   const rng = mulberry32(r.rng ^ 0x9e3779b9);
   if (r.type === 'boss') return [[{ type: 'boss', elite: false }]];
-  const np = Math.max(1, humans().length), depth = floor.depth;
-  let budget = 3 + r.dist * 0.8 + (depth - 1) * 2.5 + (np - 1) * 1.8;
-  const t3 = [], rest = [];
-  const t3chance = Math.min(0.75, 0.08 + 0.12 * r.dist + 0.2 * (depth - 1));
-  if (budget >= 7 && rng() < t3chance) { t3.push({ type: rng() < 0.5 ? 'golem' : 'splitter', elite: false }); budget -= 6; }
-  const n2 = Math.max(r.dist > 0 ? 1 : 0, Math.floor(budget * (0.3 + rng() * 0.25) / 2));
-  for (let i = 0; i < n2 && budget >= 2; i++) { rest.push({ type: rng() < 0.5 ? 'charger' : 'shooter', elite: false }); budget -= 2; }
-  if (rest.length && rng() < ELITE.chance0 + ELITE.chancePerDepth * depth) rest[0].elite = true;
-  while (budget >= 0.4 && rest.length < 22) { const t = rng() < 0.25 ? 'bat' : (rng() < 0.5 ? 'slime' : 'mite'); rest.push({ type: t, elite: false }); budget -= ENEMY[t].cost; }
-  for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
-  if (rest.length + t3.length >= 8 && rng() < 0.6) { const h = Math.ceil(rest.length / 2); return [rest.slice(0, h), rest.slice(h).concat(t3)]; }
-  return [rest.concat(t3)];
+  const np = Math.max(1, humans().length), depth = floor.depth, dist = Math.max(1, r.dist || 0);
+  const cnt = (C, jitter) => Math.min(C.max, Math.floor(C.base + C.dist * dist + C.depth * (depth - 1) + C.np * (np - 1) + rng() * jitter));
+  const n1 = cnt(ENC.t1, 2.5), n2 = cnt(ENC.t2, 1.5);
+  let n3 = rng() < Math.min(ENC.t3.max, ENC.t3.chance0 + ENC.t3.dist * dist + ENC.t3.depth * (depth - 1)) ? 1 : 0;
+  if (n3 && dist >= 2 && rng() < ENC.t3.second0 + ENC.t3.secondDist * (dist - 2) + ENC.t3.secondDepth * (depth - 1)) n3++;
+  const t1 = [], t2 = [], t3 = [];
+  for (let i = 0; i < n1; i++) t1.push({ type: rng() < 0.5 ? 'slime' : 'mite', elite: false });
+  for (let i = 0; i < n2; i++) t2.push({ type: rng() < 0.5 ? 'charger' : 'shooter', elite: false });
+  for (let i = 0; i < n3; i++) t3.push({ type: rng() < 0.5 ? 'golem' : 'splitter', elite: false });
+  if (t2.length && rng() < ELITE.chance0 + ELITE.chancePerDepth * depth) t2[0].elite = true;
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  shuffle(t1); shuffle(t2);
+  const total = n1 + n2 + n3, nw = total >= ENC.wave3 ? 3 : total >= ENC.wave2 ? 2 : 1;
+  const waves = Array.from({ length: nw }, () => []);
+  t1.forEach((e, i) => waves[i % nw].push(e));                       // los tier 1, repartidos
+  t2.forEach((e, i) => waves[(i + (nw > 1 ? 1 : 0)) % nw].push(e));  // los tier 2 cargan algo más las oleadas de después
+  t3.forEach((e, i) => waves[Math.max(0, nw - 1 - i)].push(e));      // los tier 3, en las últimas oleadas
+  return waves.map(shuffle);
 }
 
 // ---------- Salas ----------
@@ -3119,6 +3162,7 @@ function startDrop(p) {
   floatText(p.x, p.y - 46 * p.ch.size, 'Caída Izuna', p.slotColor);
 }
 // ---------- Furia de Ámbar ----------
+let furyFx = null; // destello de entrada en furia (bordes naranjas y rótulo)
 let furyBy = null; // jugador que se está actualizando: el daño que se haga ahora es suyo
 function furyGain(p, v) {
   if (!p.ch.fury || p.down || p.furyT > 0 || !(v > 0)) return;
@@ -3149,7 +3193,11 @@ function startFury(p) {
   floatText(p.x, p.y - 62 * c.size, '¡Furia!', FURY.color);
   effects.push({ type: 'ring', x: p.x, y: p.y, r: 70, t: 0, dur: 0.4, color: FURY.color });
   burst(p.x, p.y - 14, FURY.color, 26); burst(p.x, p.y - 14, '#3d3646', 18);
-  shake = Math.max(shake, 7); hitstop = Math.max(hitstop, 0.06); SFX.launch(); SFX.claw(true);
+  // shake = Math.max(shake, 7); hitstop = Math.max(hitstop, 0.06); SFX.launch(); SFX.claw(true); // [RETIRADO] aviso anterior, poco visible
+  shake = Math.max(shake, 11); hitstop = Math.max(hitstop, 0.12); SFX.fury(); SFX.claw(true);
+  effects.push({ type: 'ring', x: p.x, y: p.y, r: 130, t: 0, dur: 0.6, color: '#ffd166' }); // segunda onda, más amplia
+  for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2, sp = 260 + Math.random() * 160; particles.push({ x: p.x, y: p.y - 14, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6, life: 0.55, max: 0.55, color: i % 2 ? FURY.color : '#ffd166', s: 5 }); }
+  furyFx = { t: FURY.fx, p }; // bordes de la pantalla en naranja y rótulo grande
 }
 function endFury(p) {
   p.furyT = 0; p.fury = 0; p.furyIdle = 0; p.cast = null;
@@ -6469,6 +6517,7 @@ function update(dt) {
   camKX *= Math.max(0, 1 - 14 * dt); camKY *= Math.max(0, 1 - 14 * dt);
   if (fade > 0) fade -= dt;
   if (flashT > 0) flashT -= dt;
+  if (furyFx) { furyFx.t -= dt; if (furyFx.t <= 0) furyFx = null; }
   for (const q of particles) { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.9; q.vy *= 0.9; q.life -= dt; }
   particles = particles.filter(q => q.life > 0);
   if (particles.length > MAX_PARTICLES) particles.splice(0, particles.length - MAX_PARTICLES); // red de seguridad: descarta las más antiguas
@@ -8283,6 +8332,23 @@ function drawPickup(h) {
   drawHeart(h.x, h.y - 16 - 3 * Math.sin(h.t * 3), 7, '#ff4d6d');
 }
 
+// Furia de Ámbar en pantalla: al entrar, bordes naranjas fuertes y rótulo «¡FURIA!»; mientras dura, un borde suave que late
+function drawFuryScreen() {
+  const on = players.some(p => p.furyT > 0), k = furyFx ? furyFx.t / FURY.fx : 0;
+  if (!on && !k) return;
+  const a = Math.max(k * 0.55, on ? 0.16 + 0.07 * Math.sin(time * 9) : 0);
+  const g = ctx.createRadialGradient(W / 2, HUD + VH / 2, Math.min(W, VH) * 0.32, W / 2, HUD + VH / 2, Math.max(W, VH) * 0.72);
+  g.addColorStop(0, 'rgba(255,140,26,0)'); g.addColorStop(1, `rgba(255,140,26,${a})`);
+  ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, HUD, W, VH);
+  if (k > 0) {
+    const sc = 1 + (1 - k) * 0.35;
+    ctx.globalAlpha = Math.min(1, k * 1.8); ctx.textAlign = 'center';
+    ctx.translate(W / 2, HUD + VH * 0.3); ctx.scale(sc, sc);
+    ctx.font = '900 46px ' + FONT; ctx.lineWidth = 6; ctx.strokeStyle = '#2a1408'; ctx.strokeText('¡FURIA!', 0, 0);
+    ctx.fillStyle = Math.floor(time * 12) % 2 ? FURY.color : '#ffd166'; ctx.fillText('¡FURIA!', 0, 0);
+  }
+  ctx.restore();
+}
 function drawHUD() {
   ctx.fillStyle = '#0a0810'; ctx.fillRect(0, 0, W, HUD);
   ctx.save(); ctx.scale(hudS, hudS); // todo el marcador se dibuja a escala 1 y se amplía con hudS
@@ -8467,6 +8533,7 @@ function drawGame() {
   } finally { projectOff(); }
   ctx.restore();
   if (flashT > 0) { ctx.fillStyle = `rgba(255,250,235,${flashT / 0.25 * 0.45})`; ctx.fillRect(0, HUD, W, VH); }
+  drawFuryScreen();
   drawOffscreen();
   if (SIEGE.on) siegeDrawUI();
   const boss = enemies.find(e => e.type === 'boss' && e.spawnT <= 0);
@@ -9407,7 +9474,8 @@ function sgTravel(p, stone) {
 }
 function sgWaveComp(w, np) { // composición de una incursión
   const out = [], n1 = 3 + w + np, n2 = Math.floor(w / 2) + (np > 2 ? 1 : 0);
-  for (let i = 0; i < n1; i++) out.push({ type: w >= 3 && i % 4 === 3 ? 'bat' : (i % 3 === 2 ? 'slime' : 'mite') });
+  // for (let i = 0; i < n1; i++) out.push({ type: w >= 3 && i % 4 === 3 ? 'bat' : (i % 3 === 2 ? 'slime' : 'mite') }); // [RETIRADO] sin murciélagos de momento
+  for (let i = 0; i < n1; i++) out.push({ type: i % 3 === 2 ? 'slime' : 'mite' });
   for (let i = 0; i < n2; i++) out.push({ type: i % 2 ? 'shooter' : 'charger' });
   if (w >= 2) out.push({ type: 'charger', elite: true, banner: true }); // portaestandarte
   if (w >= 4) out.push({ type: Math.random() < 0.5 ? 'golem' : 'splitter' });
