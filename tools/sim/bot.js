@@ -1,0 +1,166 @@
+// Bot de prueba: se evalúa DENTRO del cierre del juego (tiene acceso a players, enemies, hazards, bullets, abilityReady…).
+// Juega con la misma entrada que un mando (x, y, a, s, d, q, e, l, rx, ry): todo pasa por updatePlayer como en una partida real.
+// Habilidad configurable con BOT_SKILL: reacción (s), probabilidad de ver cada amenaza y si usa las habilidades.
+(function () {
+  const SK = globalThis.BOT_SKILL || { react: 0.15, notice: 0.95, abilities: true, dodge: true };
+  const P = (p) => p.bot || (p.bot = { t: 0, hold: {}, seen: new Map(), strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 0, phase: 0, lastA: false, comboN: 0, aHoldT: 0, abT: 0 });
+  const pref = { // distancia preferida al objetivo (borde a borde) para los de distancia
+    Escarcha: 150, Coral: 190, Marea: 230, Ciruela: 200
+  };
+  // Amenaza en un punto (0 = seguro). Solo cuenta lo que el bot ha «visto» (tiempo de reacción y probabilidad de fijarse)
+  function seen(b, obj, now) {
+    let s = b.seen.get(obj);
+    if (s == null) { s = Math.random() < SK.notice ? now + SK.react * (0.6 + Math.random() * 0.8) : Infinity; b.seen.set(obj, s); }
+    return now >= s;
+  }
+  function threatAt(b, p, x, y, now) {
+    let th = 0;
+    for (const h of hazards) {
+      if (h.cancel || h.done || !seen(b, h, now)) continue;
+      const left = h.delay - h.t, dd = Math.hypot(x - h.x, y - h.y);
+      if (left > 1.2) continue;
+      let inside = dd < h.r + p.r + 10;
+      if (inside && h.arc) { let da = Math.atan2(y - h.y, x - h.x) - h.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); if (Math.abs(da) > h.arc + 0.25 && dd > p.r + 16) inside = false; }
+      if (inside) th += 3 + (1.2 - left) * 4 + (h.r + p.r + 10 - dd) / 30;
+    }
+    for (const u of bullets) {
+      if (!seen(b, u, now)) continue;
+      const vx = u.vx, vy = u.vy, v2 = vx * vx + vy * vy || 1;
+      const tc = Math.max(0, Math.min(0.6, ((x - u.x) * vx + (y - u.y) * vy) / v2));
+      const cx = u.x + vx * tc, cy = u.y + vy * tc, dd = Math.hypot(x - cx, y - cy);
+      if (dd < (u.r || 6) + p.r + 12) th += 3 + (0.6 - tc) * 5;
+    }
+    for (const e of enemies) {
+      if (e.dead || e.spawnT > 0) continue;
+      const dd = Math.hypot(x - e.x, y - e.y);
+      const lineType = e.type === 'mite' || e.type === 'charger';
+      if (lineType && (e.state === 'wind' || e.state === 'dash') && seen(b, e.state + ':' + enemies.indexOf(e) + ':' + (e.dirx || 0).toFixed(2), now)) {
+        const ux = e.dirx || 0, uy = e.diry || 0, len = e.state === 'dash' ? e.t * (e.type === 'mite' ? 320 : 300) + 30 : (e.type === 'mite' ? 160 : 180);
+        const along = (x - e.x) * ux + (y - e.y) * uy, perp = Math.abs((x - e.x) * uy - (y - e.y) * ux);
+        if (along > -10 && along < len && perp < e.r + p.r + 14) th += e.state === 'dash' ? 4 : 2.5 + (e.windDur - e.t) * 2;
+      } else if (isHot(e) && dd < e.r + p.r + 30) th += 4; // embestida del Ariete
+    }
+    if (isSolid(Math.floor(x / T), Math.floor(y / T))) th += 50;
+    return th;
+  }
+  function pickTarget(p) {
+    let best = null, bs = 1e9;
+    for (const e of liveTargets()) {
+      if (e.type === 'boss' && e.sky) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y) - e.r;
+      let s = d;
+      if (e.stunT > 0) s -= 220;                        // ejecutar
+      if (e.airborne && !e.flying) s -= p.ch.canShoot ? 260 : 120;   // malabares aéreos
+      if (e.type === 'bat' && !p.ch.canShoot) s += 140;  // al murciélago no se le pega cuerpo a cuerpo
+      if (e.bossAdd) s -= 60;                             // limpiar refuerzos primero
+      if (s < bs) { bs = s; best = e; }
+    }
+    return best;
+  }
+  function pulse(b, k, dur) { if (!b.hold[k]) b.hold[k] = dur; }
+  globalThis.__BOTF = function (p) {
+    const out = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
+    if (!p || p.down) return out;
+    const b = P(p), c = p.ch, now = time;
+    b.t += STEP;
+    for (const k in b.hold) { if (b.hold[k] > 0) { out[k] = true; b.hold[k] -= STEP; } else delete b.hold[k]; }
+    if (b.seen.size > 4000) b.seen.clear();
+    const tg = pickTarget(p);
+    // posición deseada
+    let gx = p.x, gy = p.y;
+    if (tg) {
+      const dx = tg.x - p.x, dy = tg.y - p.y, d = Math.hypot(dx, dy) || 1, gap = d - tg.r - p.r;
+      out.rx = dx / d; out.ry = dy / d;
+      if (c.canShoot) {
+        const want = pref[c.name] || 200;
+        b.strafeT -= STEP; if (b.strafeT <= 0) { b.strafeT = 1 + Math.random() * 2; b.strafe = -b.strafe; }
+        const rad = gap > want + 40 ? 1 : gap < want - 50 ? -1 : 0;
+        gx = p.x + (dx / d) * rad * 60 + (-dy / d) * b.strafe * 40; gy = p.y + (dy / d) * rad * 60 + (dx / d) * b.strafe * 40;
+      } else {
+        const stand = (tg.type === 'bat' && !tg.airborne) ? 60 : 6;
+        if (gap > stand) { gx = tg.x; gy = tg.y; }
+        else if (b.launchT > 0) { gx = p.x - dx / d * 60; gy = p.y - dy / d * 60; } // alejarse mientras golpea: golpe ascendente que lanza
+      }
+    } else {
+      // sin enemigos (refuerzos por llegar): al centro
+      gx = (MID_X + 0.5) * T; gy = (MID_Y + 0.5) * T;
+    }
+    // esquivar: evaluar 16 direcciones y quedarse con la más segura que siga acercando al objetivo
+    let mx = gx - p.x, my = gy - p.y; const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; } else { mx = my = 0; }
+    if (SK.dodge) {
+      const here = threatAt(b, p, p.x, p.y, now);
+      if (here > 0) {
+        let bx = mx, by = my, bv = here + 1e-3;
+        for (let i = 0; i < 16; i++) {
+          const a = i * Math.PI / 8, ux = Math.cos(a), uy = Math.sin(a);
+          const v = threatAt(b, p, p.x + ux * 55, p.y + uy * 55, now) + threatAt(b, p, p.x + ux * 100, p.y + uy * 100, now) * 0.5 - (ux * mx + uy * my) * 0.4;
+          if (v < bv) { bv = v; bx = ux; by = uy; }
+        }
+        mx = bx; my = by;
+        if (here >= 3 && p.moveCd <= 0 && !b.hold.d && (!c.moveCharges || p.mCh > 0)) pulse(b, 'd', 0.05); // amenaza inminente: movimiento
+        b.dodging = 0.2;
+      }
+    }
+    out.x = mx; out.y = my;
+    b.dodging = (b.dodging || 0) - STEP;
+    // ataque
+    if (tg) {
+      const d = Math.hypot(tg.x - p.x, tg.y - p.y), gap = d - tg.r - p.r;
+      if (!c.canShoot) {
+        const inReach = gap < 40 && !(tg.type === 'bat' && !tg.airborne);
+        b.launchT = (b.launchT || 0) - STEP;
+        if (inReach) {
+          b.phase += STEP;
+          // patrón: golpes sueltos con ritmo de combo; cada pocos segundos un golpe cargado o alejarse golpeando (lanzar)
+          if (b.aHoldT > 0) { out.a = true; b.aHoldT -= STEP; }
+          else if (b.phase > 0.16) {
+            b.phase = 0; b.comboN++;
+            out.a = true;
+            if (c.chargedMelee && b.comboN % 7 === 0) b.aHoldT = 0.75; // cargado
+            if (b.comboN % 9 === 4 && !tg.airborne && tg.tier <= 3) b.launchT = 0.25;
+          }
+        }
+      } else {
+        // disparo según el arma (como el aliado IA, pero con la mira encima del objetivo)
+        const ph = b.t;
+        let fire;
+        if (c.shotMode === 'launcher') fire = (p.sAmmo > 0 && (ph % 3) > 2.4) ? (ph % 3) < 2.95 : (ph % 0.4) < 0.07; // granadas sueltas; cada 3 s, carga pegajosa
+        else if (c.shotMode === 'auto') { if (c.gatling) { if (p.heat > 0.85) b.cool = true; if (p.heat < 0.2) b.cool = false; fire = !b.cool && !(p.overheat > 0); } else fire = true; }
+        else if (c.shotMode === 'frost') fire = true;
+        else if (c.ammo) { // Marea: pulsaciones; tras un movimiento, Bravata
+          fire = (ph % 0.18) < 0.05; if (gap > 450) fire = false;
+          if (p.ammo >= 5 && (ph % 6) > 5.3) fire = true; // cada 6 s, cargado: vacía el tambor
+        }
+        else fire = (ph % 0.4) < 0.28;
+        if (gap > 520) fire = false;
+        if (p.shotHold) fire = false; // tras ejecutar, el misil o la pausa hay que soltar el botón antes de volver a disparar
+        out.s = fire;
+        if (!p.lockOn || p.target !== tg) { if (!b.lT || b.lT <= 0) { pulse(b, 'l', 0.04); b.lT = 0.5; } }
+        b.lT = (b.lT || 0) - STEP;
+        // a quemarropa: ejecutar aturdidos con el ataque
+        if (tg.stunT > 0 && gap < 30) out.a = (ph % 0.2) < 0.05;
+      }
+      // habilidades
+      b.abT -= STEP;
+      if (SK.abilities && b.abT <= 0 && !p.cast && !b.hold.q && !b.hold.e) {
+        const ok = s => abilityReady(p, s), t1 = c.priType, t2 = abilityType(p, 'sec');
+        const near = gap < (c.canShoot ? 420 : 220);
+        if (t1 && t1 !== 'raiseShield' && p.priCd <= 0 && near && ok('pri') && !(t1 === 'turret' && myTurret(p))) {
+          pulse(b, 'q', t1 === 'shieldThrow' ? 1.05 : 0.12); b.abT = 0.4;
+        } else if (t2 && t2 !== 'frostMode' && t2 !== 'taunt' && p.secCd <= 0 && near && ok('sec') && !(t2 === 'turret' && myTurret(p))) {
+          pulse(b, 'e', t2 === 'shieldThrow' ? 1.05 : t2 === 'ricochet' ? 0.5 : t2 === 'dragon' ? 0.1 : 0.12); b.abT = 0.4;
+        }
+      }
+      // Marea y Ciruela: Bravata / misil tras moverse cuando no hay peligro (cada pocos segundos)
+      if ((c.ammo || c.postMoveMissile) && p.moveCd <= 0 && b.dodging <= 0) {
+        b.bravT = (b.bravT || 0) - STEP;
+        if (b.bravT <= 0 && ((c.ammo && p.ammo <= 1) || (c.postMoveMissile && Math.random() < 0.004))) { pulse(b, 'd', 0.05); b.bravT = 2; b.postFire = 0.12; }
+      }
+      if (b.postFire > 0) { b.postFire -= STEP; if (b.postFire < 0.07) out.s = !b.lastS; }
+      // brawlers: tras moverse, golpe en carrera de vez en cuando para cerrar distancia
+      if (!c.canShoot && gap > 90 && gap < 200 && p.moveCd <= 0 && b.dodging <= 0 && c.moveType === 'jump' && Math.random() < 0.02) pulse(b, 'd', 0.05);
+    }
+    b.lastS = out.s;
+    return out;
+  };
+})();
