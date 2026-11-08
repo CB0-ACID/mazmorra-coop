@@ -69,6 +69,12 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
 - **Oro compartido**: bajas, portaestandartes, escaramuzas, fin de oleada y túneles sellados. Se gasta en reparar (canalizado junto al objetivo), reconstruir ruinas (80) y construir trampas en ranuras fijas: pinchos (30), ballesta (50) y brasero (40).
 - **Mantenimiento**: pinchos con cargas (rearmar), ballestas con virotes y braseros con leña; virotes y leña son «pertrechos» que se cogen en la armería del patio o en la caja de cada muralla y se llevan encima.
 - **Estabilidad del frente** (0-100): baja al perder objetivos y con cada enemigo que llega al patio; sube al ganar escaramuzas (aniquilar una incursión entera sin que nadie llegue al patio), al sellar túneles y al acabar oleadas. A cero, retirada (derrota).
+- **Contingencias contra la acumulación de enemigos** (rendimiento y legibilidad, constantes en `SG` y `SG_PLAN`):
+  - Tope de enemigos vivos a la vez: 12 + 2 por jugador humano extra (`maxAlive`, `maxAliveP`). Al llegar, los refuerzos esperan: el reloj de apariciones (`spawnClock`) se para y el reloj del asedio dice «Refuerzos en espera». Los túneles de zapadores también esperan.
+  - Tope de tier 3 vivos: 1 + 0,5 por jugador extra (`maxT3`, `maxT3P`).
+  - Cada incursión entra en escuadras de 3 (medio segundo entre enemigos, 3 s entre escuadras).
+  - Incursiones separadas en el tiempo: plan por oleada en `SG_PLAN` (2 incursiones en la oleada 1, 3 en la 2 y 3, 4 en la 4 y 5, separadas unos 20 s).
+  - Menos enemigos por incursión: portaestandarte e tier 3 en incursiones alternas. Con 2 jugadores, la oleada 5 trae 35 enemigos en total (antes unos 70).
 - **Eventos semialeatorios** (desde la oleada 2): lluvia de fuego en la zona del grupo (solo la zona techada es segura) y zapadores (un túnel junto a un objetivo del que salen enemigos hasta que se apuntala; con varios jugadores hacen falta dos a la vez).
 - **Mejoras entre oleadas** (provisionales): se elige una de tres (muros reforzados, oro, reparar más rápido, virotes de acero, vigor, brasas eternas, moral, carpinteros).
 - **Viajar es una votación**: todos los jugadores humanos en pie tienen que ir a la piedra de paso y pulsar Fijar («Viajar»); el grupo avanza cuando confirma el último (los caídos y el aliado IA van con él). Encima de la piedra se ve «Listos n/m» con un punto por jugador; alejarse o volver a pulsar cancela.
