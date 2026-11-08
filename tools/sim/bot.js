@@ -178,9 +178,9 @@
       if (SK.abilities && b.abT <= 0 && !p.cast && !b.hold.q && !b.hold.e) {
         const ok = s => abilityReady(p, s), t1 = c.priType, t2 = abilityType(p, 'sec');
         const near = gap < (c.canShoot ? 420 : 220);
-        if (t1 && t1 !== 'raiseShield' && p.priCd <= 0 && near && ok('pri') && !(t1 === 'turret' && myTurret(p))) {
+        if (t1 && !SK.noPri && t1 !== 'raiseShield' && p.priCd <= 0 && near && ok('pri') && !(t1 === 'turret' && myTurret(p))) {
           pulse(b, 'q', t1 === 'shieldThrow' ? 1.05 : 0.12); b.abT = 0.4;
-        } else if (t2 && t2 !== 'frostMode' && t2 !== 'taunt' && p.secCd <= 0 && near && ok('sec') && !(t2 === 'turret' && myTurret(p))) {
+        } else if (t2 && !SK.noSec && t2 !== 'frostMode' && t2 !== 'taunt' && p.secCd <= 0 && near && ok('sec') && !(t2 === 'turret' && myTurret(p))) {
           pulse(b, 'e', t2 === 'shieldThrow' ? 1.05 : t2 === 'ricochet' ? 0.5 : t2 === 'dragon' ? 0.1 : 0.12); b.abT = 0.4;
         }
       }
