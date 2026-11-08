@@ -2219,14 +2219,17 @@ function enterRoom(r, dir) {
 }
 
 // Refuerzos en la sala del guardián (2026-11-08): cada cierto tiempo entran enemigos normales de tier 1 y 2.
-// Con 1 o 2 jugadores salen 2; con 3 o 4, salen 4. Para que no se acumulen, nunca hay más de «cap» grupos vivos a la vez.
+// Con 1 o 2 jugadores salen 2; con 3 o 4, salen 4. No entra otro grupo hasta acabar con el anterior, y el tiempo hasta el
+// siguiente cuenta desde ese momento («cap» ya no se usa).
 // Al caer el guardián, los refuerzos que queden se deshacen.
 const BOSS_ADDS = { first: 12, every: 20, everyRage: 16, cap: 2, t2Chance: 0.5,
                     t1: ['slime', 'mite'], t2: ['charger', 'shooter'], minPlayerD: 170, minBossD: 130, near: 560 };
 function bossAddCount() { return Math.max(1, humans().length) <= 2 ? 2 : 4; }
 function spawnBossAdds() {
   const n = bossAddCount(), alive = enemies.filter(e => e.bossAdd && !e.dead).length;
-  const k = Math.min(n, n * BOSS_ADDS.cap - alive); if (k <= 0) return false;
+  // const k = Math.min(n, n * BOSS_ADDS.cap - alive); if (k <= 0) return false; // [RETIRADO 2026-11-08] hasta dos grupos vivos a la vez
+  if (alive > 0) return false; // no entra otro grupo hasta acabar con el anterior
+  const k = n;
   const boss = enemies.find(e => e.type === 'boss' && !e.dead), live = players.filter(p => !p.down);
   const gx = live.length ? live.reduce((a, p) => a + p.x, 0) / live.length : room.entryX, gy = live.length ? live.reduce((a, p) => a + p.y, 0) / live.length : room.entryY;
   let free = [];
@@ -2259,6 +2262,8 @@ function updateBossAdds(dt) {
   }
   if (boss.spawnT > 0 && !boss.sky) return;
   if (room.addT == null) room.addT = BOSS_ADDS.first;
+  // room.addT -= dt; // [RETIRADO 2026-11-08] el tiempo corría aunque quedaran refuerzos vivos
+  if (enemies.some(e => e.bossAdd && !e.dead)) return; // con refuerzos vivos el reloj se para: el siguiente grupo cuenta desde que acabáis con este
   room.addT -= dt;
   if (room.addT <= 0) { spawnBossAdds(); room.addT = boss.hp < boss.maxHp / 2 ? BOSS_ADDS.everyRage : BOSS_ADDS.every; }
 }
