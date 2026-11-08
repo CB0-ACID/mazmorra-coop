@@ -262,7 +262,8 @@ const ENEMY_DMG = {
   shooter:  { shot: 16 },               // disparo (de 1 en 1 o en abanico de 3)
   golem:    { leap: 32, slam: 36 },     // salto y pisotón
   splitter: { bomb: 22 },               // bombas sembradas
-  boss:     { contact: 30, shot: 18 }   // el guardián daña siempre al tocar; disparos en anillo y abanico
+  // boss:     { contact: 30, shot: 18 }   // [RETIRADO 2026-11-08] el guardián dañaba siempre al tocar
+  boss:     { contact: 30, shot: 18, gore: 26, stomp: 26, slam: 32, quake: 22 } // contact: embestida del Ariete · shot: balas del Cañonero · resto: avisos del suelo
 };
 // Ataque que se aplica al tocar a un jugador (solo mientras isHot(e) lo permite)
 const CONTACT_ATTACK = { mite: 'dash', charger: 'dash', boss: 'contact' };
@@ -2169,7 +2170,7 @@ function enterRoom(r, dir) {
     for (let i = 0; i < c; i++) pickups.push({ x: (MID_X + 0.5) * T + (i - (c - 1) / 2) * 34, y: (MID_Y + 0.5) * T, t: Math.random() * 6 });
     showBanner('Sala del tesoro');
   }
-  if (r.type === 'boss' && !r.cleared) showBanner('El guardián del piso');
+  if (r.type === 'boss' && !r.cleared) showBanner(BOSS[bossKindFor(floor.depth)].name); // [antes: 'El guardián del piso']
   fade = 0.35;
   snapCamera();
 }
@@ -2208,10 +2209,11 @@ function makeEnemy(type, x, y, elite) {
   let hp = b.hp + SC.hpPerDepth * b.tier * dp, sta = b.sta ? b.sta + SC.staPerDepth * b.tier * dp : 0;
   if (type === 'boss') { hp = b.hp + G.hpPerDepth * dp + G.hpPerPlayer * (np - 1); sta = b.sta + G.staPerDepth * dp + G.staPerPlayer * (np - 1); }
   hp *= 1 + SC.multiHp * (np - 1);
+  const bk = type === 'boss' ? bossKindFor(floor.depth) : null, bc = bk ? BOSS[bk] : null; // guardián del bioma
   if (elite) { hp = Math.ceil(snap(hp * ELITE.hp)); sta = Math.ceil(snap(sta * ELITE.sta)); }
   return {
-    type, tier: b.tier, x, y, r: b.r * (elite ? ELITE.r : 1), hp, maxHp: hp, sta, maxSta: sta,
-    spd: b.spd * (1 + SC.spdPerDepth * dp), color: b.color, elite,
+    type, tier: b.tier, x, y, r: (bc ? bc.r : b.r) * (elite ? ELITE.r : 1), hp, maxHp: hp, sta, maxSta: sta,
+    spd: b.spd * (1 + SC.spdPerDepth * dp), color: bc ? bc.color : b.color, elite, kind: bk, dir: Math.PI / 2, lastAtk: null,
     spawnT: 0.7, flash: 0, kbx: 0, kby: 0, t: 1 + Math.random() * 1.2, anim: Math.random() * 6, state: 'walk',
     cd: 1 + Math.random(), cd2: 2, rot: 0, phase: Math.random() * 6, dirx: 0, diry: 0, face: 0, dead: false,
     z: b.fly || 0, flyZ: b.fly || 0, vz: 0, airborne: false, flying: !!b.fly, stunT: 0, getup: 0, calm: 0, swipeCd: 0, shots: 0,
@@ -5996,7 +5998,11 @@ function interruptHit(e, heavy) {
   if (e.type === 'boss') {
     if (attackWarn(e)) floatText(e.x, upY(e.y, 60), 'Interrumpido', '#6ee7ff');
     // [RETIRADO 2026-11-08] con los temporizadores antiguos: // if (e.cd < 0.55) e.cd = e.hp < e.maxHp / 2 ? 1.4 : 2; // if (e.cd2 < 0.4) e.cd2 = 1;
-    if (e.state === 'ringWind' || e.state === 'fanWind') { e.state = 'walk'; e.ringAngles = null; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2; }
+    // if (e.state === 'ringWind' || e.state === 'fanWind') { e.state = 'walk'; e.ringAngles = null; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2; } // [RETIRADO 2026-11-08 · v2]
+    if (/Wind$/.test(e.state)) { // cancela el ataque preparado y sus avisos del suelo
+      for (const h of hazards) if (h.owner === e) h.cancel = true;
+      e.state = 'walk'; e.novaAngles = null; e.chain = 0; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2;
+    }
     return;
   }
   if (attackWarn(e)) floatText(e.x, upY(e.y, 40 + (e.z || 0)), 'Interrumpido', '#ffffff');
@@ -6337,69 +6343,274 @@ const ENEMY_AI = {
   //   if (e.cd2 <= 0) { for (const o of [-0.25, 0, 0.25]) fire(e.x, e.y, e.face + o, 190, edmg(e, 'shot')); e.cd2 = rage ? 1.0 : 1.5; }
   //   return [nx * e.spd * (rage ? 1.3 : 1), ny * e.spd * (rage ? 1.3 : 1)];
   // }
-  // Guardián (2026-11-08): un ataque cada vez → andar, preparar (con aviso en el suelo), disparar y quedarse quieto (ventana para pegarle)
-  boss(e, p, d, nx, ny, dt) {
-    const B = BOSS_AI, rage = e.hp < e.maxHp / 2, sp = e.spd * (rage ? 1.3 : 1);
-    e.t -= dt;
-    if (e.state === 'ringWind') { // se carga: los radios del anillo y sus huecos se ven en el suelo
-      if (e.t <= 0) {
-        const R = B.ring;
-        for (const a of e.ringAngles) bossShot(e, a, R.spd0, R.spd, R.accel);
-        e.ringAngles = null; e.state = 'recover'; e.t = rage ? B.recoverRage : B.recover; shake = Math.max(shake, 4);
-      }
-      return [0, 0];
-    }
-    if (e.state === 'fanWind') { // apunta siguiendo al objetivo y fija la dirección poco antes de disparar
-      const F = B.fan;
-      if (e.t > F.lock) e.aim = e.face;
-      if (e.t <= 0) {
-        const n = rage ? F.nRage : F.n;
-        for (let i = 0; i < n; i++) bossShot(e, e.aim + (i - (n - 1) / 2) * F.spread, F.spd, F.spd, 0);
-        e.state = 'recover'; e.t = rage ? B.recoverRage : B.recover;
-      }
-      return [0, 0];
-    }
-    if (e.state === 'recover') { if (e.t <= 0) { e.state = 'walk'; e.t = bossWalkT(rage); } return [0, 0]; }
-    // andando: se acerca y, pasado su tiempo, elige ataque (abanico si estás lejos; anillo si estás cerca o tras dos abanicos)
-    if (e.t <= 0) {
-      if (d >= B.fan.minD && (e.fans || 0) < 2) {
-        e.state = 'fanWind'; e.windDur = e.t = rage ? B.fan.windRage : B.fan.wind; e.aim = e.face; e.fans = (e.fans || 0) + 1;
-      } else {
-        e.state = 'ringWind'; e.windDur = e.t = rage ? B.ring.windRage : B.ring.wind; e.ringAngles = bossRingAngles(e); e.fans = 0;
-      }
-      return [0, 0];
-    }
-    return [nx * sp, ny * sp];
-  }
+  // [RETIRADO 2026-11-08 · v2] primera versión con pausas (anillo y abanico desde el cuerpo, sin frente); sustituida por guardianes con cara y frente
+  // [RETIRADO 2026-11-08 · v2] // Guardián (2026-11-08): un ataque cada vez → andar, preparar (con aviso en el suelo), disparar y quedarse quieto (ventana para pegarle)
+  // [RETIRADO 2026-11-08 · v2] boss(e, p, d, nx, ny, dt) {
+  // [RETIRADO 2026-11-08 · v2] const B = BOSS_AI, rage = e.hp < e.maxHp / 2, sp = e.spd * (rage ? 1.3 : 1);
+  // [RETIRADO 2026-11-08 · v2] e.t -= dt;
+  // [RETIRADO 2026-11-08 · v2] if (e.state === 'ringWind') { // se carga: los radios del anillo y sus huecos se ven en el suelo
+  // [RETIRADO 2026-11-08 · v2] if (e.t <= 0) {
+  // [RETIRADO 2026-11-08 · v2] const R = B.ring;
+  // [RETIRADO 2026-11-08 · v2] for (const a of e.ringAngles) bossShot(e, a, R.spd0, R.spd, R.accel);
+  // [RETIRADO 2026-11-08 · v2] e.ringAngles = null; e.state = 'recover'; e.t = rage ? B.recoverRage : B.recover; shake = Math.max(shake, 4);
+  // [RETIRADO 2026-11-08 · v2] }
+  // [RETIRADO 2026-11-08 · v2] return [0, 0];
+  // [RETIRADO 2026-11-08 · v2] }
+  // [RETIRADO 2026-11-08 · v2] if (e.state === 'fanWind') { // apunta siguiendo al objetivo y fija la dirección poco antes de disparar
+  // [RETIRADO 2026-11-08 · v2] const F = B.fan;
+  // [RETIRADO 2026-11-08 · v2] if (e.t > F.lock) e.aim = e.face;
+  // [RETIRADO 2026-11-08 · v2] if (e.t <= 0) {
+  // [RETIRADO 2026-11-08 · v2] const n = rage ? F.nRage : F.n;
+  // [RETIRADO 2026-11-08 · v2] for (let i = 0; i < n; i++) bossShot(e, e.aim + (i - (n - 1) / 2) * F.spread, F.spd, F.spd, 0);
+  // [RETIRADO 2026-11-08 · v2] e.state = 'recover'; e.t = rage ? B.recoverRage : B.recover;
+  // [RETIRADO 2026-11-08 · v2] }
+  // [RETIRADO 2026-11-08 · v2] return [0, 0];
+  // [RETIRADO 2026-11-08 · v2] }
+  // [RETIRADO 2026-11-08 · v2] if (e.state === 'recover') { if (e.t <= 0) { e.state = 'walk'; e.t = bossWalkT(rage); } return [0, 0]; }
+  // [RETIRADO 2026-11-08 · v2] // andando: se acerca y, pasado su tiempo, elige ataque (abanico si estás lejos; anillo si estás cerca o tras dos abanicos)
+  // [RETIRADO 2026-11-08 · v2] if (e.t <= 0) {
+  // [RETIRADO 2026-11-08 · v2] if (d >= B.fan.minD && (e.fans || 0) < 2) {
+  // [RETIRADO 2026-11-08 · v2] e.state = 'fanWind'; e.windDur = e.t = rage ? B.fan.windRage : B.fan.wind; e.aim = e.face; e.fans = (e.fans || 0) + 1;
+  // [RETIRADO 2026-11-08 · v2] } else {
+  // [RETIRADO 2026-11-08 · v2] e.state = 'ringWind'; e.windDur = e.t = rage ? B.ring.windRage : B.ring.wind; e.ringAngles = bossRingAngles(e); e.fans = 0;
+  // [RETIRADO 2026-11-08 · v2] }
+  // [RETIRADO 2026-11-08 · v2] return [0, 0];
+  // [RETIRADO 2026-11-08 · v2] }
+  // [RETIRADO 2026-11-08 · v2] return [nx * sp, ny * sp];
+  // [RETIRADO 2026-11-08 · v2] }
+  boss(e, p, d, nx, ny, dt) { return BOSS_AI_BY_KIND[e.kind || 'cannon'](e, p, d, dt); }
 };
-// Guardián: constantes de ritmo y de sus dos ataques
-const BOSS_AI = {
-  walk: [1.6, 2.4], walkRage: [1.0, 1.6], // segundos andando entre ataques
-  recover: 1.1, recoverRage: 0.8,          // quieto tras atacar: ventana para pegarle
-  // anillo: radios con huecos (gaps × gapW radios vacíos), salen del borde despacio y aceleran
-  ring: { wind: 1.3, windRage: 1.05, spokes: 16, perDepth: 2, gaps: 3, gapW: 2, spd0: 55, spd: 140, accel: 0.8, out: 8 },
-  // abanico apuntado: solo si estás a minD o más; fija la puntería «lock» segundos antes de disparar
-  fan: { wind: 0.9, windRage: 0.75, lock: 0.35, n: 3, nRage: 5, spread: 0.22, spd: 175, minD: 150 }
+// [RETIRADO 2026-11-08 · v2] // Guardián: constantes de ritmo y de sus dos ataques
+// [RETIRADO 2026-11-08 · v2] const BOSS_AI = {
+// [RETIRADO 2026-11-08 · v2]   walk: [1.6, 2.4], walkRage: [1.0, 1.6], // segundos andando entre ataques
+// [RETIRADO 2026-11-08 · v2]   recover: 1.1, recoverRage: 0.8,          // quieto tras atacar: ventana para pegarle
+// [RETIRADO 2026-11-08 · v2]   // anillo: radios con huecos (gaps × gapW radios vacíos), salen del borde despacio y aceleran
+// [RETIRADO 2026-11-08 · v2]   ring: { wind: 1.3, windRage: 1.05, spokes: 16, perDepth: 2, gaps: 3, gapW: 2, spd0: 55, spd: 140, accel: 0.8, out: 8 },
+// [RETIRADO 2026-11-08 · v2]   // abanico apuntado: solo si estás a minD o más; fija la puntería «lock» segundos antes de disparar
+// [RETIRADO 2026-11-08 · v2]   fan: { wind: 0.9, windRage: 0.75, lock: 0.35, n: 3, nRage: 5, spread: 0.22, spd: 175, minD: 150 }
+// [RETIRADO 2026-11-08 · v2] };
+// [RETIRADO 2026-11-08 · v2] function bossWalkT(rage) { const [a, b] = rage ? BOSS_AI.walkRage : BOSS_AI.walk; return a + Math.random() * (b - a); }
+// [RETIRADO 2026-11-08 · v2] function bossRingAngles(e) { // radios del anillo con huecos repartidos (y un giro aleatorio para que no se repita)
+// [RETIRADO 2026-11-08 · v2]   const R = BOSS_AI.ring, n = R.spokes + R.perDepth * (floor.depth || 0), off = Math.random() * Math.PI * 2, out = [];
+// [RETIRADO 2026-11-08 · v2]   const step = n / R.gaps, g0 = Math.floor(Math.random() * step);
+// [RETIRADO 2026-11-08 · v2]   for (let i = 0; i < n; i++) {
+// [RETIRADO 2026-11-08 · v2]     const inGap = ((i - g0 + n) % n) % step < R.gapW;
+// [RETIRADO 2026-11-08 · v2]     if (!inGap) out.push(off + i / n * Math.PI * 2);
+// [RETIRADO 2026-11-08 · v2]   }
+// [RETIRADO 2026-11-08 · v2]   return out;
+// [RETIRADO 2026-11-08 · v2] }
+// [RETIRADO 2026-11-08 · v2] // Bala del guardián: sale del borde de su cuerpo (no del centro) y puede acelerar desde spd0 hasta spd1
+// [RETIRADO 2026-11-08 · v2] function bossShot(e, a, spd0, spd1, ramp) {
+// [RETIRADO 2026-11-08 · v2]   const ux = Math.cos(a), uy = Math.sin(a), o = e.r + BOSS_AI.ring.out;
+// [RETIRADO 2026-11-08 · v2]   bullets.push({ x: e.x + ux * o, y: e.y + uy * o, vx: ux * spd0, vy: uy * spd0, r: 6, life: 5, dmg: edmg(e, 'shot'), ux, uy, spd0, spd1, ramp, age: 0 });
+// [RETIRADO 2026-11-08 · v2] }
+
+// ================= GUARDIANES (tier 4) =================
+// Reglas comunes (2026-11-08):
+// · Tienen frente y espalda: la cara (y el arma) mira hacia e.dir, que gira con una velocidad limitada (turn, rad/s).
+//   Rodearlos sirve: tardan en encararte.
+// · Sus ataques normales salen por delante, desde un punto fijo y visible (boca del cañón, cuernos, puños).
+// · Todo ataque se prepara con aviso en el suelo; mientras apuntan siguen girando y fijan la dirección poco antes de golpear.
+// · Tienen un ataque en área alrededor, muy telegrafiado, que usan más cuanto más los rodeáis o más pegados estáis.
+// · Tras cada ataque se quedan quietos un momento: ventana para castigarlos.
+// · Un guardián por bioma: piso 1 Cañonero, piso 2 Ariete, piso 3 Coloso (y se repite).
+const BOSS_KINDS = ['cannon', 'ram', 'colossus'];
+function bossKindFor(depth) { return BOSS_KINDS[((depth || 1) - 1) % BOSS_KINDS.length]; }
+const BOSS = {
+  walkT: [1.4, 2.2], walkTRage: [0.9, 1.4], // segundos andando entre ataques
+  flankOff: 1.25, closeR: 60,               // a más de 1,25 rad de su frente, o a menos de 60 px de su borde, cuenta como «rodeándolo»
+  // Cañonero: dispara con el cañón del frente; Estallido en todas direcciones si lo rodeáis
+  cannon: { name: 'Guardián Cañonero', color: '#e5484d', r: 30, spdMul: 1, turn: 2.0, keep: [140, 260], muzzle: 24,
+    recover: 1.1, recoverRage: 0.8,
+    volley: { wind: 1.0, windRage: 0.8, lock: 0.35, turn: 1.2, n: 3, nRage: 5, spread: 0.2, spd: 180 },          // abanico apuntado
+    sweep:  { wind: 1.0, windRage: 0.85, lock: 0.45, turn: 1.0, arc: 0.75, shots: 9, dur: 0.9, spd: 210 },     // barrido de lado a lado
+    nova:   { wind: 1.6, windRage: 1.3, spokes: 16, gaps: 3, gapW: 2, spd0: 55, spd: 140, accel: 0.8, out: 8 } }, // Estallido: anillo con huecos
+  // Ariete: embiste en línea recta hasta chocar; si da contra un muro se queda aturdido un rato
+  ram: { name: 'Ariete del Bosque', color: '#c9772f', r: 32, spdMul: 0.8, turn: 1.3, muzzle: 10,
+    recover: 1.0, recoverRage: 0.7,
+    charge: { wind: 1.1, windRage: 0.8, lock: 0.4, turn: 1.8, spd: 520, max: 720, daze: 1.8, skid: 0.6, chainRage: 2, rewind: 0.6 },
+    gore:   { wind: 0.75, windRage: 0.6, r: 100, arc: 0.85, range: 130 },  // cornada en abanico delante
+    stomp:  { wind: 1.4, windRage: 1.15, r: 135 } },                        // pisotón alrededor
+  // Coloso: golpes al suelo; martillazo delante, grieta que avanza en línea y terremoto alrededor
+  colossus: { name: 'Coloso de la Gruta', color: '#7d8fa3', r: 36, spdMul: 0.75, turn: 1.6, muzzle: 14,
+    recover: 1.3, recoverRage: 1.0,
+    slam:  { wind: 1.1, windRage: 0.9, r: 145, arc: 0.6, range: 170 },
+    quake: { wind: 0.9, windRage: 0.75, n: 7, step: 58, r: 38, gap: 0.12 },
+    stomp: { wind: 1.7, windRage: 1.4, r: 165 } }
 };
-function bossWalkT(rage) { const [a, b] = rage ? BOSS_AI.walkRage : BOSS_AI.walk; return a + Math.random() * (b - a); }
-function bossRingAngles(e) { // radios del anillo con huecos repartidos (y un giro aleatorio para que no se repita)
-  const R = BOSS_AI.ring, n = R.spokes + R.perDepth * (floor.depth || 0), off = Math.random() * Math.PI * 2, out = [];
-  const step = n / R.gaps, g0 = Math.floor(Math.random() * step);
-  for (let i = 0; i < n; i++) {
-    const inGap = ((i - g0 + n) % n) % step < R.gapW;
-    if (!inGap) out.push(off + i / n * Math.PI * 2);
+const bossCfg = e => BOSS[e.kind || 'cannon'];
+const bossRage = e => e.hp < e.maxHp / 2;
+function bossAng(a) { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; }
+function bossTurn(e, tx, ty, rate, dt) { // gira e.dir hacia el punto, como mucho rate rad/s
+  const want = Math.atan2(ty - e.y, tx - e.x), df = bossAng(want - e.dir), st = rate * dt;
+  e.dir = bossAng(e.dir + Math.max(-st, Math.min(st, df)));
+}
+function bossMuzzle(e) { const o = e.r + bossCfg(e).muzzle; return [e.x + Math.cos(e.dir) * o, e.y + Math.sin(e.dir) * o]; }
+// 0 → 1: parte de los jugadores que lo rodean (a los lados o detrás) o están pegados a él
+function bossFlank(e) {
+  const ps = players.filter(q => !q.down); if (!ps.length) return 0;
+  let n = 0;
+  for (const q of ps) {
+    const off = Math.abs(bossAng(Math.atan2(q.y - e.y, q.x - e.x) - e.dir)), dd = Math.hypot(q.x - e.x, q.y - e.y);
+    if (off > BOSS.flankOff || dd < e.r + q.r + BOSS.closeR) n++;
   }
+  return n / ps.length;
+}
+function bossWalk(e) { const [a, b] = bossRage(e) ? BOSS.walkTRage : BOSS.walkT; e.state = 'walk'; e.t = a + Math.random() * (b - a); }
+function bossRecover(e) { const c = bossCfg(e); e.state = 'recover'; e.t = bossRage(e) ? c.recoverRage : c.recover; }
+function bossWind(e, state, A) { e.state = state; e.windDur = e.t = bossRage(e) ? (A.windRage || A.wind) : A.wind; }
+// Elige con pesos: { clave: peso }
+function bossPick(w) { let s = 0; for (const k in w) s += Math.max(0, w[k]); let r = Math.random() * s; for (const k in w) { r -= Math.max(0, w[k]); if (r <= 0) return k; } return Object.keys(w)[0]; }
+// Peso del ataque en área: casi nunca si todos estáis delante y lejos; muy probable si lo rodeáis (nunca dos seguidos salvo que lo rodeéis casi todos)
+function bossAreaWeight(e) { const f = bossFlank(e); return (e.lastAtk === 'area' && f < 0.75) ? 0 : 0.1 + 2.4 * f; }
+// Bala del guardián: sale de un punto (boca del cañón o borde del cuerpo) y puede acelerar desde spd0 hasta spd1
+function bossBullet(e, x, y, a, spd0, spd1, ramp) {
+  const ux = Math.cos(a), uy = Math.sin(a);
+  bullets.push({ x, y, vx: ux * spd0, vy: uy * spd0, r: 6, life: 5, dmg: edmg(e, 'shot'), ux, uy, spd0, spd1, ramp, age: 0 });
+}
+function bossNovaAngles(e) { // anillo con huecos repartidos y un giro aleatorio
+  const N = BOSS.cannon.nova, n = N.spokes + 2 * ((floor.depth || 1) - 1), off = Math.random() * Math.PI * 2, out = [];
+  const step = n / N.gaps, g0 = Math.floor(Math.random() * step);
+  for (let i = 0; i < n; i++) if (((i - g0 + n) % n) % step >= N.gapW) out.push(off + i / n * Math.PI * 2);
   return out;
 }
-// Bala del guardián: sale del borde de su cuerpo (no del centro) y puede acelerar desde spd0 hasta spd1
-function bossShot(e, a, spd0, spd1, ramp) {
-  const ux = Math.cos(a), uy = Math.sin(a), o = e.r + BOSS_AI.ring.out;
-  bullets.push({ x: e.x + ux * o, y: e.y + uy * o, vx: ux * spd0, vy: uy * spd0, r: 6, life: 5, dmg: edmg(e, 'shot'), ux, uy, spd0, spd1, ramp, age: 0 });
+function bossLane(e) { // largo del carril de embestida: hasta el primer muro (o el máximo)
+  const C = BOSS.ram.charge, ux = Math.cos(e.dir), uy = Math.sin(e.dir);
+  let L = 0; while (L < C.max && !segSolid(e.x + ux * L, e.y + uy * L, e.x + ux * (L + 16), e.y + uy * (L + 16))) L += 16;
+  return L;
+}
+function bossHazard(e, x, y, r, delay, dmgKey, extra) { hazards.push(Object.assign({ x, y, r, t: 0, delay, owner: e, dmg: edmg(e, dmgKey) }, extra || {})); }
+
+const BOSS_AI_BY_KIND = {
+  // ---------- Cañonero ----------
+  cannon(e, p, d, dt) {
+    const C = BOSS.cannon, rage = bossRage(e); e.t -= dt;
+    if (e.state === 'volleyWind') { // levanta el cañón y apunta (líneas discontinuas); las fija «lock» s antes del disparo
+      if (e.t > C.volley.lock) bossTurn(e, p.x, p.y, C.volley.turn, dt);
+      if (e.t <= 0) {
+        const n = rage ? C.volley.nRage : C.volley.n, [mx, my] = bossMuzzle(e);
+        for (let i = 0; i < n; i++) bossBullet(e, mx, my, e.dir + (i - (n - 1) / 2) * C.volley.spread, C.volley.spd, C.volley.spd, 0);
+        burst(mx, upY(my, 30), '#ffb27a', 8); shake = Math.max(shake, 3); bossRecover(e);
+      }
+      return [0, 0];
+    }
+    if (e.state === 'sweepWind') { // marca en el suelo el arco que va a barrer
+      if (e.t > C.sweep.lock) bossTurn(e, p.x, p.y, C.sweep.turn, dt);
+      if (e.t <= 0) { e.state = 'sweep'; e.t = C.sweep.dur; e.sweepI = 0; e.sweepDir = Math.random() < 0.5 ? 1 : -1; e.sweepBase = e.dir; }
+      return [0, 0];
+    }
+    if (e.state === 'sweep') { // dispara de un extremo del arco al otro
+      const S = C.sweep, k = 1 - Math.max(0, e.t) / S.dur;
+      while (e.sweepI < S.shots && e.sweepI / (S.shots - 1) <= k + 1e-6) {
+        const f = e.sweepI / (S.shots - 1); e.dir = bossAng(e.sweepBase + e.sweepDir * (f * 2 - 1) * S.arc);
+        const [mx, my] = bossMuzzle(e); bossBullet(e, mx, my, e.dir, S.spd, S.spd, 0); e.sweepI++;
+      }
+      if (e.t <= 0) { e.dir = e.sweepBase; bossRecover(e); }
+      return [0, 0];
+    }
+    if (e.state === 'novaWind') { // se planta y brilla: los radios y sus huecos se ven en el suelo
+      if (e.t <= 0) {
+        const N = C.nova, o = e.r + N.out;
+        for (const a of e.novaAngles) bossBullet(e, e.x + Math.cos(a) * o, e.y + Math.sin(a) * o, a, N.spd0, N.spd, N.accel);
+        e.novaAngles = null; shake = Math.max(shake, 5); bossRecover(e);
+      }
+      return [0, 0];
+    }
+    if (e.state === 'recover') { if (e.t <= 0) bossWalk(e); return [0, 0]; }
+    // andando: se encara y mantiene la distancia de tiro
+    bossTurn(e, p.x, p.y, C.turn, dt);
+    if (e.t <= 0) {
+      const front = Math.abs(bossAng(Math.atan2(p.y - e.y, p.x - e.x) - e.dir)) < 0.9;
+      const k = bossPick({ area: bossAreaWeight(e), volley: front ? 1.2 : 0.4, sweep: front ? (rage ? 1 : 0.5) : 0.2 });
+      e.lastAtk = k === 'area' ? 'area' : 'front';
+      if (k === 'area') { bossWind(e, 'novaWind', C.nova); e.novaAngles = bossNovaAngles(e); }
+      else if (k === 'volley') bossWind(e, 'volleyWind', C.volley);
+      else bossWind(e, 'sweepWind', C.sweep);
+      return [0, 0];
+    }
+    const want = d < C.keep[0] ? -0.6 : (d > C.keep[1] ? 1 : 0.25), sp = e.spd * C.spdMul * (rage ? 1.25 : 1);
+    return [Math.cos(e.dir) * want * sp, Math.sin(e.dir) * want * sp];
+  },
+  // ---------- Ariete ----------
+  ram(e, p, d, dt) {
+    const C = BOSS.ram, rage = bossRage(e); e.t -= dt;
+    if (e.state === 'chargeWind') { // escarba: el carril hasta el muro se marca en el suelo; gira despacio hasta fijarlo
+      if (e.t > C.charge.lock) { bossTurn(e, p.x, p.y, C.charge.turn, dt); e.lane = bossLane(e); }
+      if (Math.random() < 0.5) particles.push({ x: e.x - Math.cos(e.dir) * e.r, y: e.y - Math.sin(e.dir) * e.r, vx: -Math.cos(e.dir) * 80, vy: -Math.sin(e.dir) * 60, life: 0.3, max: 0.3, color: '#b89a72', s: 4 });
+      if (e.t <= 0) { e.state = 'charge'; e.chargeL = 0; shake = Math.max(shake, 3); }
+      return [0, 0];
+    }
+    if (e.state === 'charge') { // embiste en línea recta; contra un muro se queda aturdido (gran ventana para pegarle)
+      const ux = Math.cos(e.dir), uy = Math.sin(e.dir), step = C.charge.spd * dt;
+      e.chargeL += step;
+      if (Math.random() < 0.7) particles.push({ x: e.x, y: e.y - 6, vx: 0, vy: 0, life: 0.25, max: 0.25, color: e.color, s: 6 });
+      if (segSolid(e.x, e.y, e.x + ux * (e.r + 10), e.y + uy * (e.r + 10))) {
+        e.state = 'dazed'; e.t = C.charge.daze; shake = Math.max(shake, 9); burst(e.x + ux * e.r, upY(e.y + uy * e.r, 20), '#e9d3a8', 16);
+        floatText(e.x, upY(e.y, 70), '¡Atontado!', '#ffd54a'); e.chain = 0; return [0, 0];
+      }
+      if (e.chargeL >= C.charge.max) { // no ha chocado: derrapa; con rabia vuelve a encararse y embiste otra vez
+        if (rage && (e.chain || 0) + 1 < C.charge.chainRage) { e.chain = (e.chain || 0) + 1; e.state = 'chargeWind'; e.windDur = e.t = C.charge.rewind; e.lane = bossLane(e); }
+        else { e.chain = 0; e.state = 'recover'; e.t = C.charge.skid + (rage ? C.recoverRage : C.recover); }
+        return [0, 0];
+      }
+      return [ux * C.charge.spd, uy * C.charge.spd];
+    }
+    if (e.state === 'dazed') { if (e.t <= 0) bossWalk(e); return [0, 0]; }
+    if (e.state === 'goreWind' || e.state === 'stompWind') { if (e.t <= 0) bossRecover(e); return [0, 0]; } // el daño lo hace el aviso del suelo
+    if (e.state === 'recover') { if (e.t <= 0) bossWalk(e); return [0, 0]; }
+    bossTurn(e, p.x, p.y, C.turn, dt);
+    if (e.t <= 0) {
+      const off = Math.abs(bossAng(Math.atan2(p.y - e.y, p.x - e.x) - e.dir)), closeFront = d < C.gore.range && off < 0.7;
+      const k = bossPick({ area: bossAreaWeight(e), gore: closeFront ? 1.6 : 0, charge: d > 120 ? 1.6 : 0.3 });
+      e.lastAtk = k === 'area' ? 'area' : 'front';
+      if (k === 'area') { bossWind(e, 'stompWind', C.stomp); bossHazard(e, e.x, e.y, C.stomp.r, e.t, 'stomp'); }
+      else if (k === 'gore') { bossWind(e, 'goreWind', C.gore); bossHazard(e, e.x, e.y, C.gore.r, e.t, 'gore', { ang: e.dir, arc: C.gore.arc }); }
+      else { bossWind(e, 'chargeWind', C.charge); e.lane = bossLane(e); e.chain = 0; }
+      return [0, 0];
+    }
+    const sp = e.spd * C.spdMul * (rage ? 1.2 : 1); return [Math.cos(e.dir) * sp, Math.sin(e.dir) * sp];
+  },
+  // ---------- Coloso ----------
+  colossus(e, p, d, dt) {
+    const C = BOSS.colossus, rage = bossRage(e); e.t -= dt;
+    if (e.state === 'slamWind' || e.state === 'quakeWind' || e.state === 'stompWind') { // levanta los puños; el aviso del suelo hace el daño
+      if (e.t <= 0) {
+        shake = Math.max(shake, e.state === 'stompWind' ? 10 : 7);
+        if (e.state === 'slamWind' && rage) { // con rabia, tras el martillazo encadena la grieta
+          bossWind(e, 'quakeWind', C.quake); bossQuake(e); return [0, 0];
+        }
+        bossRecover(e);
+      }
+      return [0, 0];
+    }
+    if (e.state === 'recover') { if (e.t <= 0) bossWalk(e); return [0, 0]; }
+    bossTurn(e, p.x, p.y, C.turn, dt);
+    if (e.t <= 0) {
+      const off = Math.abs(bossAng(Math.atan2(p.y - e.y, p.x - e.x) - e.dir));
+      const k = bossPick({ area: bossAreaWeight(e), slam: d < C.slam.range && off < 0.8 ? 1.6 : 0.2, quake: d > 150 ? 1.4 : 0.3 });
+      e.lastAtk = k === 'area' ? 'area' : 'front';
+      if (k === 'area') { bossWind(e, 'stompWind', C.stomp); bossHazard(e, e.x, e.y, C.stomp.r, e.t, 'stomp'); }
+      else if (k === 'slam') { bossWind(e, 'slamWind', C.slam); bossHazard(e, e.x, e.y, C.slam.r, e.t, 'slam', { ang: e.dir, arc: C.slam.arc }); }
+      else { bossWind(e, 'quakeWind', C.quake); bossQuake(e); }
+      return [0, 0];
+    }
+    const sp = e.spd * C.spdMul * (rage ? 1.2 : 1); return [Math.cos(e.dir) * sp, Math.sin(e.dir) * sp];
+  }
+};
+// Grieta del Coloso: una fila de avisos que avanza desde sus puños hacia delante, uno tras otro
+function bossQuake(e) {
+  const Q = BOSS.colossus.quake, ux = Math.cos(e.dir), uy = Math.sin(e.dir);
+  for (let i = 0; i < Q.n; i++) {
+    const L = e.r + 30 + i * Q.step, x = e.x + ux * L, y = e.y + uy * L;
+    if (outsideRoom(x, y)) break;
+    bossHazard(e, x, y, Q.r, e.t + i * Q.gap, 'quake');
+  }
 }
 
-// Solo hacen daño de contacto durante la embestida que avisan (el guardián conserva el suyo: CONTACT_ATTACK)
+// Solo hacen daño de contacto durante la embestida que avisan
 function isHot(e) {
-  if (e.type === 'boss') return true;
+  // if (e.type === 'boss') return true; // [RETIRADO 2026-11-08] el guardián dañaba siempre al tocarlo
+  if (e.type === 'boss') return e.state === 'charge'; // solo el Ariete, durante la embestida
   if (e.type === 'mite' || e.type === 'charger') return e.state === 'dash';
   return false;
 }
@@ -8119,7 +8330,8 @@ function drawWindIcon(x, y, s, col) {
 function windK(e) {
   if (e.airborne || e.stunT > 0) return 0;
   const clamp = (v) => Math.min(1, Math.max(0, v));
-  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind' || e.state === 'sgWind' || e.state === 'ringWind' || e.state === 'fanWind') return clamp(1 - e.t / e.windDur);
+  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind' || e.state === 'sgWind' ) return clamp(1 - e.t / e.windDur);
+  if (e.type === 'boss' && /Wind$/.test(e.state)) return clamp(1 - e.t / e.windDur);
   if (e.type === 'shooter' && e.cd < 0.6) return clamp(1 - e.cd / 0.6);
   if (e.type === 'splitter' && e.bombCd < 0.6) return clamp(1 - e.bombCd / 0.6);
   return 0;
@@ -8136,7 +8348,7 @@ function attackWarn(e) {
     case 'golem': return e.state === 'leapWind' || e.state === 'slamWind';
     case 'splitter': return e.bombCd < 0.5;
     // case 'boss': return e.cd < 0.55 || e.cd2 < 0.4; // [RETIRADO 2026-11-08] temporizadores antiguos
-    case 'boss': return e.state === 'ringWind' || e.state === 'fanWind';
+    case 'boss': return /Wind$/.test(e.state) || e.state === 'charge';
     default: return false;
   }
 }
@@ -8158,6 +8370,71 @@ function drawExecIndicator(e, y) {
   ctx.fillRect(-s / 2, -s / 2, s, s); ctx.strokeRect(-s / 2, -s / 2, s, s);
   ctx.restore();
   if (lit) { ctx.font = '700 10px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd54a'; ctx.fillText('Ejecutar: golpe', e.x, y - 13); }
+}
+// Guardián: cuerpo con frente y espalda. La cara y el arma miran hacia e.dir; de espaldas solo se ve la coraza
+function drawBossBody(e, x, y, r, fill, wk, stun) {
+  let fx = Math.cos(e.dir), fy = Math.sin(e.dir) * K; const fl = Math.hypot(fx, fy) || 1; fx /= fl; fy /= fl;
+  const sx = -fy, sy = fx, a = Math.atan2(fy, fx), away = Math.sin(e.dir) < -0.3, kind = e.kind || 'cannon';
+  const rage = e.hp < e.maxHp / 2, dark = '#16121e';
+  const lift = (e.state === 'sweep' ? 1 : wk) * (kind === 'colossus' ? 16 : 8); // el arma se levanta al preparar
+  const front = () => {
+    ctx.save(); ctx.strokeStyle = dark; ctx.lineWidth = 2;
+    if (kind === 'cannon') { // cañón que sale del frente
+      ctx.translate(x + fx * r * 0.35, y + fy * r * 0.35 - lift); ctx.rotate(a);
+      const len = r * 1.05 + wk * 6, w = r * 0.5;
+      ctx.fillStyle = '#3a3346'; rrect(0, -w / 2, len, w, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#5a5168'; rrect(len - 8, -w / 2 - 3, 10, w + 6, 3); ctx.fill(); ctx.stroke(); // boca
+      if (wk > 0 || e.state === 'sweep') { ctx.globalAlpha = 0.4 + 0.5 * (e.state === 'sweep' ? 1 : wk); ctx.fillStyle = '#ffb27a'; ellipse(len + 4, 0, 5 + 7 * wk, 5 + 7 * wk); }
+    } else if (kind === 'ram') { // cuernos curvos hacia delante
+      ctx.strokeStyle = '#efe2c4'; ctx.lineCap = 'round'; ctx.lineWidth = r * 0.24;
+      for (const s of [-1, 1]) {
+        const bx = x + fx * r * 0.65 + sx * s * r * 0.45, by = y + fy * r * 0.65 + sy * s * r * 0.45 - r * 0.15;
+        ctx.beginPath(); ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(bx + fx * r * 0.5 + sx * s * r * 0.55, by + fy * r * 0.5 + sy * s * r * 0.55, bx + fx * r * 0.95 + sx * s * r * 0.08, by + fy * r * 0.95 + sy * s * r * 0.08);
+        ctx.stroke();
+      }
+    } else { // Coloso: dos puños que se alzan
+      for (const s of [-1, 1]) {
+        const cx = x + fx * r * 0.6 + sx * s * r * 0.78, cy = y + fy * r * 0.6 + sy * s * r * 0.78 - lift, rr = r * 0.4 * (1 + 0.25 * wk);
+        ctx.fillStyle = '#56657a'; ellipse(cx, cy, rr, rr); ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  };
+  const body = () => {
+    ctx.save(); ctx.fillStyle = fill; ctx.strokeStyle = rage ? (Math.floor(time * 6) % 2 ? '#ff3b4e' : '#8a1f2a') : dark; ctx.lineWidth = rage ? 3.5 : 3;
+    ctx.beginPath();
+    if (kind === 'ram') ctx.ellipse(x, y, r * 1.2, r * 0.92, a, 0, Math.PI * 2);
+    else if (kind === 'colossus') for (let i = 0; i < 8; i++) { const t = a + Math.PI / 8 + i * Math.PI / 4, rr = r * (i % 2 ? 1 : 0.93); ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(t) * rr, y + Math.sin(t) * rr); }
+    else ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // espalda: coraza oscura con placas (Cañonero), crin (Ariete) o musgo (Coloso)
+    const back = a + Math.PI;
+    ctx.globalAlpha = 0.55; ctx.lineCap = 'round';
+    ctx.strokeStyle = kind === 'colossus' ? '#4f7a4a' : '#2a2234'; ctx.lineWidth = r * 0.3;
+    ctx.beginPath(); ctx.arc(x, y, r * 0.72, back - 1.0, back + 1.0); ctx.stroke();
+    ctx.globalAlpha = 0.9; ctx.fillStyle = kind === 'ram' ? '#6b3f1d' : '#2a2234';
+    for (const o of [-0.6, 0, 0.6]) { // púas de la espalda
+      const t = back + o, px = x + Math.cos(t) * r * 0.95, py = y + Math.sin(t) * r * 0.95, qx = Math.cos(t), qy = Math.sin(t);
+      ctx.beginPath(); ctx.moveTo(px + qx * r * 0.28, py + qy * r * 0.28); ctx.lineTo(px - qy * r * 0.14, py + qx * r * 0.14); ctx.lineTo(px + qy * r * 0.14, py - qx * r * 0.14); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  };
+  const face = () => { // ojos en el frente (de espaldas no se ven)
+    if (away) return;
+    const cx = x + fx * r * 0.5, cy = y + fy * r * 0.5 - r * 0.12, er = Math.max(3, r * 0.14);
+    ctx.save();
+    for (const s of [-1, 1]) {
+      const ex = cx + sx * s * r * 0.3, ey = cy + sy * s * r * 0.3 * 0.6;
+      if (stun) { ctx.strokeStyle = dark; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(ex - er, ey - er); ctx.lineTo(ex + er, ey + er); ctx.moveTo(ex + er, ey - er); ctx.lineTo(ex - er, ey + er); ctx.stroke(); continue; }
+      ctx.fillStyle = '#fff6e0'; ellipse(ex, ey, er * 1.25, er * 1.25);
+      ctx.fillStyle = wk > 0 || e.state === 'charge' ? '#ff3b4e' : dark; ellipse(ex + fx * er * 0.4, ey + fy * er * 0.4, er * 0.7, er * 0.7);
+    }
+    ctx.strokeStyle = dark; ctx.lineWidth = 3; ctx.lineCap = 'round'; // ceño: más fruncido al preparar
+    for (const s of [-1, 1]) { const ex = cx + sx * s * r * 0.3, ey = cy + sy * s * r * 0.18 - er * 1.7; ctx.beginPath(); ctx.moveTo(ex - sx * s * er * 1.4, ey - er * 0.4 * wk); ctx.lineTo(ex + sx * s * er * 0.9, ey + er * (0.3 + 0.6 * wk)); ctx.stroke(); }
+    ctx.restore();
+  };
+  if (away) { front(); body(); } else { body(); front(); face(); }
 }
 function drawEnemy(e) {
   const base = e.tier >= 4 ? 18 : (e.tier === 3 ? 16 : 12), z = e.z || 0, sh = Math.max(0.6, 1 - z / 300);
@@ -8182,7 +8459,7 @@ function drawEnemy(e) {
   const wk = windK(e); // 0 → 1 durante la preparación del ataque
   if (e.type === 'charger' && e.state === 'wind') x += (Math.random() - 0.5) * 4 * wk; // temblor del cargador al cargar
   if (wk > 0 && Math.floor(time * (6 + 18 * wk)) % 2) fill = '#fff3c4'; // parpadeo que se acelera conforme se carga
-  if (e.type === 'boss' && e.hp < e.maxHp / 2) fill = '#ff5c5c';
+  // if (e.type === 'boss' && e.hp < e.maxHp / 2) fill = '#ff5c5c'; // [RETIRADO 2026-11-08] con rabia ahora late un contorno rojo y conserva su color
   if (stun) x += Math.sin(time * 24) * 1.2;
   const hs = e.hitstun > 0 ? Math.min(1, e.hitstun / HITSTUN_HEAVY) : 0, lean = (e.hitLean || 0) * hs; // reacción a golpe: inclinación y temblor
   if (hs > 0) x += Math.sin(time * 40) * 1.5 * hs;
@@ -8202,10 +8479,12 @@ function drawEnemy(e) {
   // preparación: se encoge y ensancha (el slime se estira hacia arriba) para que se vea venir el golpe
   const cwx = wk * (e.type === 'slime' ? -0.2 : 0.22), cwy = wk * (e.type === 'slime' ? 0.35 : -0.3);
   ctx.save(); ctx.translate(x, y + r); ctx.rotate(lean); ctx.scale((1 + 0.28 * sq) * (1 + cwx), (1 - 0.22 * sq) * (1 + cwy)); ctx.translate(-x, -(y + r));
-  enemyPath(e, x, y, r); ctx.fill(); ctx.stroke();
+  if (e.type === 'boss') drawBossBody(e, x, y, r, fill, wk, stun); // guardián: cuerpo con frente (cara y arma) y espalda
+  else { enemyPath(e, x, y, r); ctx.fill(); ctx.stroke(); }
   if (e.type === 'splitter') { ctx.fillStyle = '#c0267a'; ellipse(x, y, r * 0.32, r * 0.32); }
   ctx.fillStyle = '#16121e';
-  if (stun) {
+  if (e.type === 'boss') { /* ojos dibujados en drawBossBody */ }
+  else if (stun) {
     ctx.strokeStyle = '#16121e'; ctx.lineWidth = 2;
     for (const sx of [-1, 1]) {
       const ex = x + sx * r * 0.32, ey = y - r * 0.15, q = Math.max(2, r * 0.13);
@@ -8267,27 +8546,62 @@ function drawHazards() {
   }
 }
 
-// Avisos del guardián en el suelo: radios del anillo (los huecos son los sitios seguros) y líneas del abanico
+// [RETIRADO 2026-11-08 · v2] // Avisos del guardián en el suelo: radios del anillo (los huecos son los sitios seguros) y líneas del abanico
+// [RETIRADO 2026-11-08 · v2] function drawBossTells() {
+// [RETIRADO 2026-11-08 · v2]   for (const e of enemies) {
+// [RETIRADO 2026-11-08 · v2]     if (e.type !== 'boss' || e.dead || e.airborne || e.stunT > 0) continue;
+// [RETIRADO 2026-11-08 · v2]     const k = windK(e); if (k <= 0) continue;
+// [RETIRADO 2026-11-08 · v2]     ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#ff4d5e';
+// [RETIRADO 2026-11-08 · v2]     const r0 = e.r + BOSS_AI.ring.out;
+// [RETIRADO 2026-11-08 · v2]     if (e.state === 'ringWind' && e.ringAngles) {
+// [RETIRADO 2026-11-08 · v2]       const len = 40 + 110 * k; ctx.lineWidth = 3 + 3 * k; ctx.globalAlpha = 0.35 + 0.5 * k;
+// [RETIRADO 2026-11-08 · v2]       ctx.beginPath();
+// [RETIRADO 2026-11-08 · v2]       for (const a of e.ringAngles) { ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
+// [RETIRADO 2026-11-08 · v2]       ctx.stroke();
+// [RETIRADO 2026-11-08 · v2]       ctx.globalAlpha = 0.2 + 0.3 * k; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, r0 + len, 0, Math.PI * 2); ctx.stroke();
+// [RETIRADO 2026-11-08 · v2]     }
+// [RETIRADO 2026-11-08 · v2]     if (e.state === 'fanWind') {
+// [RETIRADO 2026-11-08 · v2]       const F = BOSS_AI.fan, n = e.hp < e.maxHp / 2 ? F.nRage : F.n, locked = e.t <= F.lock, len = 120 + 160 * k;
+// [RETIRADO 2026-11-08 · v2]       ctx.lineWidth = locked ? 4 : 2; ctx.globalAlpha = locked ? 0.9 : 0.3 + 0.4 * k;
+// [RETIRADO 2026-11-08 · v2]       if (!locked) ctx.setLineDash([8, 6]);
+// [RETIRADO 2026-11-08 · v2]       ctx.beginPath();
+// [RETIRADO 2026-11-08 · v2]       for (let i = 0; i < n; i++) { const a = e.aim + (i - (n - 1) / 2) * F.spread; ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
+// [RETIRADO 2026-11-08 · v2]       ctx.stroke();
+// [RETIRADO 2026-11-08 · v2]     }
+// [RETIRADO 2026-11-08 · v2]     ctx.restore();
+// [RETIRADO 2026-11-08 · v2]   }
+// [RETIRADO 2026-11-08 · v2] }
+// Avisos de los guardianes en el suelo (los de área y cornadas van como hazards; aquí los disparos y la embestida)
 function drawBossTells() {
   for (const e of enemies) {
-    if (e.type !== 'boss' || e.dead || e.airborne || e.stunT > 0) continue;
-    const k = windK(e); if (k <= 0) continue;
-    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#ff4d5e';
-    const r0 = e.r + BOSS_AI.ring.out;
-    if (e.state === 'ringWind' && e.ringAngles) {
-      const len = 40 + 110 * k; ctx.lineWidth = 3 + 3 * k; ctx.globalAlpha = 0.35 + 0.5 * k;
+    if (e.type !== 'boss' || e.dead || e.airborne || e.stunT > 0 || e.spawnT > 0) continue;
+    const k = windK(e), C = BOSS.cannon;
+    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#ff4d5e'; ctx.fillStyle = '#ff4d5e';
+    const [mx, my] = bossMuzzle(e);
+    if (e.state === 'volleyWind') { // líneas desde la boca del cañón: discontinuas mientras apunta, sólidas al fijar
+      const n = bossRage(e) ? C.volley.nRage : C.volley.n, locked = e.t <= C.volley.lock, len = 140 + 180 * k;
+      ctx.lineWidth = locked ? 4 : 2; ctx.globalAlpha = locked ? 0.9 : 0.3 + 0.4 * k; if (!locked) ctx.setLineDash([8, 6]);
       ctx.beginPath();
-      for (const a of e.ringAngles) { ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
+      for (let i = 0; i < n; i++) { const a = e.dir + (i - (n - 1) / 2) * C.volley.spread; ctx.moveTo(mx, my); ctx.lineTo(mx + Math.cos(a) * len, my + Math.sin(a) * len); }
       ctx.stroke();
-      ctx.globalAlpha = 0.2 + 0.3 * k; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, r0 + len, 0, Math.PI * 2); ctx.stroke();
     }
-    if (e.state === 'fanWind') {
-      const F = BOSS_AI.fan, n = e.hp < e.maxHp / 2 ? F.nRage : F.n, locked = e.t <= F.lock, len = 120 + 160 * k;
-      ctx.lineWidth = locked ? 4 : 2; ctx.globalAlpha = locked ? 0.9 : 0.3 + 0.4 * k;
-      if (!locked) ctx.setLineDash([8, 6]);
+    if (e.state === 'sweepWind' || e.state === 'sweep') { // cuña del barrido y flecha del sentido
+      const S = C.sweep, base = e.state === 'sweep' ? e.sweepBase : e.dir, R = 260, locked = e.state === 'sweep' || e.t <= S.lock;
+      ctx.globalAlpha = locked ? 0.22 : 0.08 + 0.12 * k; ctx.beginPath(); ctx.moveTo(mx, my); ctx.arc(mx, my, R, base - S.arc, base + S.arc); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = locked ? 0.85 : 0.45; ctx.lineWidth = 2; if (!locked) ctx.setLineDash([8, 6]); ctx.stroke();
+    }
+    if (e.state === 'novaWind' && e.novaAngles) { // radios del Estallido: los huecos son los sitios seguros
+      const r0 = e.r + C.nova.out, len = 40 + 120 * k; ctx.lineWidth = 3 + 3 * k; ctx.globalAlpha = 0.35 + 0.5 * k;
       ctx.beginPath();
-      for (let i = 0; i < n; i++) { const a = e.aim + (i - (n - 1) / 2) * F.spread; ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
-      ctx.stroke();
+      for (const a of e.novaAngles) { ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
+      ctx.stroke(); ctx.globalAlpha = 0.2 + 0.3 * k; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, r0 + len, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (e.state === 'chargeWind') { // carril de la embestida hasta el muro
+      const L = e.lane || 0, w = e.r, ux = Math.cos(e.dir), uy = Math.sin(e.dir), locked = e.t <= BOSS.ram.charge.lock;
+      ctx.translate(e.x, e.y); ctx.rotate(e.dir);
+      ctx.globalAlpha = locked ? 0.3 : 0.1 + 0.15 * k; ctx.fillRect(0, -w, L, w * 2);
+      ctx.globalAlpha = locked ? 0.95 : 0.5; ctx.lineWidth = locked ? 3 : 2; if (!locked) ctx.setLineDash([10, 7]); ctx.strokeRect(0, -w, L, w * 2);
+      ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(L - 22, -12); ctx.lineTo(L - 4, 0); ctx.lineTo(L - 22, 12); ctx.stroke(); // punta de flecha en el muro
     }
     ctx.restore();
   }
@@ -8638,7 +8952,7 @@ function drawGame() {
     ctx.fillRect(140 + bw * TIER_RULES[4].launchSta - 1, by + 7, 2, 10);
     // nombre del guardián; con la estamina al 50 % o menos, icono de viento a su lado
     ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
-    const label = 'Guardián del piso', ty = by - 5;
+    const label = (BOSS[boss.kind] || {}).name || 'Guardián del piso', ty = by - 5;
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(label, W / 2 + 1, ty + 1);
     ctx.fillStyle = '#f2eefa'; ctx.fillText(label, W / 2, ty);
     if (on) drawWindIcon(W / 2 + ctx.measureText(label).width / 2 + 6, ty - 9, 10, '#6ee7ff');
