@@ -134,7 +134,7 @@ body.touch.portrait:not(.rotdismiss) #rotate{display:flex}
   <button class="primary" id="rotFull">Pantalla completa en horizontal</button>
   <button id="rotStay">Seguir en vertical</button>
 </div>
-<footer>Mantén el disparo para cargarlo y suéltalo para disparar. Mantén pulsada una habilidad para ver hacia dónde va y suéltala para lanzarla. Pausa con Esc o Start; desde la pausa puedes mostrar la guía de controles. Las teclas y botones se cambian en «Opciones de control», en el menú principal o en la pausa.</footer>
+<footer>Mantén el disparo para cargarlo y suéltalo para disparar. Mantén pulsada una habilidad para ver hacia dónde va y suéltala para lanzarla. Pausa con Esc o Start; desde la pausa puedes mostrar la guía de controles. Las teclas, los botones y el sonido se cambian en «Controles y sonido», en el menú principal o en la pausa. En los menús, Esc o el botón de Movimiento vuelven atrás.</footer>
 
 <script>
 (() => {
@@ -1590,71 +1590,96 @@ function npcInput(p) {
   return out;
 }
 function toggleTest() { testMode = !testMode; document.body.classList.toggle('test', testMode); }
+// ---------- Navegación común de los menús (2026-11-08) ----------
+// Mapa: Menú principal (modo · jugadores · Controles y sonido · Dev Options)
+//   ├ Jugadores → Elige personaje → partida (Pausa → Controles y sonido)
+//   ├ Controles y sonido (pestañas Teclado A, Teclado B, Mandos, Sonido, General)
+//   └ Dev Options → Selección de nivel · Diario de ideas · Test de mandos · APK
+// Regla en todas las subpantallas: botón «‹ Volver» arriba a la izquierda (ratón o toque) y, con teclado o mando,
+// Esc o el botón de Movimiento (B) vuelven a la pantalla de la que se vino. Golpe confirma.
+// En el móvil el botón de pantalla completa ocupa la esquina, así que «Volver» se aparta para no quedar debajo.
+function fullBtnOn() { return document.body.classList.contains('touch') && document.body.classList.contains('canfull'); }
+function backBtnRect() { const x = fullBtnOn() ? Math.max(24, 64 / viewS) : 24; return [x, 18, 108, 34]; }
+function drawBackBtn(focus) {
+  const [bx, by, bw, bh] = backBtnRect();
+  rrect(bx, by, bw, bh, 8); ctx.fillStyle = focus ? '#2f2640' : '#1c1726'; ctx.fill();
+  ctx.lineWidth = focus ? 2.5 : 1.5; ctx.strokeStyle = focus ? '#b49bff' : '#3b3349'; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 14px ' + FONT; ctx.fillText('‹ Volver', bx + bw / 2, by + 22);
+}
+// Pie común de las subpantallas: qué confirma y qué vuelve, con las teclas reales del Teclado A y el mando
+function drawMenuHint(extra) {
+  const t = isTouch ? 'Toca una opción · «‹ Volver» arriba a la izquierda'
+    : 'Golpe (' + bindName('kb1', 'atk') + ' / ' + bindName('pad', 'atk') + ') confirma · Esc o Movimiento (' + bindName('kb1', 'dash') + ' / ' + bindName('pad', 'dash') + ') vuelve';
+  ctx.textAlign = 'center'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
+  ctx.fillText(extra ? extra + ' · ' + t : t, LW / 2, LH - 18);
+}
 // ---------- Dev Options (menú principal): autosalto por los aires, selección de nivel y diario de ideas ----------
 let devStartDepth = 1, devSel = 0, levelSel = 0; // nivel con el que empieza la próxima partida
-function devRect() { return [24, LH - 100, 196, 76]; } // botón grande «Dev Options» del menú principal, abajo a la izquierda (la opción 7)
-function devRow(i) { const w = Math.min(520, LW - 80); return [(LW - w) / 2, 140 + i * 78, w, 62]; }
+// Dev Options: lista de filas (0-4). Volver: botón «‹ Volver», Esc o Movimiento
+const DEV_ROWS = 5;
+function devRow(i) { const w = Math.min(520, LW - 80); return [(LW - w) / 2, 128 + i * 72, w, 60]; }
 function levelRect(n) { const cols = 4, w = 200, h = 120, gap = 16, x0 = (LW - (cols * w + (cols - 1) * gap)) / 2, r = Math.floor((n - 1) / cols), c = (n - 1) % cols; return [x0 + c * (w + gap), 130 + r * (h + gap), w, h]; }
-function devBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; }
-function openDev() { state = 'dev'; devSel = 0; for (const dev of DEVICES) menuInput(dev); } // el botón que abrió el menú no debe activar nada aquí
+// function devBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; } // antes: «Volver» abajo; ahora backBtnRect() arriba a la izquierda en todas las subpantallas
+function menuSwallow() { for (const dev of DEVICES) menuInput(dev); escPressed(); } // el botón que abrió la pantalla no debe activar nada en ella
+function openDev() { state = 'dev'; menuSwallow(); }
+function closeDev() { state = 'count'; mmRow = 2; mmAct = 1; menuSwallow(); }
+function openLevels() { levelSel = devStartDepth - 1; state = 'levels'; menuSwallow(); }
+function closeLevels() { state = 'dev'; devSel = 1; menuSwallow(); }
 function devAct(i) {
   if (i === 0) toggleTest();
-  else if (i === 1) { levelSel = devStartDepth - 1; state = 'levels'; }
+  else if (i === 1) openLevels();
   else if (i === 2) openIdeas();
-  else if (i === 3) location.href = 'diagnostico-mando.html'; // test de mandos
+  else if (i === 3) location.href = 'diagnostico-mando.html'; // test de mandos (la página tiene «Volver al juego»)
   else if (i === 4) location.href = 'https://github.com/CB0-ACID/mazmorra-coop/releases/download/tv-latest/app-debug.apk'; // APK para Android TV
-  else state = 'count';
 }
 function updateDev() {
   let back = escPressed();
   for (const dev of DEVICES) {
     const m = menuInput(dev);
-    if (m.dy) devSel = (devSel + m.dy + 6) % 6; // 0-4 filas, 5 = volver
+    if (m.dy) devSel = (devSel + m.dy + DEV_ROWS) % DEV_ROWS;
     if (m.a) { devAct(devSel); return; }
     if (m.d) back = true;
   }
-  if (back) state = 'count';
+  if (back) closeDev();
 }
 function updateLevels() {
   let back = escPressed();
   for (const dev of DEVICES) {
     const m = menuInput(dev);
     if (m.dx || m.dy) levelSel = (((levelSel + m.dx + 4 * m.dy) % 8) + 8) % 8;
-    if (m.a) { devStartDepth = levelSel + 1; state = 'count'; return; }
+    if (m.a) { devStartDepth = levelSel + 1; closeLevels(); return; } // elegir un piso vuelve a Dev Options, donde se ve el cambio
     if (m.d) back = true;
   }
-  if (back) state = 'dev';
+  if (back) closeLevels();
 }
 function drawDev() {
   drawMenuBg();
+  drawBackBtn(false);
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Dev Options', LW / 2, 70);
-  ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Herramientas para probar y revisar el juego', LW / 2, 98);
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Dev Options', LW / 2, 66);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Herramientas para probar y revisar el juego', LW / 2, 94);
   const names = ['Autosaltar enemigos por los aires', 'Selección de nivel', 'Diario de ideas', 'Test de mandos', 'Descargar app Android TV'];
-  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Ideas que quiero implementar y que aún considero no viables', 'Muestra qué botones y ejes llegan desde los mandos', 'APK para instalar la app con mandos en la tele'];
-  for (let i = 0; i < 5; i++) {
+  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Ideas que quiero implementar y que aún considero no viables', 'Muestra qué botones y ejes llegan desde los mandos (sale del juego)', 'APK para instalar la app con mandos en la tele'];
+  for (let i = 0; i < DEV_ROWS; i++) {
     const [x, y, w, h] = devRow(i), sel = devSel === i;
     rrect(x, y, w, h, 9); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#f2eefa'; ctx.font = '700 16px ' + FONT; ctx.fillText(names[i], x + 18, y + 26);
-    ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText(descs[i], x + 18, y + 46);
+    ctx.fillStyle = '#f2eefa'; ctx.font = '700 16px ' + FONT; ctx.fillText(names[i], x + 18, y + 25);
+    ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText(descs[i], x + 18, y + 45);
     ctx.textAlign = 'right'; ctx.font = '700 13px ' + FONT;
-    if (i === 0) { ctx.fillStyle = testMode ? '#ffd54a' : '#8f86a0'; ctx.fillText(testMode ? 'Activado' : 'Desactivado', x + w - 18, y + 26); }
-    else if (i === 1) { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + devStartDepth + ' · ' + themeOf(devStartDepth).name, x + w - 18, y + 26); }
-    else if (i === 2) { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Abrir ›', x + w - 18, y + 26); }
-    else { ctx.fillStyle = '#d8d0e6'; ctx.fillText(i === 3 ? 'Abrir ›' : 'Descargar ›', x + w - 18, y + 26); }
+    if (i === 0) { ctx.fillStyle = testMode ? '#ffd54a' : '#8f86a0'; ctx.fillText(testMode ? 'Activado' : 'Desactivado', x + w - 18, y + 25); }
+    else if (i === 1) { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + devStartDepth + ' · ' + themeOf(devStartDepth).name + ' ›', x + w - 18, y + 25); }
+    else { ctx.fillStyle = '#d8d0e6'; ctx.fillText(i === 4 ? 'Descargar ›' : 'Abrir ›', x + w - 18, y + 25); }
   }
-  const [bx, by, bw, bh] = devBackRect(), sel = devSel === 5;
-  rrect(bx, by, bw, bh, 7); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
-  ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
-  ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT; ctx.fillText('Volver', bx + bw / 2, by + 20);
+  drawMenuHint();
 }
 function drawLevels() {
   drawMenuBg();
+  drawBackBtn(false);
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Selección de nivel', LW / 2, 70);
-  ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Elige el piso con el que empieza la próxima partida', LW / 2, 98);
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Selección de nivel', LW / 2, 66);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Elige el piso con el que empieza la próxima partida', LW / 2, 94);
   for (let n = 1; n <= 8; n++) {
     const [x, y, w, h] = levelRect(n), sel = levelSel === n - 1, th = themeOf(n);
     rrect(x, y, w, h, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
@@ -1664,30 +1689,45 @@ function drawLevels() {
     ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT; ctx.fillText(th.name, x + w / 2, y + 86);
     if (devStartDepth === n) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('inicio actual', x + w / 2, y + 108); }
   }
-  ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText('Esc o el botón Volver regresan a Dev Options', LW / 2, LH - 74);
-  const [bx, by, bw, bh] = devBackRect();
-  rrect(bx, by, bw, bh, 7); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
-  ctx.fillStyle = '#d8d0e6'; ctx.font = '700 13px ' + FONT; ctx.fillText('Volver', bx + bw / 2, by + 20);
+  drawMenuHint('Elegir un piso vuelve a Dev Options');
 }
 
-// ---------- Menú: número de jugadores ----------
-function countBox(n) { const bw = 120, gap = 12, x0 = (LW - (5 * bw + 4 * gap)) / 2; return [x0 + (n - 1) * (bw + gap), 150, bw, 130]; } // la 5.ª es 1 jugador + aliado IA
-function optRect() { return [LW / 2 + 182, 300, 172, 28]; } // botón «Opciones» del menú principal (la opción 6)
-function modeRect() { return [24, 20, 210, 58]; } // botón «Modo» del menú principal (la opción 8): Mazmorra o Asedio
-function diagRect() { const [ox, oy, ow, oh] = optRect(); return [ox, oy + oh + 6, ow, 24]; } // acceso por botón a la página de diagnóstico de mandos (diagnostico-mando.html)
+// ---------- Menú principal: modo, número de jugadores y accesos ----------
+// Tres filas navegables con teclado o mando (arriba/abajo cambian de fila, izquierda/derecha dentro de la fila):
+//   fila 0: modo de juego (Mazmorra · Asedio; se cambia solo con moverse)
+//   fila 1: jugadores (1, 2, 3, 4, 1 + IA; golpe pasa a elegir personaje)
+//   fila 2: Controles y sonido · Dev Options
+let mmRow = 1, mmAct = 0;
+function countBox(n) { const bw = 120, gap = 12, x0 = (LW - (5 * bw + 4 * gap)) / 2; return [x0 + (n - 1) * (bw + gap), 192, bw, 118]; } // la 5.ª es 1 jugador + aliado IA
+function modeSeg(i) { const w = 240, g = 12, x0 = LW / 2 - w - g / 2; return [x0 + i * (w + g), 90, w, 52]; } // 0 Mazmorra · 1 Asedio
+function actRect(i) { const w = 220, g = 16, x0 = LW / 2 - w - g / 2; return [x0 + i * (w + g), 462, w, 44]; } // 0 Controles y sonido · 1 Dev Options
+// function optRect() { return [LW / 2 + 182, 300, 172, 28]; } // antes: botones sueltos que se montaban sobre el escaparate
+// function modeRect() { return [24, 20, 210, 58]; }                // y quedaban bajo el botón de pantalla completa en el móvil
+// function devRect() { return [24, LH - 100, 196, 76]; }
+// function diagRect() { ... } // «Diagnóstico de mando» repetía «Test de mandos» de Dev Options: ahora solo está allí
+function mmActivate(i) { if (i === 0) openOptions('count'); else openDev(); }
 function updateCount() {
   for (const dev of DEVICES) {
     const m = menuInput(dev);
-    const mv = m.dx || m.dy;
-    if (mv) countSel = ((countSel - 1 + mv + 8) % 8) + 1; // 1-5 jugadores, 6 = opciones de control, 7 = Dev Options, 8 = modo (Mazmorra o Asedio)
-    if (m.a) { if (countSel === 6) openOptions('count'); else if (countSel === 7) openDev(); else if (countSel === 8) siegeMode = !siegeMode; else goSelect(dev); return; }
+    if (m.dy) mmRow = Math.max(0, Math.min(2, mmRow + m.dy));
+    if (m.dx) {
+      if (mmRow === 0) siegeMode = m.dx > 0;
+      else if (mmRow === 1) countSel = Math.max(1, Math.min(5, countSel + m.dx));
+      else mmAct = m.dx > 0 ? 1 : 0;
+    }
+    if (m.a) {
+      if (mmRow === 0) { mmRow = 1; continue; } // elegido el modo, pasa a los jugadores
+      if (mmRow === 1) { goSelect(dev); return; }
+      mmActivate(mmAct); return;
+    }
   }
 }
 function goSelect(dev) {
-  npcMode = countSel === 5; want = npcMode ? 2 : countSel; slots = []; startT = -1; state = 'select'; // con IA: tu personaje y después el del aliado
+  npcMode = countSel === 5; want = npcMode ? 2 : countSel; slots = []; startT = -1; detailChar = -1; hoverCard = -1; state = 'select'; // con IA: tu personaje y después el del aliado
+  menuSwallow();
   if (dev) claim(dev); // quien confirma entra directamente como J1
 }
-
+function backToMain() { state = 'count'; mmRow = 1; slots = []; players = []; menuSwallow(); }
 // ---------- Menú: selección de personajes ----------
 // Diseño de la selección: ficha a la izquierda y cuadrícula de personajes a la derecha, hasta el borde del botón
 function selLayout() {
@@ -1698,7 +1738,7 @@ function selLayout() {
 function cardRect(i) { const L = selLayout(), col = i % 2, row = Math.floor(i / 2); return [L.cx + col * (L.colW + 12), L.top + row * (L.rowH + 8), L.colW, L.rowH]; } // 2 columnas × 4 filas: cada fila es una familia
 function infoRect() { const L = selLayout(); return [24, L.top, L.iw, L.ih]; }
 function startRect() { return [LW - 24 - 196, LH - 100, 196, 76]; }
-function backRect() { return [24, 22, 96, 30]; }
+function backRect() { return backBtnRect(); } // «‹ Volver» común (se aparta del botón de pantalla completa en el móvil)
 let hoverCard = -1, hoverStart = false, lastCur = 0; // personaje que se describe en el panel
 function takenBy(ci, except) { return slots.find(s => s.locked && s.cur === ci && s !== except); }
 function npcSlot() { return slots.find(q => q.dev === 'npc'); }
@@ -1755,7 +1795,7 @@ function updateSelect(dt) {
     return;
   }
   if (detailOpenPressed()) { detailChar = hoverCard >= 0 ? hoverCard : lastCur; return; }
-  if (escPressed()) { state = 'count'; return; }
+  if (escPressed()) { backToMain(); return; }
   for (const dev of DEVICES) {
     const m = menuInput(dev);
     const stNow = !!readDevice(dev).p, st = stNow && !pausePrev[dev]; pausePrev[dev] = stNow; // Start del mando
@@ -1769,7 +1809,7 @@ function updateSelect(dt) {
     }
     if (!s) {
       if (m.a) claim(dev);
-      else if (m.d && slots.length === 0) { state = 'count'; return; }
+      else if (m.d && slots.length === 0) { backToMain(); return; }
       continue;
     }
     if (m.dx || m.dy) { s.locked = false; moveCursor(s, m.dx, m.dy); lastCur = s.cur; hoverCard = -1; } // moverse cambia la elección
@@ -1786,11 +1826,11 @@ function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clie
 const insideAt = (x, y, b) => x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3];
 cvs.addEventListener('mousemove', e => {
   const [x, y] = canvasPoint(e);
-  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) countSel = n; if (insideAt(x, y, optRect())) countSel = 6; if (insideAt(x, y, devRect())) countSel = 7; if (insideAt(x, y, modeRect())) countSel = 8; }
-  else if (state === 'dev') { for (let i = 0; i < 3; i++) if (insideAt(x, y, devRow(i))) devSel = i; }
+  if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) { mmRow = 1; countSel = n; } for (let i = 0; i < 2; i++) if (insideAt(x, y, actRect(i))) { mmRow = 2; mmAct = i; } for (let i = 0; i < 2; i++) if (insideAt(x, y, modeSeg(i))) mmRow = 0; }
+  else if (state === 'dev') { for (let i = 0; i < DEV_ROWS; i++) if (insideAt(x, y, devRow(i))) devSel = i; }
   else if (state === 'levels') { for (let n = 1; n <= 8; n++) if (insideAt(x, y, levelRect(n))) levelSel = n - 1; }
-  else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i))) pauseSel = i; }
-  else if (state === 'options') { for (let r = 1; r <= optList().length + 2; r++) if (insideAt(x, y, optRowRect(r))) OPT.row = r; }
+  else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i)) && pauseSel !== i) { pauseSel = i; pauseQuit = false; } }
+  else if (state === 'options') { for (let r = 1; r <= optList().length + 1; r++) if (insideAt(x, y, optRowRect(r))) OPT.row = r; }
   else if (state === 'over') { for (let i = 0; i < 3; i++) if (insideAt(x, y, overRect(i))) overSel = i; }
   else if (state === 'siegeUp') { for (let i = 0; i < 3; i++) if (insideAt(x, y, sgUpRect(i))) SIEGE.upSel = i; }
   else if (state === 'select') {
@@ -1807,23 +1847,23 @@ cvs.addEventListener('pointerdown', e => {
   const dev = e.pointerType === 'touch' ? 'touch' : 'kb1';
   if (state === 'select' && detailChar >= 0) { detailChar = -1; return; } // cualquier toque cierra la ficha completa
   if (state === 'count') {
-    if (inside(devRect())) { countSel = 7; openDev(); return; }
-    if (inside(optRect())) { countSel = 6; openOptions('count'); return; }
-    if (inside(modeRect())) { countSel = 8; siegeMode = !siegeMode; return; }
-    if (inside(diagRect())) { location.href = 'diagnostico-mando.html'; return; }
-    for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { countSel = n; goSelect(dev); }
+    for (let i = 0; i < 2; i++) if (inside(modeSeg(i))) { mmRow = 0; siegeMode = i === 1; return; }
+    for (let i = 0; i < 2; i++) if (inside(actRect(i))) { mmRow = 2; mmAct = i; mmActivate(i); return; }
+    for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { mmRow = 1; countSel = n; goSelect(dev); return; }
   } else if (state === 'dev') {
-    if (inside(devBackRect())) { state = 'count'; return; }
-    for (let i = 0; i < 5; i++) if (inside(devRow(i))) { devSel = i; devAct(i); return; }
+    if (inside(backBtnRect())) { closeDev(); return; }
+    for (let i = 0; i < DEV_ROWS; i++) if (inside(devRow(i))) { devSel = i; devAct(i); return; }
   } else if (state === 'levels') {
-    if (inside(devBackRect())) { state = 'dev'; return; }
-    for (let n = 1; n <= 8; n++) if (inside(levelRect(n))) { devStartDepth = n; levelSel = n - 1; state = 'count'; return; }
+    if (inside(backBtnRect())) { closeLevels(); return; }
+    for (let n = 1; n <= 8; n++) if (inside(levelRect(n))) { devStartDepth = n; levelSel = n - 1; closeLevels(); return; }
   } else if (state === 'ideas') {
-    if (inside(ideasBackRect())) state = 'dev';
+    if (inside(backBtnRect())) { closeIdeas(); return; }
+    IDEAS.dragY = y; // arrastrar con el dedo (o el ratón) desplaza el diario
   } else if (state === 'options') {
     if (OPT.cap) { OPT.cap = null; return; } // un toque mientras se espera una tecla cancela la captura
+    if (inside(backBtnRect())) { closeOptions(); return; }
     for (let i = 0; i < OPT_TABS.length; i++) if (inside(optTabRect(i))) { OPT.tab = i; OPT.row = 0; return; }
-    for (let r = 1; r <= optList().length + 2; r++) if (inside(optRowRect(r))) { OPT.row = r; activateOptRow(x); return; }
+    for (let r = 1; r <= optList().length + 1; r++) if (inside(optRowRect(r))) { OPT.row = r; activateOptRow(x); return; }
   } else if (state === 'tutorial') {
     TUT.input = e.pointerType === 'touch' ? 'touch' : (TUT.input === 'touch' ? 'kb' : TUT.input);
     const g = tutGeo();
@@ -1842,7 +1882,7 @@ cvs.addEventListener('pointerdown', e => {
     if (inside(backRect())) { // con el aliado IA a medio elegir, «Atrás» vuelve a tu personaje
       const me = slots.find(q => q.dev === dev), ns = npcSlot();
       if (me && me.locked && ns && ns.ctrl === dev && !ns.locked) { slots.splice(slots.indexOf(ns), 1); me.locked = false; lastCur = me.cur; return; }
-      state = 'count'; return;
+      backToMain(); return;
     }
     if (inside(startRect())) { pointerConfirm(dev); return; }
     for (let i = 0; i < 8; i++) if (inside(cardRect(i))) {
@@ -6557,8 +6597,7 @@ function drawCount() {
   const off = menuOff();
   ctx.save(); ctx.translate(0, off);
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f2eefa'; ctx.font = '700 36px ' + FONT; ctx.fillText('Mazmorra cooperativa', LW / 2, 70);
-  ctx.fillStyle = siegeMode ? '#ffd54a' : '#b9afc9'; ctx.font = '400 17px ' + FONT; ctx.fillText(siegeMode ? 'Modo Asedio · ¿Cuántos vais a jugar?' : '¿Cuántos vais a jugar?', LW / 2, 108);
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 36px ' + FONT; ctx.fillText('Mazmorra cooperativa', LW / 2, 64);
   { // estado de los mandos: cuántos se han detectado (máximo 4)
     const nPads = padsConnected();
     ctx.textAlign = 'right'; ctx.font = '600 13px ' + FONT;
@@ -6566,66 +6605,52 @@ function drawCount() {
     ctx.fillText(nPads ? 'Mandos detectados: ' + nPads + ' de 4' : 'Sin mandos: pulsa un botón de cada mando para activarlo', LW - 24, 30);
     ctx.textAlign = 'center';
   }
+  const focusBox = (x, y, w, h, on, sel, gold) => { // tarjeta: on = foco del teclado o mando; sel = opción elegida
+    rrect(x, y, w, h, 10); ctx.fillStyle = sel ? (gold ? '#2a2216' : '#2f2640') : '#1c1726'; ctx.fill();
+    ctx.lineWidth = on ? 3 : sel ? 2 : 1.5; ctx.strokeStyle = on ? '#b49bff' : sel ? (gold ? '#ffd54a' : '#6b5e86') : '#3b3349'; ctx.stroke();
+  };
+  // fila 0: modo de juego
+  [['Mazmorra', 'Roguelite de sala en sala'], ['Asedio', 'Defender la fortaleza · prototipo']].forEach(([t, d], i) => {
+    const [x, y, w, h] = modeSeg(i), sel = (i === 1) === siegeMode;
+    focusBox(x, y, w, h, mmRow === 0 && sel, sel, i === 1);
+    ctx.fillStyle = sel ? (i === 1 ? '#ffd54a' : '#f2eefa') : '#8f86a0'; ctx.font = '700 16px ' + FONT; ctx.fillText((sel ? '● ' : '○ ') + t, x + w / 2, y + 23);
+    ctx.fillStyle = sel ? '#b9afc9' : '#6f6780'; ctx.font = '400 12px ' + FONT; ctx.fillText(d, x + w / 2, y + 42);
+  });
+  // fila 1: jugadores
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 16px ' + FONT; ctx.fillText('¿Cuántos vais a jugar?', LW / 2, 176);
   for (let n = 1; n <= 5; n++) {
-    const [x, y, w, h] = countBox(n), sel = n === countSel, yy = sel ? y - 6 : y, ia = n === 5, dots = ia ? 2 : n;
-    rrect(x, yy, w, h, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
-    ctx.lineWidth = sel ? 3 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
-    for (let i = 0; i < dots; i++) { ctx.fillStyle = ia && i === 1 ? '#8f86a0' : SLOTC[i]; ellipse(x + w / 2 + (i - (dots - 1) / 2) * 20, yy + 34, 7, 7); }
-    ctx.fillStyle = '#f2eefa'; ctx.font = '700 ' + (ia ? 30 : 40) + 'px ' + FONT; ctx.fillText(ia ? '1 + IA' : String(n), x + w / 2, yy + 86);
-    ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT; ctx.fillText(ia ? 'con aliado' : (n === 1 ? 'jugador' : 'jugadores'), x + w / 2, yy + 112);
-  }
-  { // botón grande «Dev Options» (esquina superior izquierda): autosalto, nivel inicial y diario de ideas
-    const [dx, dy, dw, dh] = devRect(), sel = countSel === 7;
-    rrect(dx, dy, dw, dh, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
-    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
-    ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 17px ' + FONT;
-    ctx.fillText('Dev Options', dx + dw / 2, dy + 28);
-    ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT; ctx.fillText('Piso inicial ' + devStartDepth + (testMode ? ' · autosalto' : ''), dx + dw / 2, dy + 48);
-  }
-  { // botón de opciones de control (opción 6 del menú)
-    const [ox, oy, ow, oh] = optRect(), sel = countSel === 6;
-    rrect(ox, oy, ow, oh, 7); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
-    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
-    ctx.textAlign = 'center'; ctx.fillStyle = sel ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 13px ' + FONT;
-    ctx.fillText('Controles y sonido', ox + ow / 2, oy + 19);
-  }
-  { // botón de modo de juego (opción 8): Mazmorra (roguelite de salas) o Asedio (defender la fortaleza, prototipo)
-    const [mx, my, mw, mh] = modeRect(), sel = countSel === 8;
-    rrect(mx, my, mw, mh, 7); ctx.fillStyle = sel ? '#2f2640' : (siegeMode ? '#2a2216' : '#1c1726'); ctx.fill();
-    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : (siegeMode ? '#ffd54a' : '#3b3349'); ctx.stroke();
-    ctx.textAlign = 'center'; ctx.fillStyle = siegeMode ? '#ffd54a' : (sel ? '#f2eefa' : '#d8d0e6'); ctx.font = '700 13px ' + FONT;
-    ctx.fillText('Modo: ' + (siegeMode ? 'Asedio' : 'Mazmorra'), mx + mw / 2, my + 22);
-    ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT;
-    ctx.fillText(siegeMode ? 'Defender la fortaleza (prototipo)' : 'Pulsa para cambiar a Asedio', mx + mw / 2, my + 42);
-  }
-  { // botón de diagnóstico de mandos, debajo de Opciones
-    const [gx, gy, gw, gh] = diagRect();
-    rrect(gx, gy, gw, gh, 7); ctx.fillStyle = '#1c1726'; ctx.fill();
-    ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
-    ctx.textAlign = 'center'; ctx.fillStyle = '#d8d0e6'; ctx.font = '700 12px ' + FONT;
-    ctx.fillText('Diagnóstico de mando', gx + gw / 2, gy + 16);
+    const [x, y, w, h] = countBox(n), sel = n === countSel, on = sel && mmRow === 1, yy = on ? y - 6 : y, ia = n === 5, dots = ia ? 2 : n;
+    focusBox(x, yy, w, h, on, sel);
+    for (let i = 0; i < dots; i++) { ctx.fillStyle = ia && i === 1 ? '#8f86a0' : SLOTC[i]; ellipse(x + w / 2 + (i - (dots - 1) / 2) * 20, yy + 30, 7, 7); }
+    ctx.fillStyle = '#f2eefa'; ctx.font = '700 ' + (ia ? 30 : 40) + 'px ' + FONT; ctx.fillText(ia ? '1 + IA' : String(n), x + w / 2, yy + 80);
+    ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT; ctx.fillText(ia ? 'con aliado' : (n === 1 ? 'jugador' : 'jugadores'), x + w / 2, yy + 104);
   }
   // escaparate: los ocho personajes, con su halo de color, para ir conociéndolos antes de elegir
-  const sy = 396, sp = Math.min(118, (LW - 80) / 8);
+  const sy = 380, sp = Math.min(118, (LW - 80) / 8);
   CHARS.forEach((ch, i) => {
     const x = LW / 2 + (i - 3.5) * sp, bob = Math.sin(time * 2 + i * 0.8) * 2.5, [cr, cg, cb] = hexRgb(ch.color);
-    const g = ctx.createRadialGradient(x, sy - 6, 4, x, sy - 6, 56);
+    const g = ctx.createRadialGradient(x, sy - 6, 4, x, sy - 6, 50);
     g.addColorStop(0, `rgba(${cr},${cg},${cb},0.34)`); g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
-    ctx.fillStyle = g; ctx.fillRect(x - 60, sy - 66, 120, 116);
-    drawCharPreview(x, sy + 2, ch, (ch.size > 1.1 ? 1.6 : 1.9) * (1 + bob / 200), bob);
-    ctx.fillStyle = ch.color; ctx.font = '700 12px ' + FONT; ctx.fillText(ch.name, x, sy + 60);
+    ctx.fillStyle = g; ctx.fillRect(x - 56, sy - 56, 112, 100);
+    drawCharPreview(x, sy + 2, ch, (ch.size > 1.1 ? 1.4 : 1.65) * (1 + bob / 200), bob);
+    ctx.fillStyle = ch.color; ctx.font = '700 12px ' + FONT; ctx.fillText(ch.name, x, sy + 52);
   });
-  ctx.fillStyle = '#d8d0e6'; ctx.font = '600 15px ' + FONT;
-  ctx.fillText(isTouch ? 'Toca una opción, o muévete y confirma con golpe' : 'Haz clic en una opción, o muévete con flechas, WASD o mando y confirma con golpe', LW / 2, 484);
-  ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
+  // fila 2: accesos
+  [['Controles y sonido', 'Teclas, botones, volumen y tutorial'], ['Dev Options', 'Piso inicial ' + devStartDepth + (testMode ? ' · autosalto' : '') + ' · ideas · test de mandos']].forEach(([t, d], i) => {
+    const [x, y, w, h] = actRect(i), on = mmRow === 2 && mmAct === i;
+    focusBox(x, y, w, h, on, on);
+    ctx.fillStyle = on ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 14px ' + FONT; ctx.fillText(t, x + w / 2, y + 19);
+    ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT; ctx.fillText(d, x + w / 2, y + 35);
+  });
+  ctx.fillStyle = '#d8d0e6'; ctx.font = '600 14px ' + FONT;
+  ctx.fillText(isTouch ? 'Toca el modo, después el número de jugadores' : 'Elige modo y número de jugadores: ↑ ↓ cambian de fila, ← → de opción y golpe confirma', LW / 2, 530);
+  ctx.fillStyle = '#8f86a0'; ctx.font = '400 11.5px ' + FONT;
   const mvTxt = dev => ['up', 'left', 'down', 'right'].map(id => bindName(dev, id)).join(' ');
   const lines = [
-    `Teclado A y ratón: ${mvTxt('kb1')} mueve, el ratón apunta, ${bindName('kb1', 'atk')} ataca, ${bindName('kb1', 'q')} y ${bindName('kb1', 'e')} habilidades`,
-    `Teclado B: ${mvTxt('kb2')} mueve, ${bindName('kb2', 'atk')} ataca, ${bindName('kb2', 'q')} y ${bindName('kb2', 'e')} habilidades, ${bindName('kb2', 'lock')} fija, ${bindName('kb2', 'cycle')} cambia`,
-    `Mando: stick izquierdo mueve, stick derecho apunta, ${bindName('pad', 'atk')} ataca, ${bindName('pad', 'dash')} movimiento, ${bindName('pad', 'q')} y ${bindName('pad', 'e')} habilidades`,
-    'Las teclas y botones se cambian en Opciones de control, aquí mismo o desde la pausa'
+    `Teclado A y ratón: ${mvTxt('kb1')} mueve, ${bindName('kb1', 'atk')} golpe · Teclado B: ${mvTxt('kb2')} mueve, ${bindName('kb2', 'atk')} golpe`,
+    `Mando: stick o cruceta mueve, ${bindName('pad', 'atk')} golpe, ${bindName('pad', 'dash')} vuelve · Esc vuelve en todos los menús`
   ];
-  lines.forEach((l, i) => ctx.fillText(l, LW / 2, 506 + i * 18));
+  lines.forEach((l, i) => ctx.fillText(l, LW / 2, 552 + i * 17));
   ctx.restore();
 }
 
@@ -7078,9 +7103,8 @@ function drawSelect() {
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT;
   ctx.fillText(isTouch ? 'Toca un personaje y pulsa Confirmar abajo'
     : 'Clic en un personaje y en Confirmar; con teclado o mando, golpe elige y otra vez empieza', LW / 2, 66);
-  const [bx, by, bw, bh] = backRect();
-  rrect(bx, by, bw, bh, 7); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
-  ctx.fillStyle = '#d8d0e6'; ctx.font = '600 13px ' + FONT; ctx.fillText('← Atrás', bx + bw / 2, by + 20);
+  drawBackBtn(false);
+  if (siegeMode) { const [bx, by, bw] = backBtnRect(); ctx.textAlign = 'left'; ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('Modo Asedio', bx + bw + 12, by + 22); ctx.textAlign = 'center'; }
   const shown = hoverCard >= 0 ? hoverCard : lastCur;
   for (let i = 0; i < 8; i++) drawSelectCard(i, shown);
   slots.forEach((s, si) => { // cursores de quienes aún no han confirmado
@@ -8540,7 +8564,7 @@ function chooseOver(i) {
     lastCur = slots.length ? slots[0].cur : 0; hoverCard = -1; startT = -1;
     players = []; state = 'select';
     for (const dev of DEVICES) menuInput(dev);
-  } else { state = 'count'; players = []; }
+  } else backToMain();
 }
 function drawOver() {
   ctx.fillStyle = 'rgba(6,4,10,0.75)'; ctx.fillRect(0, HUD, W, H - HUD);
@@ -8843,10 +8867,11 @@ function drawTutorial() {
 }
 
 // ---------- Pausa ----------
-const PAUSE_OPTS = () => ['Continuar', showGuide ? 'Ocultar guía de controles' : 'Mostrar guía de controles', 'Modo de prueba: ' + (testMode ? 'activado' : 'desactivado'), 'Controles y sonido', 'Volver al menú'];
-function pauseRect(i) { return [W / 2 - 130, H / 2 - 83 + i * 48, 260, 40]; }
+const PAUSE_OPTS = () => ['Continuar', showGuide ? 'Ocultar guía de controles' : 'Mostrar guía de controles', 'Modo de prueba: ' + (testMode ? 'activado' : 'desactivado'), 'Controles y sonido', pauseQuit ? '¿Abandonar la partida? Pulsa otra vez' : 'Abandonar y volver al menú'];
+let pauseQuit = false; // salir de la partida pide una segunda confirmación (se pierde la run)
+function pauseRect(i) { return [W / 2 - 150, H / 2 - 83 + i * 48, 300, 40]; }
 function enterPause() {
-  state = 'pause'; pauseSel = 0; shake = 0;
+  state = 'pause'; pauseSel = 0; shake = 0; pauseQuit = false;
   for (const dev of DEVICES) menuInput(dev); // evita que el botón que ya estaba pulsado elija una opción
 }
 function resume() {
@@ -8858,20 +8883,21 @@ function choosePause(i) {
   else if (i === 1) showGuide = !showGuide;
   else if (i === 2) toggleTest();
   else if (i === 3) openOptions('pause');
-  else { state = 'count'; players = []; }
+  else if (!pauseQuit) pauseQuit = true; // primera pulsación: pide confirmar
+  else { pauseQuit = false; backToMain(); }
 }
 function updatePause() {
   if (pausePressed()) { resume(); return; }
   for (const dev of DEVICES) {
     const m = menuInput(dev), mv = m.dy || m.dx;
-    if (mv) pauseSel = (pauseSel + mv + 5) % 5;
+    if (mv) { pauseSel = (pauseSel + mv + 5) % 5; pauseQuit = false; }
     if (m.a) { choosePause(pauseSel); return; }
     if (m.d) { resume(); return; }
   }
 }
 function drawPause() {
   ctx.fillStyle = 'rgba(6,4,10,0.62)'; ctx.fillRect(0, 0, W, H);
-  const pw = 320, ph = 346, px = (W - pw) / 2, py = H / 2 - 173;
+  const pw = 340, ph = 368, px = (W - pw) / 2, py = H / 2 - 186;
   rrect(px, py, pw, ph, 12); ctx.fillStyle = '#1c1726'; ctx.fill();
   ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
   ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Pausa', W / 2, py + 42);
@@ -8883,7 +8909,7 @@ function drawPause() {
     ctx.fillText(label, x + w / 2, y + 26);
   });
   ctx.fillStyle = '#8f86a0'; ctx.font = '400 11.5px ' + FONT;
-  ctx.fillText('Golpe elige; movimiento, Esc o Start vuelven al juego; M silencia el sonido', W / 2, py + ph - 16);
+  ctx.fillText(pauseQuit ? 'Se perderá la partida en curso' : 'Golpe elige; Movimiento, Esc o Start vuelven al juego; M silencia', W / 2, py + ph - 16);
 }
 
 // ---------- Diario de ideas (menú principal, opción 7) ----------
@@ -8893,8 +8919,8 @@ const IDEAS_DIARIO = `
 Encuentro de tier 3 con versiones oscuras de los personajes que juegan: cada enemigo es un personaje de la party en versión oscura.
 Estado: idea que aún considero no viable.
 `;
-const IDEAS = { scroll: 0 };
-function ideasBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; }
+const IDEAS = { scroll: 0, dragY: null };
+function ideasBackRect() { return backBtnRect(); } // «‹ Volver» común, arriba a la izquierda
 function ideasEntries() { return IDEAS_DIARIO.trim().split(/\n---\n/).map(e => e.trim()).filter(Boolean); }
 // Parte un texto en líneas que caben en maxW (el contexto ya tiene la fuente elegida)
 function ideasWrap(txt, maxW) {
@@ -8921,7 +8947,8 @@ function ideasLines(maxW) {
   });
   return out;
 }
-function openIdeas() { state = 'ideas'; IDEAS.scroll = 0; for (const dev of DEVICES) menuInput(dev); } // el botón que abrió el diario no debe activar nada aquí
+function openIdeas() { state = 'ideas'; IDEAS.scroll = 0; menuSwallow(); }
+function closeIdeas() { state = 'dev'; devSel = 2; menuSwallow(); } // el botón que abrió el diario no debe activar nada aquí
 function updateIdeas() {
   let back = escPressed();
   for (const dev of DEVICES) {
@@ -8929,15 +8956,17 @@ function updateIdeas() {
     if (m.dy) IDEAS.scroll += m.dy * 40;
     if (m.a || m.d) back = true;
   }
-  if (back) state = 'dev';
+  if (back) closeIdeas();
 }
+cvs.addEventListener('pointermove', e => { if (state === 'ideas' && IDEAS.dragY != null) { const y = canvasPoint(e)[1]; IDEAS.scroll += IDEAS.dragY - y; IDEAS.dragY = y; } });
+addEventListener('pointerup', () => { IDEAS.dragY = null; });
 cvs.addEventListener('wheel', e => { if (state === 'ideas') { IDEAS.scroll += e.deltaY; e.preventDefault(); } }, { passive: false });
 function drawIdeas() {
   drawMenuBg();
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Diario de ideas', LW / 2, 58);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 14px ' + FONT; ctx.fillText('Ideas que quiero implementar y que aún considero no viables', LW / 2, 80);
-  const pw = Math.min(700, LW - 40), px = (LW - pw) / 2, py = 100, ph = Math.max(120, LH - 180);
+  const pw = Math.min(700, LW - 40), px = (LW - pw) / 2, py = 100, ph = Math.max(120, LH - 140);
   rrect(px, py, pw, ph, 10); ctx.fillStyle = '#16121e'; ctx.fill();
   ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
   ctx.save(); rrect(px, py, pw, ph, 10); ctx.clip();
@@ -8952,16 +8981,13 @@ function drawIdeas() {
     ctx.fillText(l.s, px + 24, y);
   });
   ctx.restore();
-  const [bx, by, bw, bh] = ideasBackRect();
-  rrect(bx, by, bw, bh, 7); ctx.fillStyle = '#2f2640'; ctx.fill();
-  ctx.lineWidth = 2; ctx.strokeStyle = '#b49bff'; ctx.stroke();
-  ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 13px ' + FONT;
-  ctx.fillText('Volver', bx + bw / 2, by + 20);
+  drawBackBtn(false);
+  drawMenuHint(isTouch ? 'Desliza o usa la rueda para leer' : '↑ ↓ o la rueda desplazan');
 }
 
 // ---------- Opciones de control (desde el menú principal o la pausa) ----------
 // Pestañas: Teclado A, Teclado B y Mandos (la asignación de mandos vale para todos). Fila 0 = pestañas;
-// filas 1..n = acciones; luego «Restaurar» y «Volver».
+// filas 1..n = acciones; luego «Restaurar». Se vuelve con «‹ Volver» (arriba a la izquierda), Esc, Start o Movimiento.
 const OPT_TABS = [['kb1', 'Teclado A'], ['kb2', 'Teclado B'], ['pad', 'Mandos'], ['snd', 'Sonido'], ['gen', 'General']];
 const GEN_OPTS = [{ id: 'tut', label: 'Tutorial al empezar cada personaje', get: () => TUT.on, set: setTutOn }]; // pestaña General: interruptores de juego
 // { id: 'music', label: 'Música de fondo', get: () => MUS.on, set: setMusicOn } // pasado a la pestaña Sonido
@@ -8986,9 +9012,12 @@ function optRowRect(r) { return r < 1 ? [0, 0, 0, 0] : [LW / 2 - 270, 140 + (r -
 function openOptions(from) {
   OPT.from = from; OPT.row = 0; OPT.cap = null; OPT.key = null;
   state = 'options';
-  for (const dev of DEVICES) menuInput(dev); // el botón que abrió el menú no debe activar nada aquí
+  menuSwallow(); for (const dev of DEVICES) pausePrev[dev] = !!readDevice(dev).p; // el botón que abrió el menú no debe activar nada aquí
 }
-function closeOptions() { state = OPT.from === 'pause' ? 'pause' : 'count'; }
+function closeOptions() {
+  if (OPT.from === 'pause') { state = 'pause'; pauseSel = 3; } else { state = 'count'; mmRow = 2; mmAct = 0; }
+  OPT.cap = null; menuSwallow(); for (const dev of DEVICES) pausePrev[dev] = !!readDevice(dev).p;
+}
 function defaultFor(dev) { return defaultBinds()[dev]; }
 // Asigna una tecla o botón. Si ya lo usa otra acción del mismo dispositivo, se intercambian
 function assignBind(dev, id, v) {
@@ -9026,12 +9055,12 @@ function activateOptRow(px) {
       return;
     }
     if (r === L + 1) { Object.assign(AUD, AUD_DEF); saveAudio(); applyAudio(); return; }
-    closeOptions(); return;
+    // closeOptions(); return; // antes había una fila «Volver»; ahora es el botón común de arriba a la izquierda
+    return;
   }
-  if (dev === 'gen') { if (r <= L) { const o = GEN_OPTS[r - 1]; o.set(!o.get()); } else if (r === L + 1) GEN_OPTS.forEach(o => o.set(true)); else closeOptions(); return; }
+  if (dev === 'gen') { if (r <= L) { const o = GEN_OPTS[r - 1]; o.set(!o.get()); } else if (r === L + 1) GEN_OPTS.forEach(o => o.set(true)); return; }
   if (r <= L) { startCapture(dev, optList()[r - 1].id); return; }
   if (r === L + 1) { BINDS[dev] = defaultFor(dev); saveBinds(); return; }
-  closeOptions();
 }
 function updateOptions() {
   const pauseHit = pausePressed(); // consume las pulsaciones de pausa; Esc y Start sirven para volver
@@ -9051,10 +9080,11 @@ function updateOptions() {
     if (done) OPT.cap = null;
     return;
   }
-  const R = optList().length + 3;
+  const R = optList().length + 2; // pestañas, acciones y «Restaurar»
   let back = pauseHit;
   for (const dev of DEVICES) {
     const m = menuInput(dev);
+    if (m.d) { back = true; continue; } // Movimiento (B) vuelve, como en el resto de menús
     if (m.dy) OPT.row = (OPT.row + m.dy + R) % R;
     if (m.dx && OPT.row === 0) OPT.tab = (OPT.tab + m.dx + OPT_TABS.length) % OPT_TABS.length;
     else if (m.dx && OPT_TABS[OPT.tab][0] === 'snd' && OPT.row >= 1 && OPT.row <= SND_OPTS.length) { // ← → en la pestaña Sonido
@@ -9103,11 +9133,13 @@ function drawOptions() {
     row(i + 1, a.label, capping ? (dev === 'pad' ? 'pulsa un botón…' : 'pulsa una tecla…') : dev === 'gen' ? (a.get() ? 'Activado' : 'Desactivado') : bindName(dev, a.id));
   });
   row(L + 1, 'Restaurar valores por defecto de esta pestaña', null);
-  row(L + 2, 'Volver', null);
+  // row(L + 2, 'Volver', null); // sustituido por el botón «‹ Volver» común
+  drawBackBtn(false);
+  if (OPT.from === 'pause') { const [bx, by, bw] = backBtnRect(); ctx.textAlign = 'left'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText('a la pausa', bx + bw + 10, by + 22); ctx.textAlign = 'center'; }
   ctx.textAlign = 'center'; ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT;
   ctx.fillText(OPT.cap ? (dev === 'pad' ? 'Pulsa un botón del mando (Esc cancela; sin pulsar en 8 s se cancela solo)' : 'Pulsa la tecla nueva (Esc cancela)')
-    : snd ? '← → ajustan el volumen o activan y silencian; golpe o clic también (clic en la barra la fija); Esc o Start vuelven'
-    : 'Golpe o clic cambia; ← → cambian de pestaña (fila superior); Esc o Start vuelven', LW / 2, LH - 36);
+    : snd ? '← → ajustan el volumen o activan y silencian; golpe o clic también (clic en la barra la fija); Esc, Start o Movimiento vuelven'
+    : 'Golpe o clic cambia; ← → cambian de pestaña (fila superior); Esc, Start o Movimiento vuelven', LW / 2, LH - 36);
   ctx.fillText(snd ? 'La tecla M activa o silencia todo el sonido en cualquier momento.' : 'Si la tecla ya es de otra acción, se intercambian. Esc siempre pausa; el ratón del Teclado A (clic y rueda) es fijo.', LW / 2, LH - 16);
 }
 
@@ -10022,7 +10054,9 @@ function frame(now) {
 resize();
 requestAnimationFrame(frame);
 // Gancho de depuración para pruebas automáticas: solo existe si la URL lleva ?debug
-if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD };
+if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
+  // menús (pruebas del recorrido): rectángulos en coordenadas lógicas del lienzo y estado de la navegación
+  ui: { backBtnRect, modeSeg, actRect, countBox, devRow, levelRect, pauseRect, optRowRect, optTabRect, cardRect, startRect, overRect, get LW() { return LW; }, get LH() { return LH; }, get W() { return W; }, get H() { return H; }, menuOff, get nav() { return { mmRow, mmAct, countSel, siegeMode, devSel, levelSel, devStartDepth, pauseSel, pauseQuit, opt: { tab: OPT.tab, row: OPT.row, from: OPT.from }, testMode, slots: slots.length }; } } };
 })();
 
 // ===== Código retirado, comentado y sin efecto =====
