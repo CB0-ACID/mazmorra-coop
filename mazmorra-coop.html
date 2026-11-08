@@ -465,6 +465,10 @@ const FLIP = { h1: 50, h2: 40, g: 900, speed: 230, drag: 1.0, spin: 0.42, maxT: 
 // Estalactita de hielo: cae sobre donde estás y explota con daño de área (no te hace daño a ti ni a tus aliados)
 // [RETIRADO] versión anterior: const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160, frozenDmg: 10 };
 const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160 };
+// Bola de nieve (Escarcha): la carga da tamaño y alcance; en vuelo crece con la distancia; empuja a los no congelados
+// minLv: carga mínima para que salga al soltar · grow: crecimiento máximo en vuelo (+60 %) · kb: empuje base · kbCharge: extra de empuje a carga completa
+// stun: parón corto al recibir el empuje · trail: puntos que guarda la estela
+const SNOW = { minLv: 0.2, grow: 0.6, kb: 520, kbCharge: 0.6, stun: 0.2, trail: 14 };
 // [RETIRADO] versión anterior: const SNOW_FROZEN_DMG = 10;
 const FROZEN_BREAK = { bossDmg: 30 }; // congelado que se rompe (estalactita y bola de nieve): los que no son guardián mueren de un golpe; el guardián recibe este daño
 // Disparo básico de Escarcha: la habilidad secundaria cambia entre estos dos modos (los Misiles de cristal están retirados al final del archivo)
@@ -4972,9 +4976,95 @@ function frostBeamTick(p, staMul) {
   SFX.beam();
 }
 // Bola de nieve: crece mientras cargas; al soltarla avanza atravesando enemigos
+// Tamaño inicial, velocidad y alcance de la bola según la carga (lo usan el disparo y la previsualización)
+function snowStats(lv) { return { r: 6 + 16 * lv, sp: 320, range: 300 + 260 * lv }; }
+// En vuelo: crece con la distancia recorrida, guarda la estela y suelta copos (todo en coordenadas del mundo)
+function updateSnowball(b, dt) {
+  b.dist += Math.hypot(b.vx, b.vy) * dt;
+  b.r = b.r0 * (1 + SNOW.grow * Math.min(1, b.dist / b.range)); b.h = 12 + b.r * 0.3;
+  b.trail.push({ x: b.x, y: b.y, h: b.h, r: b.r }); if (b.trail.length > SNOW.trail) b.trail.shift();
+  if (Math.random() < 0.5) {
+    const a = Math.random() * Math.PI * 2, k = Math.random() * b.r * 0.8;
+    particles.push({ x: b.x + Math.cos(a) * k, y: upY(b.y, b.h) + Math.sin(a) * k * 0.6, vx: -b.vx * 0.12 + (Math.random() - 0.5) * 40, vy: -b.vy * 0.12 + (Math.random() - 0.5) * 40,
+      life: 0.5, max: 0.5, color: '#ffffff', s: 3 + b.r * 0.12, flake: true, seed: Math.random() * 6 });
+  }
+}
+// Empuje de la bola a los no congelados: en la dirección del tiro, más fuerte cuanto más cargada; respeta las reglas de tier
+function snowKnock(e, b) {
+  if (e.dead || e.airborne) return;
+  const TR = tierRule(e), sp = Math.hypot(b.vx, b.vy) || 1;
+  let kb = SNOW.kb * (1 + SNOW.kbCharge * (b.lv || 0));
+  kb = TR.kbFixed != null ? TR.kbFixed : kb * TR.kbMul * (e.elite ? ELITE.kb : 1);
+  e.kbx = b.vx / sp * kb; e.kby = b.vy / sp * kb;
+  if (e.type !== 'boss') e.hitstun = Math.max(e.hitstun || 0, SNOW.stun);
+}
+// Trayectoria prevista (con el rebote), en coordenadas del mundo
+function snowPath(p, lv) {
+  const st = snowStats(lv), step = 8;
+  let x = p.x + p.ax * (p.r + st.r), y = p.y + p.ay * (p.r + st.r), dx = p.ax, dy = p.ay, left = st.range, bounces = 1;
+  const pts = [[x, y]];
+  while (left > 0) {
+    const nx = x + dx * step, ny = y + dy * step;
+    if (outsideRoom(nx, ny)) break;
+    if (segSolid(x, y, nx, ny)) {
+      if (bounces <= 0) break;
+      const sx = isSolid(Math.floor(nx / T), Math.floor(y / T), false), sy = isSolid(Math.floor(x / T), Math.floor(ny / T), false);
+      if (sx || !sy) dx = -dx;
+      if (sy) dy = -dy;
+      bounces--; pts.push([x, y]); continue;
+    }
+    x = nx; y = ny; left -= step;
+  }
+  pts.push([x, y]);
+  return { pts, rEnd: st.r * (1 + SNOW.grow) };
+}
+// Previsualización: gris y discontinua mientras no llega al umbral; azul y continua cuando ya sale al soltar
+function drawSnowPreview(p) {
+  const P = p.snowPath; if (!P || P.pts.length < 2) return;
+  const ok = Math.min(1, p.chargeT / p.ch.chargeTime) >= SNOW.minLv, col = ok ? 'rgba(191,234,245,0.85)' : 'rgba(170,180,195,0.45)';
+  ctx.save();
+  ctx.strokeStyle = col; ctx.lineWidth = ok ? 3 : 2; ctx.setLineDash(ok ? [] : [6, 6]);
+  ctx.beginPath(); P.pts.forEach(([x, y], i) => { if (i) ctx.lineTo(x, y * K); else ctx.moveTo(x, y * K); }); ctx.stroke();
+  ctx.setLineDash([]);
+  for (let i = 1; i < P.pts.length - 1; i++) { const [x, y] = P.pts[i]; ctx.beginPath(); ctx.arc(x, y * K, 5, 0, Math.PI * 2); ctx.stroke(); } // punto de rebote
+  const [ex, ey] = P.pts[P.pts.length - 1];
+  ctx.translate(ex, ey * K); ctx.scale(1, K); // tamaño de la bola al final del recorrido
+  ctx.fillStyle = ok ? 'rgba(191,234,245,0.18)' : 'rgba(170,180,195,0.08)';
+  ctx.beginPath(); ctx.arc(0, 0, P.rEnd, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+// Estela nueva: nube de escarcha que se afina hacia atrás, núcleo brillante y destellos que giran
+function drawSnowTrail(b) {
+  const n = b.trail ? b.trail.length : 0; if (n < 2) return;
+  for (let i = 0; i < n - 1; i++) {
+    const pt = b.trail[i], k = (i + 1) / n, y = pt.y * K - pt.h;
+    ctx.fillStyle = `rgba(191,234,245,${0.05 + 0.25 * k})`;
+    ctx.beginPath(); ctx.arc(pt.x, y, pt.r * (0.35 + 0.55 * k), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = Math.max(1.5, b.r * 0.25); ctx.lineCap = 'round';
+  ctx.beginPath(); for (let i = 0; i < n; i++) { const pt = b.trail[i], y = pt.y * K - pt.h; if (i) ctx.lineTo(pt.x, y); else ctx.moveTo(pt.x, y); } ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1;
+  for (let i = 1; i < n; i += 3) {
+    const pt = b.trail[i], y = pt.y * K - pt.h, a = time * 8 + i, q = 2 + pt.r * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(pt.x - Math.cos(a) * q, y - Math.sin(a) * q); ctx.lineTo(pt.x + Math.cos(a) * q, y + Math.sin(a) * q);
+    ctx.moveTo(pt.x - Math.sin(a) * q, y + Math.cos(a) * q); ctx.lineTo(pt.x + Math.sin(a) * q, y - Math.cos(a) * q);
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+}
+// Copo de nieve (partícula con flake: true): tres trazos que giran
+function drawFlake(q) {
+  const a = q.seed + q.life * 7, r = q.s; ctx.strokeStyle = q.color; ctx.lineWidth = 1.2; ctx.beginPath();
+  for (let i = 0; i < 3; i++) { const t = a + i * Math.PI / 3; ctx.moveTo(q.x - Math.cos(t) * r, q.y - Math.sin(t) * r); ctx.lineTo(q.x + Math.cos(t) * r, q.y + Math.sin(t) * r); }
+  ctx.stroke();
+}
 function throwSnowball(p, lv) {
-  const c = p.ch, r = 6 + 16 * lv, sp = 320, range = 300 + 260 * lv; // cargada: más grande y llega más lejos
-  pBullets.push({ x: p.x + p.ax * (p.r + r), y: p.y + p.ay * (p.r + r), vx: p.ax * sp, vy: p.ay * sp, r, life: range / sp, dmg: c.shot * (3 + 9 * lv), color: '#e8f7ff',
+  // [RETIRADO 2026-11-08] const c = p.ch, r = 6 + 16 * lv, sp = 320, range = 300 + 260 * lv; // cargada: más grande y llega más lejos
+  // [RETIRADO 2026-11-08] pBullets.push({ x: p.x + p.ax * (p.r + r), y: p.y + p.ay * (p.r + r), vx: p.ax * sp, vy: p.ay * sp, r, life: range / sp, dmg: c.shot * (3 + 9 * lv), color: '#e8f7ff',
+  // [RETIRADO 2026-11-08] pierce: true, hit: new Set(), owner: p, aim: null, d0: 0, trav: 0, h: 12 + r * 0.3, tz: 0, vh: 0, snow: true, bounces: 1 });
+  const c = p.ch, st = snowStats(lv), r = st.r;
+  pBullets.push({ x: p.x + p.ax * (p.r + r), y: p.y + p.ay * (p.r + r), vx: p.ax * st.sp, vy: p.ay * st.sp, r, r0: r, lv, range: st.range, dist: 0, trail: [], life: st.range / st.sp, dmg: c.shot * (3 + 9 * lv), color: '#e8f7ff',
     pierce: true, hit: new Set(), owner: p, aim: null, d0: 0, trav: 0, h: 12 + r * 0.3, tz: 0, vh: 0, snow: true, bounces: 1 });
   SFX.swing(true); shake = Math.max(shake, 2 + lv * 3);
 }
@@ -5036,8 +5126,17 @@ function updateFrostShot(p, inp, dt) {
     p.beaming = true; return;
   }
   // bola de nieve: mantener la carga la hace más grande y de más alcance; al soltar sale si está a medias o más
-  if (holding) p.chargeT = Math.min(c.chargeTime, p.chargeT + dt);
-  else if (was) { const lv = p.chargeT / c.chargeTime; if (lv >= 0.2) throwSnowball(p, lv); }
+  // [RETIRADO 2026-11-08] if (holding) p.chargeT = Math.min(c.chargeTime, p.chargeT + dt);
+  // [RETIRADO 2026-11-08] else if (was) { const lv = p.chargeT / c.chargeTime; if (lv >= 0.2) throwSnowball(p, lv); }
+  if (holding) {
+    p.chargeT = Math.min(c.chargeTime, p.chargeT + dt);
+    const lv = p.chargeT / c.chargeTime;
+    if (!p.snowReady && lv >= SNOW.minLv) { p.snowReady = true; burst(p.x, upY(p.y, 30 * c.size), '#e8f7ff', 10); SFX.swing(false); } // aviso: a partir de aquí sale al soltar
+    p.snowPath = snowPath(p, lv);
+  } else {
+    if (was) { const lv = p.chargeT / c.chargeTime; if (lv >= SNOW.minLv) throwSnowball(p, lv); }
+    p.snowPath = null; p.snowReady = false;
+  }
 }
 // Misiles de cristal: salen en abanico y se dirigen al objetivo fijado (o a la mira si no hay)
 // Un misil de un mismo disparo: daño de vida y estamina; con dos impactos ralentiza; con los tres congela
@@ -5055,6 +5154,7 @@ function isSnowMode(p) { return FROST_MODE[frostModeOf(p)].key === 'snow'; }
 function drawFrostCharge(p) {
   if (p.down || !p.charging || !isSnowMode(p)) return;
   drawSummonCircle(p);
+  drawSnowPreview(p);
 }
 // Aura al cambiar de modo: un anillo que se expande, y cristales que giran alrededor del cuerpo y se apagan
 function drawFrostAura(p) {
@@ -7139,6 +7239,7 @@ function update(dt) {
   for (const b of pBullets) {
     const ox = b.x, oy = b.y;
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+    if (b.snow) updateSnowball(b, dt); // crece con la distancia y deja la estela
     if (b.aim) { // altura del proyectil: sube a medida que se acerca al enemigo en el aire
       const ph = b.h; b.trav += Math.hypot(b.vx, b.vy) * dt;
       if (!b.aim.dead) b.tz = b.aim.z;
@@ -7162,7 +7263,8 @@ function update(dt) {
           breakFrozen(e, b.x, b.y, 160);
           continue;
         }
-        if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); }
+        // [RETIRADO 2026-11-08] if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); }
+        if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); if (b.snow) snowKnock(e, b); }
         else { shotHit(b.owner, e, b.dmg, 110, b.x - b.vx * 0.05, b.y - b.vy * 0.05); b.life = 0; break; }
       }
     }
@@ -9002,10 +9104,12 @@ function drawBullet(b) {
 }
 function drawPBullet(b) {
   if (b.snow) { // bola de nieve
+    drawSnowTrail(b);
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(b.x, b.y, b.r, b.r * 0.4);
     ctx.fillStyle = '#e8f7ff'; ctx.strokeStyle = '#7fd8ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y - b.h, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#ffffff'; ellipse(b.x - b.r * 0.3, b.y - b.h - b.r * 0.3, b.r * 0.3, b.r * 0.3);
-    if (Math.random() < 0.6) particles.push({ x: b.x, y: b.y - b.h, vx: -b.vx * 0.1, vy: -b.vy * 0.1, life: 0.3, max: 0.3, color: '#ffffff', s: 3 });
+    // [RETIRADO 2026-11-08] estela anterior: se creaba durante el dibujo con la y ya proyectada, así que salía desalineada
+    // [RETIRADO 2026-11-08] if (Math.random() < 0.6) particles.push({ x: b.x, y: b.y - b.h, vx: -b.vx * 0.1, vy: -b.vy * 0.1, life: 0.3, max: 0.3, color: '#ffffff', s: 3 });
     return;
   }
   const k2 = b.r / 5;
@@ -9310,7 +9414,7 @@ function drawGame() {
   projectOn();
   try {
     for (const it of list) it.f();
-    for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
+    for (const q of particles) { ctx.globalAlpha = Math.max(0, q.life / q.max); if (q.flake) { drawFlake(q); continue; } ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s); }
     ctx.globalAlpha = 1;
     drawArcOrbs('air'); drawBossAir(); drawGrenades(); drawCoralAir(); drawDolls(); drawStalacs(); drawMissiles(); drawDragonFx(); drawEffects(); if (SIEGE.on) siegeDrawAir(); drawTexts(); drawInteractHints();
   } finally { projectOff(); }
