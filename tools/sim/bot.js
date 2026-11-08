@@ -100,6 +100,13 @@
     for (let i = 1; i < path.length; i++) { const cx = (path[i] % COLS + 0.5) * T, cy = (Math.floor(path[i] / COLS) + 0.5) * T; if (segSolid(p.x, p.y, cx, cy)) break; best = path[i]; }
     return [(best % COLS + 0.5) * T, (Math.floor(best / COLS) + 0.5) * T];
   }
+  // Escarcha: cuándo compensa la Bola de nieve (detonar a distancia, rematar un frío a medias o pillar a un grupo)
+  function snowballGood(p, tg, gap) {
+    if (gap > 330) return false;
+    if (tg.frozenT > 0.15) return gap >= 150 || p.moveCd > 0 || !!p.flip; // de cerca, mejor el picado
+    const near = liveTargets().filter(e => e !== tg && Math.hypot(e.x - tg.x, e.y - tg.y) < 110).length;
+    return near >= 2 || (tg.chill || 0) >= chillNeed(tg) * 0.3;
+  }
   function pulse(b, k, dur) { if (!b.hold[k]) b.hold[k] = dur; }
   globalThis.__BOTF = function (p) {
     const out = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
@@ -202,8 +209,8 @@
         const near = gap < (c.canShoot ? 420 : 220);
         if (t1 && !SK.noPri && t1 !== 'raiseShield' && !(t1 === 'frostburst' && tg.frozenT > 0) && p.priCd <= 0 && near && ok('pri') && !(t1 === 'turret' && myTurret(p))) {
           pulse(b, 'q', t1 === 'shieldThrow' ? 1.05 : 0.12); b.abT = 0.4;
-        } else if (t2 && !SK.noSec && t2 !== 'frostMode' && !(t2 === 'snowball' && !(tg.frozenT > 0.15 && gap < 330 && (gap >= 150 || p.moveCd > 0 || p.flip))) && t2 !== 'taunt' && p.secCd <= 0 && near && ok('sec') && !(t2 === 'turret' && myTurret(p))) {
-          pulse(b, 'e', t2 === 'shieldThrow' ? 1.05 : t2 === 'ricochet' ? 0.5 : t2 === 'dragon' ? 0.1 : t2 === 'snowball' ? 0.35 : 0.12); b.abT = 0.4;
+        } else if (t2 && !SK.noSec && t2 !== 'frostMode' && !(t2 === 'snowball' && !snowballGood(p, tg, gap)) && t2 !== 'taunt' && p.secCd <= 0 && near && ok('sec') && !(t2 === 'turret' && myTurret(p))) {
+          pulse(b, 'e', t2 === 'shieldThrow' ? 1.05 : t2 === 'ricochet' ? 0.5 : t2 === 'dragon' ? 0.1 : t2 === 'snowball' ? 0.06 : 0.12); b.abT = 0.4;
         }
       }
       // Escarcha: picado sobre el congelado (salto y, ya en el aire, otra pulsación) cuando la bola de nieve no está lista
