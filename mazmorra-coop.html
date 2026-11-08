@@ -909,7 +909,11 @@ const HURT = {
 };
 // Bloqueo (tanques): mantener el botón de movimiento; frena y para lo que llega por delante
 // Bloqueo perfecto (2026-11-08, más potente): estamina que quita al atacante (fracción de su máxima) y alcance para castigar al dueño de una zona bloqueada
-const PARRY = { sta: 0.6, staBoss: 0.3, zoneRange: 240 }; // [RETIRADO 2026-11-08] antes: 0,25 a todos y sin efecto contra zonas
+const PARRY = { sta: 0.6, staBoss: 0.3, zoneRange: 240 };
+// Escudo reparador (Ceniza, 2026-11-08): con el escudo en alto, lo bloqueado cura a Ceniza y al aliado cubierto detrás.
+// frac: parte del daño bloqueado que cura (perfect: con bloqueo perfecto) · pool: reserva máxima de curación · regen: lo que se rellena por segundo
+// La reserva limita la curación (como mucho ~2 PV/s sostenidos); además, cada bloqueo ya desgasta el escudo
+const SHIELD_HEAL = { frac: 0.3, perfect: 0.6, pool: 24, regen: 2 }; // [RETIRADO 2026-11-08] antes: 0,25 a todos y sin efecto contra zonas
 const BLOCK_ARC = 1.3, BLOCK_SPEED = 0.4, BLOCK_PERFECT = 0.2; // ángulo cubierto, velocidad, ventana de bloqueo perfecto // reacción del enemigo: interrumpe su acción
 
 // ---------- Sonido sintetizado (sin archivos); M lo silencia ----------
@@ -4112,6 +4116,7 @@ function updateShieldWall(p, qP, dt) {
   const want = (!!p.shieldOn || !!p.shieldCharge) && !p.shieldBroken && !p.shieldOut && !p.rush && !p.drop && !p.leap;
   if (want && !p.shieldUp) { p.shieldUp = true; p.blockT = 0; p.perfectUsed = false; p.slash = null; p.mHold = null; p.mCharging = false; SFX.hit(false); }
   else if (!want && p.shieldUp) { p.shieldUp = false; p.shieldRegenT = W.regenDelay; }
+  p.healPool = Math.min(SHIELD_HEAL.pool, (p.healPool == null ? SHIELD_HEAL.pool : p.healPool) + SHIELD_HEAL.regen * dt); // reserva del Escudo reparador
   if (p.shieldUp) { p.blockT = (p.blockT || 0) + dt; wearShield(p, W.drain * dt); }
   else {
     p.shieldRegenT = (p.shieldRegenT || 0) - dt;
@@ -4143,6 +4148,7 @@ function reflectBullet(p, b) {
   pBullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 5, life: 1.2, dmg: AB.wall.reflectDmg, color: '#bfeaf5', pierce: false, hit: new Set(), owner: p, h: 12, vh: 0 });
   effects.push({ type: 'ring', x: b.x, y: b.y, r: 14, t: 0, dur: 0.2, color: '#bfeaf5' });
   wearShield(p, AB.wall.bulletCost); SFX.hit(false);
+  shieldHeal(p, b.dmg || 16, p.blockT <= BLOCK_PERFECT); // Escudo reparador: la bala parada también cura
 }
 // Bastión (Ceniza): cúpula que destruye las balas enemigas
 function castShield(p) {
@@ -6421,6 +6427,15 @@ function blocks(p, sx, sy) {
 }
 // Bloqueo normal: anula el daño y empuja un poco. Bloqueo perfecto (recién subida la guardia):
 // refleja la bala o aturde un instante al atacante, y el siguiente golpe sale como contraataque
+function shieldHeal(cz, blocked, perfect) { // cura lo que permita la reserva a Ceniza y al aliado que cubre
+  if (!cz || cz.ch.priType !== 'raiseShield' || !(blocked > 0)) return;
+  if (cz.healPool == null) cz.healPool = SHIELD_HEAL.pool;
+  const amt = Math.min(cz.healPool, blocked * (perfect ? SHIELD_HEAL.perfect : SHIELD_HEAL.frac));
+  if (amt < 0.5) return;
+  cz.healPool -= amt;
+  healPlayer(cz, amt);
+  if (cz.covering && !cz.covering.down) healPlayer(cz.covering, amt);
+}
 function onBlock(p, sx, sy, srcEnemy, bullet) {
   const perfect = p.blockT <= BLOCK_PERFECT && !p.perfectUsed;
   if (p.shieldUp) wearShield(p, bullet ? AB.wall.bulletCost : AB.wall.hitCost); // el escudo en alto se desgasta
@@ -6452,7 +6467,12 @@ function healPlayer(p, amt) {
   return got;
 }
 function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
-  if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
+  // [RETIRADO 2026-11-08] if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
+  if (!p.down && blocks(p, sx, sy)) { // guardia de los tanques; con el escudo en alto, lo bloqueado cura (Escudo reparador)
+    const perfect = p.blockT <= BLOCK_PERFECT && !p.perfectUsed;
+    if (p.shieldUp) shieldHeal(p, dmg != null ? dmg : srcEnemy ? contactDmg(srcEnemy) : DMG_FALLBACK, perfect);
+    onBlock(p, sx, sy, srcEnemy, null); return false;
+  }
   if (p.down || p.inv > 0 || p.jump || p.rush || p.drop || p.drill || p.leap || p.dragonRush || p.reapDash || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
   if (dmg == null) dmg = srcEnemy ? contactDmg(srcEnemy) : DMG_FALLBACK;
   const heavyHit = dmg >= HURT.heavyDmg;
@@ -7780,7 +7800,7 @@ const ABILITY_TEXT = {
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla. Cualquiera puede cargarla a la espalda'],
   overcharge: ['Sobrecarga', 'Más cadencia y apenas calienta; la torreta cura a los aliados cerca'],
   // [RETIRADO 2026-11-08] raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; se gasta'],
-  raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; alzado justo antes del golpe, bloqueo perfecto que aturde'],
+  raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y bajarlo; refleja balas y cubre al grupo; lo bloqueado os cura a ti y al cubierto; justo a tiempo, bloqueo perfecto que aturde'],
   // vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
   vine: ['Liana giratoria', 'Barre y lanza por los aires; con un aliado, os une y os cura'],
   taunt: ['Provocación', 'Atrae a los enemigos; su guardia cubre todo'],
@@ -10182,7 +10202,7 @@ const TUT_CHARGED_ANIM = { seismic: { shape: 'disc', r: 80 }, arcane: { shape: '
 const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas' };
 const TUT_STRAT = {
   // [RETIRADO 2026-11-08] 'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
-  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje. Álzalo justo antes del golpe para un bloqueo perfecto: rompe gran parte de la estamina del atacante (también si es el golpe al suelo de un guardián cercano).', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
+  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje. Álzalo justo antes del golpe para un bloqueo perfecto: rompe gran parte de la estamina del atacante (también si es el golpe al suelo de un guardián cercano). Lo que bloqueas con el escudo en alto os cura a ti y al aliado cubierto (con un límite que se recarga).', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
   'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
   'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
   // [RETIRADO 2026-11-08] (textos de la Coral de pistolas con calor)
