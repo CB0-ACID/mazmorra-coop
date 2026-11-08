@@ -469,8 +469,17 @@ const STAL = { fall: 0.3, z0: 170, r: 40, dmg: 14, kb: 160 };
 // minLv: carga mínima para que salga al soltar · grow: crecimiento máximo en vuelo (+60 %) · kb: empuje base · kbCharge: extra de empuje a carga completa
 // stun: parón corto al recibir el empuje · trail: puntos que guarda la estela
 const SNOW = { minLv: 0.2, grow: 0.6, kb: 520, kbCharge: 0.6, stun: 0.2, trail: 14 };
+// Congelado = quebradizo: todo el equipo hace más daño a los congelados; romper (bola de nieve, picado, golpe en el aire o lanzarlo)
+// termina la congelación con un extra. Nunca mata a tier 3 ni al guardián.
+// vuln: multiplicador del daño recibido mientras está congelado, por tier (4 = guardián) · breakPct: extra al romper, fracción de la vida máxima
+// shatterBelow: tier 1-2 se hacen añicos si tras romper les queda menos de esta fracción · bossImmune: s que el guardián no se puede volver a congelar
+const FREEZE = { vuln: { 1: 1.5, 2: 1.5, 3: 1.25, 4: 1.15 }, breakPct: { 1: 0.25, 2: 0.25, 3: 0.12, 4: 0.04 }, shatterBelow: 0.2, bossImmune: 6 };
+// Picado de Escarcha: en pleno salto, volver a pulsar movimiento la lanza en picado como si ella fuese la estalactita
+// range: alcance del fijado · dist: punto de caída sin objetivo (hacia donde apuntas) · snap: imán alrededor de ese punto · frozenPull: preferencia por los congelados
+// minZ: altura mínima para poder hacerlo · hang: parón arriba antes de caer · speed/minT/maxT: velocidad y duración de la caída · r: radio del impacto · dmg/sta/kb: daño, estamina y empuje
+const DIVE = { range: 220, dist: 110, snap: 90, frozenPull: 60, minZ: 8, hang: 0.1, speed: 900, minT: 0.12, maxT: 0.28, r: 52, dmg: 6, sta: 0.15, kb: 260 };
 // [RETIRADO] versión anterior: const SNOW_FROZEN_DMG = 10;
-const FROZEN_BREAK = { bossDmg: 30 }; // congelado que se rompe (estalactita y bola de nieve): los que no son guardián mueren de un golpe; el guardián recibe este daño
+// [RETIRADO 2026-11-08] const FROZEN_BREAK = { bossDmg: 30 }; // congelado que se rompe (estalactita y bola de nieve): los que no son guardián mueren de un golpe; el guardián recibe este daño
 // Disparo básico de Escarcha: la habilidad secundaria cambia entre estos dos modos (los Misiles de cristal están retirados al final del archivo)
 const FROST_MODE = [
   { key: 'beam', name: 'Rayo de escarcha', icon: 'beamIce', desc: 'Mantén: rayo continuo; cada tic quita más estamina, hasta el doble. Si aturde, congela' },
@@ -2473,7 +2482,8 @@ const MOVES = {
     } },
   jump: { name: 'Salto', desc: 'Hacia un enemigo en el aire te enganchas y sigues el combo', icon: 'jump',
     start(p, c, mx, my) { startJump(p, mx || 0, my || 0); } }, // el salto lleva su propio estado (p.jump, ver «Salto»)
-  flip: { name: 'Doble salto', desc: 'Cada pulsación salta con una voltereta (dos seguidos); el segundo salto deja caer una estalactita de hielo', icon: 'jump',
+  // [RETIRADO 2026-11-08] flip: { name: 'Doble salto', desc: 'Cada pulsación salta con una voltereta (dos seguidos); el segundo salto deja caer una estalactita de hielo', icon: 'jump',
+  flip: { name: 'Salto y picado', desc: 'Salta con una voltereta; pulsa de nuevo en el aire para caer en picado sobre el objetivo como una estalactita', icon: 'jump',
     start(p, c, mx, my) { startFlip(p, mx || 0, my || 0); },
     update(p, c, dt) { updateFlip(p, dt); } }, // el salto usa p.flip; mientras dura, p.moveT > 0 y controla el desplazamiento
   block: { name: 'Guardia', desc: 'Mantén para bloquear; justo a tiempo, bloqueo perfecto', icon: 'block', hold: true }
@@ -2579,26 +2589,131 @@ function updateMovement(p, dt) { // devuelve true mientras la habilidad controla
   if (p.moveT <= 0) { p.postMoveT = p.postMoveUsed ? 0 : c.postMoveWindow; p.postMoveUsed = false; } // si ya se gastó durante el movimiento (Bravata), no se reabre
   return true;
 }
-// ---------- Doble salto (Escarcha) ----------
-// Cada pulsación de movimiento es un salto: el primero desde el suelo, el segundo en el aire (máximo dos hasta aterrizar).
-// Cada salto es una voltereta con impulso lateral en la dirección que pulsas; en el aire no se controla el rumbo.
+// [RETIRADO 2026-11-08] // ---------- Doble salto (Escarcha) ----------
+// [RETIRADO 2026-11-08] // Cada pulsación de movimiento es un salto: el primero desde el suelo, el segundo en el aire (máximo dos hasta aterrizar).
+// [RETIRADO 2026-11-08] // Cada salto es una voltereta con impulso lateral en la dirección que pulsas; en el aire no se controla el rumbo.
+// [RETIRADO 2026-11-08] function startFlip(p, mx, my) {
+// [RETIRADO 2026-11-08] const f = p.flip || (p.flip = { n: 0, z: p.z || 0, vz: 0, vx: 0, vy: 0, jt: 0, stal: 0, dir: 1 });
+// [RETIRADO 2026-11-08] if (f.n >= 2) return; // ya has usado los dos saltos: hay que aterrizar
+// [RETIRADO 2026-11-08] const m = Math.hypot(mx, my), moving = m > 0.2;
+// [RETIRADO 2026-11-08] f.n++;
+// [RETIRADO 2026-11-08] f.vz = Math.sqrt(2 * FLIP.g * (f.n === 1 ? FLIP.h1 : FLIP.h2)); // el segundo salto es algo más bajo
+// [RETIRADO 2026-11-08] f.vx = moving ? mx / m * FLIP.speed : 0; f.vy = moving ? my / m * FLIP.speed : 0;
+// [RETIRADO 2026-11-08] f.jt = 0; f.dir = f.n === 1 ? 1 : -1; // una estalactita por salto; la segunda voltereta gira al revés
+// [RETIRADO 2026-11-08] p.mvx = p.mvy = 0; p.moveT = 1e9; // el vuelo dura hasta aterrizar (updateFlip lo corta)
+// [RETIRADO 2026-11-08] p.slash = null; p.flurry = null; p.mHold = null; p.mCharging = false; p.cast = null;
+// [RETIRADO 2026-11-08] burst(p.x, p.y, '#bfeaf5', 8); SFX.swing(false);
+// [RETIRADO 2026-11-08] if (f.n === 2) dropStalactite(p); // el segundo salto deja caer una estalactita donde estás
+// [RETIRADO 2026-11-08] }
+// ---------- Salto y picado (Escarcha) ----------
+// Movimiento: salta con una voltereta; en el aire, volver a pulsar la lanza en picado como una estalactita (startDive).
 function startFlip(p, mx, my) {
-  const f = p.flip || (p.flip = { n: 0, z: p.z || 0, vz: 0, vx: 0, vy: 0, jt: 0, stal: 0, dir: 1 });
-  if (f.n >= 2) return; // ya has usado los dos saltos: hay que aterrizar
+  if (p.flip) { if (!p.flip.dive && p.flip.z > DIVE.minZ) startDive(p); return; } // en el aire: el segundo botón es el picado
+  const f = p.flip = { n: 1, z: p.z || 0, vz: Math.sqrt(2 * FLIP.g * FLIP.h1), vx: 0, vy: 0, jt: 0, dir: 1, dive: null };
   const m = Math.hypot(mx, my), moving = m > 0.2;
-  f.n++;
-  f.vz = Math.sqrt(2 * FLIP.g * (f.n === 1 ? FLIP.h1 : FLIP.h2)); // el segundo salto es algo más bajo
   f.vx = moving ? mx / m * FLIP.speed : 0; f.vy = moving ? my / m * FLIP.speed : 0;
-  f.jt = 0; f.dir = f.n === 1 ? 1 : -1; // una estalactita por salto; la segunda voltereta gira al revés
   p.mvx = p.mvy = 0; p.moveT = 1e9; // el vuelo dura hasta aterrizar (updateFlip lo corta)
   p.slash = null; p.flurry = null; p.mHold = null; p.mCharging = false; p.cast = null;
   burst(p.x, p.y, '#bfeaf5', 8); SFX.swing(false);
-  if (f.n === 2) dropStalactite(p); // el segundo salto deja caer una estalactita donde estás
 }
+// Dónde caerá el picado: el objetivo fijado si está a tiro; si no, el enemigo más cercano al punto de mira (prefiere los congelados);
+// sin nadie cerca, el punto hacia donde apuntas
+function diveTarget(p) {
+  const tx = p.x + p.ax * DIVE.dist, ty = p.y + p.ay * DIVE.dist;
+  const lk = p.lockOn && p.target && !p.target.dead ? p.target : null;
+  if (lk && Math.hypot(lk.x - p.x, lk.y - p.y) <= DIVE.range) return { x: lk.x, y: lk.y, e: lk };
+  let best = null, bs = Infinity;
+  for (const e of liveTargets()) {
+    if (Math.hypot(e.x - p.x, e.y - p.y) > DIVE.range) continue;
+    const sc = Math.hypot(e.x - tx, e.y - ty) - (e.frozenT > 0 ? DIVE.frozenPull : 0);
+    if (sc < DIVE.snap && sc < bs) { bs = sc; best = e; }
+  }
+  return best ? { x: best.x, y: best.y, e: best } : { x: tx, y: ty, e: null };
+}
+function startDive(p) {
+  const f = p.flip, tg = diveTarget(p);
+  f.dive = { t: 0, tx: tg.x, ty: tg.y, e: tg.e, go: false, T: 0, z0: 0, t0: 0 };
+  f.vx = f.vy = f.vz = 0;
+  p.slash = null; p.flurry = null; p.cast = null;
+  burst(p.x, upY(p.y, f.z + 14), '#e8f7ff', 10); SFX.swing(false);
+}
+// Picado: se para un instante arriba, se da la vuelta y cae acelerando sobre el objetivo (lo sigue si se mueve)
+function updateDive(p, f, dt) {
+  const d = f.dive; d.t += dt; p.moveT = 1e9;
+  if (d.t < DIVE.hang) { p.z = f.z; p.flipAng = Math.PI * f.dir * (d.t / DIVE.hang); return; }
+  if (d.e && !d.e.dead) { d.tx = d.e.x; d.ty = d.e.y; } // fijado: sigue al objetivo mientras cae
+  if (!d.go) { d.go = true; d.T = Math.max(DIVE.minT, Math.min(DIVE.maxT, Math.hypot(d.tx - p.x, d.ty - p.y) / DIVE.speed)); d.z0 = f.z; d.t0 = d.t; SFX.swing(true); }
+  const el = d.t - d.t0, k = Math.min(1, el / d.T), left = Math.max(dt, d.T - el);
+  p.x += (d.tx - p.x) * Math.min(1, dt / left); p.y += (d.ty - p.y) * Math.min(1, dt / left); collide(p, true);
+  f.z = d.z0 * (1 - k * k); p.flipAng = Math.PI * f.dir;
+  if (Math.random() < 0.8) particles.push({ x: p.x + (Math.random() - 0.5) * 12, y: upY(p.y, f.z + 24 + Math.random() * 24), vx: 0, vy: -80, life: 0.18, max: 0.18, color: '#e8f7ff', s: 2 }); // estela de velocidad
+  if (k >= 1) { // impacto: aterriza clavada como una estalactita
+    diveImpact(p);
+    p.z = 0; p.flip = null; p.flipAng = 0; p.moveT = 0;
+    p.sqv = (p.sqv || 0) - 2 * (WEIGHT[p.ch.weight] || WEIGHT.medium).stopKick;
+    return;
+  }
+  p.z = f.z;
+}
+let iceCracks = []; // grietas de hielo que deja el picado en el suelo
+function diveImpact(p) {
+  const dmg = DIVE.dmg * DMG.ability;
+  for (const e of liveTargets()) {
+    if (Math.hypot(e.x - p.x, e.y - p.y) >= DIVE.r + e.r || (e.z || 0) > 60) continue;
+    const fz = e.frozenT > 0;
+    damageEnemy(e, p.x, p.y, dmg, e.maxSta * DIVE.sta, DIVE.kb, true); // a un congelado le entra el extra de quebradizo
+    if (fz && !e.dead) breakFrozen(e, p.x, p.y, DIVE.kb);             // y además se rompe
+  }
+  effects.push({ type: 'ring', x: p.x, y: p.y, r: DIVE.r, t: 0, dur: 0.35, color: '#bfeaf5' });
+  effects.push({ type: 'ring', x: p.x, y: p.y, r: DIVE.r * 0.55, t: 0, dur: 0.22, color: '#ffffff' });
+  for (let i = 0; i < 26; i++) { const a = Math.random() * Math.PI * 2, sp = 120 + Math.random() * 260; particles.push({ x: p.x, y: upY(p.y, 6), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6 - 60, life: 0.5, max: 0.5, color: i % 3 ? '#bfeaf5' : '#ffffff', s: 3 + Math.random() * 2, flake: i % 2 === 0, seed: Math.random() * 6 }); }
+  iceCracks.push({ x: p.x, y: p.y, t0: time, dur: 1.2, rays: Array.from({ length: 9 }, (_, i) => [i * Math.PI * 2 / 9 + Math.random() * 0.5, DIVE.r * (0.7 + Math.random() * 0.6)]) });
+  hitstop = Math.max(hitstop, 0.06); shake = Math.max(shake, 8); flashT = Math.max(flashT, 0.06); SFX.launch();
+}
+// Capa del suelo: grietas del impacto y mira del picado (punteada en el salto; continua al caer; más intensa sobre un congelado)
+function drawDiveFloor() {
+  iceCracks = iceCracks.filter(c => time - c.t0 < c.dur);
+  for (const c of iceCracks) {
+    const a = 1 - (time - c.t0) / c.dur;
+    ctx.fillStyle = `rgba(191,234,245,${0.25 * a})`; ctx.beginPath(); ctx.arc(c.x, c.y, DIVE.r * 0.35, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `rgba(191,234,245,${0.8 * a})`; ctx.lineWidth = 2; ctx.beginPath();
+    for (const [ang, len] of c.rays) {
+      ctx.moveTo(c.x, c.y);
+      ctx.lineTo(c.x + Math.cos(ang) * len * 0.5 + Math.cos(ang + 1.2) * 6, c.y + Math.sin(ang) * len * 0.5 + Math.sin(ang + 1.2) * 6);
+      ctx.lineTo(c.x + Math.cos(ang) * len, c.y + Math.sin(ang) * len);
+    }
+    ctx.stroke();
+  }
+  for (const p of players) {
+    if (p.down || !p.flip) continue;
+    const d = p.flip.dive, tg = d ? { x: d.tx, y: d.ty, e: d.e } : diveTarget(p), on = !!d;
+    const r = tg.e ? tg.e.r + 10 : 16, col = tg.e && tg.e.frozenT > 0 ? '127,216,255' : '191,234,245';
+    ctx.save(); ctx.strokeStyle = `rgba(${col},${on ? 0.95 : 0.6})`; ctx.lineWidth = on ? 3 : 2;
+    if (!on) ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.arc(tg.x, tg.y, r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + time * 2; ctx.moveTo(tg.x + Math.cos(a) * (r + 4), tg.y + Math.sin(a) * (r + 4)); ctx.lineTo(tg.x + Math.cos(a) * (r + 11), tg.y + Math.sin(a) * (r + 11)); }
+    ctx.stroke(); ctx.restore();
+  }
+}
+// En el picado, Escarcha va dentro de un cono de hielo con la punta hacia el suelo (ella es la estalactita)
+function drawDiveShell(p) {
+  const f = p.flip; if (!f || !f.dive || p.down) return;
+  const d = f.dive, k = Math.min(1, d.t / DIVE.hang), s = p.ch.size, cy = p.y - 14 * s - (p.z || 0);
+  ctx.save(); ctx.globalAlpha = 0.35 + 0.4 * k; ctx.translate(p.x, cy); ctx.scale(Math.max(0.05, k), Math.max(0.05, k));
+  ctx.fillStyle = 'rgba(191,234,245,0.55)'; ctx.strokeStyle = '#e8f7ff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-16 * s, -22 * s); ctx.lineTo(16 * s, -22 * s); ctx.lineTo(0, 30 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-6 * s, -18 * s); ctx.lineTo(-1 * s, 18 * s); ctx.stroke();
+  if (d.go) { ctx.strokeStyle = 'rgba(232,247,255,0.7)'; ctx.lineWidth = 2; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * 9 * s, -30 * s); ctx.lineTo(i * 9 * s, -60 * s); ctx.stroke(); } }
+  ctx.restore();
+}
+// Icono del botón de movimiento: en pleno salto, el del picado (estalactita)
+function moveIconOf(p, mv) { return p.flip && !p.flip.dive && p.flip.z > DIVE.minZ ? 'stalactite' : mv.icon; }
 function updateFlip(p, dt) {
   const f = p.flip;
   if (!f) { p.moveT = 0; return; }
   f.jt += dt;
+  if (f.dive) { updateDive(p, f, dt); return; } // picado
   const k = Math.exp(-FLIP.drag * dt); f.vx *= k; f.vy *= k;
   p.x += f.vx * dt; p.y += f.vy * dt; collide(p, true);
   f.vz -= FLIP.g * dt; f.z += f.vz * dt;
@@ -5143,10 +5258,12 @@ function updateFrostShot(p, inp, dt) {
 // Congelar: mismas reglas para el Estallido helado (fromBurst) y para los misiles
 function freezeEnemy(e, fromBurst, time) {
   if (scorchN(e) >= 1 && thermalShock(e)) return; // chamuscado: en vez de congelarse, el hielo revienta
+  if (e.type === 'boss' && e.freezeImmuneT > 0) return; // el guardián no se puede volver a congelar enseguida
   const was = e.frozenT > 0, t = e.type === 'boss' ? 1 : (time || AB.frostburst.time);
   if (was) { e.frozenT = Math.max(e.frozenT, t); e.frozenBurst = e.frozenBurst || !!fromBurst; return; } // ya congelado: solo amplía el tiempo
   if (e.flying && !e.airborne) { e.airborne = true; e.vz = 0; } // un volador congelado en pleno vuelo cae como cualquier aéreo
   e.frozenT = t; e.frozenBurst = !!fromBurst; e.frozenAir = !!e.airborne; e.kbx = e.kby = 0;
+  if (e.type === 'boss') e.freezeImmuneT = t + FREEZE.bossImmune;
   if (e.frozenAir) floatText(e.x, upY(e.y, 50 + e.z), 'Congelado', '#bfeaf5');
 }
 // Lo que se ve mientras cargas: cristales alrededor del libro (misiles) y círculo de invocación (bola de nieve)
@@ -6217,8 +6334,10 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   // Volando a su altura, lo demás no le hace nada; si ese mismo golpe lo lanza, tryLaunch aplica el daño guardado.
   if (e.flying && !e.airborne && !ranged) { e.blockedHit = { t: time, sx, sy, hp: hpDmg, sta: staDmg, kb: kbBase }; return; }
   if (e.stunT > 0 && tierRule(e).stunnedDmg) hpDmg *= DMG.stunned; // aturdido: recibe más daño (el guardián no)
+  if (e.frozenT > 0) hpDmg *= FREEZE.vuln[frozenTier(e)] || 1; // congelado: quebradizo, todo el equipo le hace más daño
   if (furyBy && furyBy.ch.fury) furyGain(furyBy, Math.min(hpDmg, Math.max(0, e.hp))); // Ámbar: el daño que hace llena la furia
-  if (e.frozenAir && e.frozenT > 0) { shatterEnemy(e); return; } // congelado en el aire: cualquier golpe lo rompe
+  // [RETIRADO 2026-11-08] if (e.frozenAir && e.frozenT > 0) { shatterEnemy(e); return; } // congelado en el aire: cualquier golpe lo rompe
+  const airBreak = e.frozenAir && e.frozenT > 0; // congelado en el aire: el golpe lo rompe (romper, no matar; ver breakFrozen)
   e.hitLean = (e.x - sx) >= 0 ? -0.22 : 0.22; // se inclina hacia atrás, alejándose del golpe
   interruptHit(e, false);
   e.hp -= hpDmg; e.flash = 0.1; e.calm = 0; e.squash = 1; // aplastamiento al recibir el golpe
@@ -6233,6 +6352,7 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   e.kbx = dx / d * kb; e.kby = dy / d * kb;
   burst(e.x, upY(e.y, 12 + e.z), '#ffffff', 6); shake = Math.max(shake, 2);
   if (e.hp <= 0) killEnemy(e, false);
+  if (airBreak && !e.dead) breakFrozen(e, sx, sy, kbBase);
 }
 function meleeHit(p, e, s) {
   const dmg = p.ch.melee * s.def.dmg * DMG.melee, heavy = s.kind === 'heavy' || s.def.dmg >= 1.5;
@@ -6294,7 +6414,8 @@ function interruptible(e) { return enVentana(e); }
 // force: lanza aunque tenga más de la mitad de estamina (habilidad de área)
 function tryLaunch(e, force) {
   if (!launchable(e, force)) return false;
-  if (e.frozenT > 0 && e.type !== 'boss') { e.hp = 0; killEnemy(e, true); return false; } // congelado en el suelo y lanzado por los aires: se rompe
+  // [RETIRADO 2026-11-08] if (e.frozenT > 0 && e.type !== 'boss') { e.hp = 0; killEnemy(e, true); return false; } // congelado en el suelo y lanzado por los aires: se rompe
+  if (e.frozenT > 0) { breakFrozen(e, e.x, e.y, 0); if (e.dead) return false; } // congelado y lanzado: se rompe (romper, no matar)
   // [RETIRADO 2026-11-08] e.airborne = true; e.z = 1; ...
   e.airborne = true; e.z = Math.max(1, e.z || 0); e.vz = LAUNCH_VZ; e.kbx *= 0.2; e.kby *= 0.2; e.state = 'walk'; // el volador sale desde su altura
   floatText(e.x, e.y - 40, '¡Al aire!', '#ffffff'); burst(e.x, e.y, '#d8cfe6', 10); SFX.launch();
@@ -6373,10 +6494,28 @@ function grantDragonCharge(executor) {
     floatText(q.x, q.y - 62 * q.ch.size, 'Carga de dragón ' + q.dragonCharges + '/' + AB.dragon.max, '#ff8a3d');
   }
 }
-// Congelado que se rompe (estalactita y bola de nieve): muere de un golpe; el guardián recibe FROZEN_BREAK.bossDmg
+// [RETIRADO 2026-11-08] // Congelado que se rompe (estalactita y bola de nieve): muere de un golpe; el guardián recibe FROZEN_BREAK.bossDmg
+// [RETIRADO 2026-11-08] function breakFrozen(e, sx, sy, kb) {
+// [RETIRADO 2026-11-08] if (e.type === 'boss') { damageEnemy(e, sx, sy, FROZEN_BREAK.bossDmg, FROZEN_BREAK.bossDmg * 0.5, kb); return; }
+// [RETIRADO 2026-11-08] e.hp = 0; killEnemy(e, true);
+// [RETIRADO 2026-11-08] }
+// Romper un congelado (bola de nieve, picado, golpe en el aire o lanzarlo): termina la congelación y añade daño según la vida máxima.
+// Tier 1-2 se hacen añicos si les queda poca vida; tier 3 y guardián nunca mueren por romperse.
 function breakFrozen(e, sx, sy, kb) {
-  if (e.type === 'boss') { damageEnemy(e, sx, sy, FROZEN_BREAK.bossDmg, FROZEN_BREAK.bossDmg * 0.5, kb); return; }
-  e.hp = 0; killEnemy(e, true);
+  if (e.dead || !(e.frozenT > 0)) return;
+  const T = frozenTier(e), bonus = e.maxHp * (FREEZE.breakPct[T] || 0);
+  e.frozenT = 0; e.frozenAir = false; e.frozenBurst = false;
+  damageEnemy(e, sx, sy, bonus, 0, kb || 0, true);
+  if (e.dead) return;
+  if (T <= 2 && e.hp <= e.maxHp * FREEZE.shatterBelow) { shatterEnemy(e); return; }
+  iceBreakFx(e);
+}
+function frozenTier(e) { return e.type === 'boss' ? 4 : Math.min(4, e.tier || 1); }
+function iceBreakFx(e) { // el hielo se rompe sin matar: esquirlas, anillo y chasquido
+  const y = upY(e.y, 12 + (e.z || 0));
+  for (let i = 0; i < 12; i++) { const a = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 160; particles.push({ x: e.x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.8, life: 0.4, max: 0.4, color: '#bfeaf5', s: 3, flake: Math.random() < 0.5, seed: Math.random() * 6 }); }
+  effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 18, t: 0, dur: 0.25, color: '#bfeaf5' });
+  floatText(e.x, upY(e.y, 46 + (e.z || 0)), '¡Roto!', '#bfeaf5'); shake = Math.max(shake, 4); hitstop = Math.max(hitstop, 0.04);
 }
 function killEnemy(e, executed) {
   if (e.dead) return;
@@ -6995,7 +7134,7 @@ function updateEnemy(e, dt) {
   if (e.hitstun > 0) e.hitstun -= dt;
   if (e.rootT > 0) e.rootT -= dt;
   if (e.slowT > 0) e.slowT -= dt;
-  if (e.frozenT > 0 && !e.frozenAir) e.frozenT -= dt; // congelado en el aire: dura hasta que cae o recibe un disparo
+  if (e.frozenT > 0 && !e.frozenAir) e.frozenT -= dt; if (e.freezeImmuneT > 0) e.freezeImmuneT -= dt; // congelado en el aire: dura hasta que cae o recibe un disparo
   if (e.tauntT > 0) e.tauntT -= dt;
   if (e.grabbed) return; // lo lleva un Brawler en la caída Izuna
   // [RETIRADO] antes el slime hacía daño al tocarte: // if (e.type === 'slime' && (e.z || 0) < 30) for (const pl of players) if (!pl.down && Math.hypot(pl.x - e.x, pl.y - e.y) < pl.r + e.r) hurtPlayer(pl, e.x, e.y, e);
@@ -7014,7 +7153,8 @@ function updateEnemy(e, dt) {
       e.z = e.flyZ; e.vz = 0; e.airborne = false; burst(e.x, e.y, '#c9b8ff', 4); return;
     }
     if (e.z <= 0 && e.vz < 0) {
-      if (e.frozenAir) { shatterEnemy(e); return; } // congelado en el aire: se rompe al caer
+      // [RETIRADO 2026-11-08] if (e.frozenAir) { shatterEnemy(e); return; } // congelado en el aire: se rompe al caer
+      if (e.frozenAir) { breakFrozen(e, e.x, e.y, 0); if (e.dead) return; } // congelado en el aire: se rompe al caer (romper, no matar)
       e.z = 0; e.vz = 0; e.airborne = false; e.getup = 0.5; burst(e.x, e.y, '#d8cfe6', 8); shake = Math.max(shake, 3);
       damageEnemy(e, e.x, e.y, Math.max(0.5, e.maxHp * DMG.fallHp), e.maxSta * DMG.fallSta, 0); // golpe contra el suelo
       scorchLand(e); // chamuscado: cae como un meteorito
@@ -7258,13 +7398,14 @@ function update(dt) {
         // else shotHit(b.owner, e, b.dmg + SNOW_FROZEN_DMG, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05);
         // continue;
         // }
-        if (b.snow && e.frozenT > 0) { // bola de nieve contra congelado: se rompe igual que la estalactita
-          if (b.hit.has(e)) continue; b.hit.add(e);
-          breakFrozen(e, b.x, b.y, 160);
-          continue;
-        }
+        // [RETIRADO 2026-11-08] if (b.snow && e.frozenT > 0) { // bola de nieve contra congelado: se rompe igual que la estalactita
+        // [RETIRADO 2026-11-08] if (b.hit.has(e)) continue; b.hit.add(e);
+        // [RETIRADO 2026-11-08] breakFrozen(e, b.x, b.y, 160);
+        // [RETIRADO 2026-11-08] continue;
+        // [RETIRADO 2026-11-08] }
         // [RETIRADO 2026-11-08] if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); }
-        if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); if (b.snow) snowKnock(e, b); }
+        // [RETIRADO 2026-11-08] if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); if (b.snow) snowKnock(e, b); }
+        if (b.pierce) { if (b.hit.has(e)) continue; b.hit.add(e); const fz = e.frozenT > 0; shotHit(b.owner, e, b.dmg, 160, b.x - b.vx * 0.05, b.y - b.vy * 0.05); if (b.snow) { if (fz) breakFrozen(e, b.x, b.y, 160); else snowKnock(e, b); } } // bola: a los congelados los rompe; a los demás, los empuja
         else { shotHit(b.owner, e, b.dmg, 110, b.x - b.vx * 0.05, b.y - b.vy * 0.05); b.life = 0; break; }
       }
     }
@@ -9125,6 +9266,7 @@ function drawShotState(p) {
   const c = p.ch, lift = 14 * c.size;
   drawFrostCharge(p);
   drawFrostAura(p);
+  drawDiveShell(p);
   if (c.priType === 'raiseShield' && p.shieldHp != null && (p.shieldUp || p.shieldHp < AB.wall.max)) { // resistencia del escudo
     bar(p.x - 16, p.y - lift - p.r - 22 - (p.z || 0), 32, 4, p.shieldHp / AB.wall.max, p.shieldBroken ? '#ff6b6b' : (p.shieldUp ? '#bfeaf5' : '#7d8aa0'));
   }
@@ -9253,7 +9395,7 @@ function drawHUD() {
     // tres casillas: movimiento, habilidad 1 y habilidad 2
     const px = [x + 96, x + 96 + z + 4, x + 96 + (z + 4) * 2], py = 5, mv = moveOf(c), tur = myTurret(p);
     const secsOf = v => (v > 0.05 ? v : 0);
-    drawPip(px[0], py, mv.hold ? 0 : moveFrac(p), mv.icon, p.color, mv.hold ? !!p.blocking : p.moveT > 0 || !!p.jump, false, z,
+    drawPip(px[0], py, mv.hold ? 0 : moveFrac(p), moveIconOf(p, mv), p.color, mv.hold ? !!p.blocking : p.moveT > 0 || !!p.jump, false, z,
       mv.hold || c.moveCharges ? 0 : (p.moveCd >= 0.5 ? p.moveCd : 0));
     if (c.moveCharges) for (let k = 0; k < c.moveCharges; k++) { ctx.fillStyle = k < (p.mCh || 0) ? p.color : '#3a3342'; rrect(px[0] + k * 9, py + z + 4, 7, 5, 2); ctx.fill(); } // cargas
     drawPip(px[1], py, p.priCd / (p.priCdMax || c.priCd), abilityType(p, 'pri'), p.color, p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp,
@@ -9384,7 +9526,7 @@ function drawGame() {
   if (SIEGE.on) siegeDrawFloor();
   // Capa del suelo: zonas, avisos y previsualizaciones se dibujan en el plano aplastado (círculos → elipses)
   ctx.save(); ctx.scale(1, K);
-  drawHazards(); drawBossTells(); drawFriendlyZones(); drawVines(); drawArcOrbs('floor'); drawTargets(); drawShieldZones(); drawPreviews(); drawComboHints(); drawChargeHints();
+  drawHazards(); drawBossTells(); drawFriendlyZones(); drawVines(); drawArcOrbs('floor'); drawTargets(); drawShieldZones(); drawPreviews(); drawComboHints(); drawChargeHints(); drawDiveFloor();
   ctx.restore();
   const list = [];
   const [x0, x1, y0, y1] = viewTiles();
@@ -9498,7 +9640,7 @@ function setPips(b, n, max, lv) {
 // Devuelve { icon, lv (0–1 de carga, o null), alt (golpe especial listo) }
 function attackContext(p) {
   const c = p.ch, base = c.canMelee ? 'melee' : 'shot', post = p.moveT > 0 || p.postMoveT > 0;
-  if (p.flip && p.flip.n >= 2 && p.flip.z > 8) return { icon: 'stalactite', lv: null, alt: true }; // durante el segundo salto: la estalactita que cae
+  // [RETIRADO 2026-11-08] if (p.flip && p.flip.n >= 2 && p.flip.z > 8) return { icon: 'stalactite', lv: null, alt: true }; // durante el segundo salto: la estalactita que cae
   if (c.canMelee) {
     if (p.mCharging) return { icon: c.chargedMelee, lv: meleeLv(p) };
     const am = post && !p.jump && specialSlots(c).find(sp => sp.kind === SPECIAL_KIND.afterMove);
@@ -9538,7 +9680,8 @@ function updateTouchButtons() {
   updateAttackButton(atk, p);
   const mv = moveOf(c);
   if (mv.hold) setBtn(dash, mv.icon, p.color, 0, p.down, !!p.blocking);
-  else setBtn(dash, mv.icon, p.color, moveFrac(p), p.down, p.moveT > 0 || !!p.jump);
+  // [RETIRADO 2026-11-08] else setBtn(dash, mv.icon, p.color, moveFrac(p), p.down, p.moveT > 0 || !!p.jump);
+  else setBtn(dash, moveIconOf(p, mv), p.color, moveFrac(p), p.down, p.moveT > 0 || !!p.jump);
   setPips(dash, p.mCh || 0, c.moveCharges || 0, 0);
   setBtn(q, abilityType(p, 'pri'), p.color, p.priCd / (p.priCdMax || c.priCd || 1), p.down || !abilityReady(p, 'pri'),
     p.cast === 'pri' || (c.priType === 'turret' && !!tur) || !!p.shieldUp);
