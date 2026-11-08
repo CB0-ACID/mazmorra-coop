@@ -17,6 +17,10 @@
     let th = 0;
     for (const h of hazards) {
       if (h.cancel || h.done || !seen(b, h, now)) continue;
+      if (b.parryPlan && h.owner && h.owner.type === 'boss') { // Ceniza con escudo: no se aparta del golpe del guardián si le llega por delante (lo para)
+        let da = Math.atan2(h.y - p.y, h.x - p.x) - Math.atan2(p.ay, p.ax); da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (Math.abs(da) <= AB.wall.arc * 0.85) continue;
+      }
       const left = h.delay - h.t, dd = Math.hypot(x - h.x, y - h.y);
       if (left > 1.2) continue;
       let inside = dd < h.r + p.r + 10;
@@ -42,6 +46,21 @@
     }
     if (isSolid(Math.floor(x / T), Math.floor(y / T))) th += 50;
     return th;
+  }
+  // ¿Golpe a punto de llegar por delante? (para el bloqueo perfecto: ventana de 0,2 s)
+  function imminent(b, p, now) {
+    for (const h of hazards) {
+      if (h.cancel || h.done || !seen(b, h, now)) continue;
+      const left = h.delay - h.t; if (left > 0.18 || left < 0) continue;
+      if (Math.hypot(p.x - h.x, p.y - h.y) < h.r + p.r + 6) return true;
+    }
+    for (const u of bullets) {
+      if (!seen(b, u, now)) continue;
+      const v2 = u.vx * u.vx + u.vy * u.vy || 1, tc = ((p.x - u.x) * u.vx + (p.y - u.y) * u.vy) / v2;
+      if (tc > 0 && tc < 0.18 && Math.hypot(p.x - (u.x + u.vx * tc), p.y - (u.y + u.vy * tc)) < (u.r || 6) + p.r + 6) return true;
+    }
+    for (const e of enemies) if (!e.dead && isHot(e) && Math.hypot(e.x - p.x, e.y - p.y) < e.r + p.r + 40 && seen(b, 'hot' + enemies.indexOf(e) + Math.floor(e.t * 3), now)) return true;
+    return false;
   }
   function pickTarget(p) {
     let best = null, bs = 1e9;
@@ -120,6 +139,7 @@
     } else b.way = null;
     // esquivar: evaluar 16 direcciones y quedarse con la más segura que siga acercando al objetivo
     let mx = gx - p.x, my = gy - p.y; const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; } else { mx = my = 0; }
+    b.parryPlan = SK.parry !== false && c.priType === 'raiseShield' && !p.shieldBroken && !p.shieldOut;
     if (SK.dodge) {
       const here = threatAt(b, p, p.x, p.y, now);
       if (here > 0) {
@@ -134,6 +154,8 @@
         b.dodging = 0.2;
       }
     }
+    if (b.parryPlan && imminent(b, p, now)) { if (!p.shieldUp && !b.hold.q) { pulse(b, 'q', 0.04); b.lowerAt = now + 0.7; } } // Ceniza: alza el escudo justo antes del golpe (bloqueo perfecto)
+    if (c.priType === 'raiseShield' && p.shieldUp && b.lowerAt && now > b.lowerAt && !b.hold.q) { pulse(b, 'q', 0.04); b.lowerAt = 0; } // vuelve a bajarlo para atacar
     out.x = mx; out.y = my;
     b.dodging = (b.dodging || 0) - STEP;
     // ataque

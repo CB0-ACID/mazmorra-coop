@@ -908,6 +908,8 @@ const HURT = {
   revive: 1.5        // invulnerabilidad al levantarse tras caer
 };
 // Bloqueo (tanques): mantener el botón de movimiento; frena y para lo que llega por delante
+// Bloqueo perfecto (2026-11-08, más potente): estamina que quita al atacante (fracción de su máxima) y alcance para castigar al dueño de una zona bloqueada
+const PARRY = { sta: 0.6, staBoss: 0.3, zoneRange: 240 }; // [RETIRADO 2026-11-08] antes: 0,25 a todos y sin efecto contra zonas
 const BLOCK_ARC = 1.3, BLOCK_SPEED = 0.4, BLOCK_PERFECT = 0.2; // ángulo cubierto, velocidad, ventana de bloqueo perfecto // reacción del enemigo: interrumpe su acción
 
 // ---------- Sonido sintetizado (sin archivos); M lo silencia ----------
@@ -6429,7 +6431,13 @@ function onBlock(p, sx, sy, srcEnemy, bullet) {
   if (perfect) {
     p.perfectUsed = true; p.postMoveT = p.ch.postMoveWindow; hitstop = Math.max(hitstop, 0.07);
     floatText(p.x, p.y - 46 * p.ch.size, 'Bloqueo perfecto', '#ffffff'); SFX.exec();
-    if (srcEnemy && !srcEnemy.dead) { applyHitstun(srcEnemy, true); damageEnemy(srcEnemy, p.x, p.y, 0, srcEnemy.maxSta * 0.25, 260); }
+    // [RETIRADO 2026-11-08] if (srcEnemy && !srcEnemy.dead) { applyHitstun(srcEnemy, true); damageEnemy(srcEnemy, p.x, p.y, 0, srcEnemy.maxSta * 0.25, 260); }
+    let foe = srcEnemy;
+    if (!foe && !bullet) { // zona avisada bloqueada de frente (golpes al suelo del guardián…): castiga a su dueño si está cerca
+      const h = hazards.find(z => z.x === sx && z.y === sy && z.owner);
+      if (h && !h.owner.dead && Math.hypot(h.owner.x - p.x, h.owner.y - p.y) - h.owner.r < PARRY.zoneRange) foe = h.owner;
+    }
+    if (foe && !foe.dead) { applyHitstun(foe, true); damageEnemy(foe, p.x, p.y, 0, foe.maxSta * (foe.type === 'boss' ? PARRY.staBoss : PARRY.sta), 260); }
     if (bullet) { const a = Math.atan2(-dy, -dx); pBullets.push({ x: p.x, y: p.y, vx: Math.cos(a) * 380, vy: Math.sin(a) * 380, r: 5, life: 0.9, dmg: 2, color: p.color, pierce: false, hit: new Set(), owner: p, h: 12, vh: 0 }); }
   } else { p.kbx += dx / d * 120; p.kby += dy / d * 120; SFX.hit(false); }
 }
@@ -7771,7 +7779,8 @@ const ABILITY_TEXT = {
   mortar: ['Lluvia de mortero', 'Mantén para apuntar: caen 6 granadas sobre la zona'],
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla. Cualquiera puede cargarla a la espalda'],
   overcharge: ['Sobrecarga', 'Más cadencia y apenas calienta; la torreta cura a los aliados cerca'],
-  raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; se gasta'],
+  // [RETIRADO 2026-11-08] raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; se gasta'],
+  raiseShield: ['Escudo en alto', 'Pulsa para alzarlo y otra vez para bajarlo; refleja balas y cubre al grupo; alzado justo antes del golpe, bloqueo perfecto que aturde'],
   // vine: ['Liana giratoria', 'Barre a su alrededor; con un aliado, los une'],
   vine: ['Liana giratoria', 'Barre y lanza por los aires; con un aliado, os une y os cura'],
   taunt: ['Provocación', 'Atrae a los enemigos; su guardia cubre todo'],
@@ -10172,7 +10181,8 @@ function tutTabAbilities(c, x, y, w, h) {
 const TUT_CHARGED_ANIM = { seismic: { shape: 'disc', r: 80 }, arcane: { shape: 'disc', r: 80, reach: 60 }, uppercut: { shape: 'thrust', len: 115, width: 56 }, starfall: { shape: 'disc', r: 55, reach: 80 } };
 const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas' };
 const TUT_STRAT = {
-  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
+  // [RETIRADO 2026-11-08] 'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
+  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje. Álzalo justo antes del golpe para un bloqueo perfecto: rompe gran parte de la estamina del atacante (también si es el golpe al suelo de un guardián cercano).', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
   'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
   'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
   // [RETIRADO 2026-11-08] (textos de la Coral de pistolas con calor)
