@@ -112,7 +112,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 <header class="head">
   <span class="eyebrow">Mazmorra Coop · simulación de equilibrio · 8 de noviembre de 2026</span>
   <h1>Balance de personajes</h1>
-  <p class="lede">Simulé partidas reales con el código del juego (rama main), con un bot que juega cada personaje en solitario. Los brawlers van muy por delante gracias a las ejecuciones, los tiradores se atascan con los guardianes y Escarcha se queda muy por debajo del resto.</p>
+  <p class="lede">Simulé partidas reales con el código del juego (rama main), con un bot que juega cada personaje en solitario. Ahora que el bot tirador también se acerca a rematar, quedan dos grupos: arriba los brawlers, Coral, Marea y Ciruela; abajo los tanques y Escarcha. La ejecución al guardián es el factor que más pesa.</p>
   <div class="facts"><span><b>{{NSIM}}</b> combates y partidas</span><span><b>8</b> personajes</span><span><b>2</b> niveles de bot (experto y medio)</span><span><b>15</b> semillas por escenario</span><span>Escenarios: muñeco, 4 encuentros de prueba, 4 guardianes y partida completa de 4 pisos</span></div>
 </header>
 
@@ -161,22 +161,24 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
   <span class="eyebrow">Conclusiones</span>
   <h2>Qué está desequilibrado y qué haría</h2>
   <div class="findings">
-    <div class="finding"><h3>Las ejecuciones a los guardianes deciden el combate<span class="sev alta">Alta</span></h3>
-      <p>Brasa y Ámbar ejecutan entre 7 y 9 veces por minuto contra los guardianes, y cada ejecución les quita el 25 % de la vida. Vencen al Cañonero en 10-14 s, cuando el resto tarda entre 26 y 73 s. Las ejecuciones son el 49 % del daño de Brasa y el 39 % del de Ámbar. Además apenas reciben daño, porque son invulnerables durante la embestida, el salto y el taladro.</p>
-      <p class="fix"><b>Propuesta:</b> bajar la ejecución al guardián al 12 % (o dar unos segundos de inmunidad al aturdimiento tras cada ejecución). En la simulación, con el 12 % tardan entre un 15 % y un 57 % más según el guardián (Cañonero 14-16 s, Dragón 39-41 s) y siguen siendo los más rápidos.</p></div>
-    <div class="finding"><h3>Los tiradores casi no hacen daño a los guardianes<span class="sev alta">Alta</span></h3>
-      <p>Marea y Ciruela hacen 3-4 DPS a los guardianes, la mitad que los tanques. Ciruela tarda 73 s con el Cañonero y 163 s con el Dragón, y en la partida completa pasa 95 s por sala. La causa está en la fórmula: el disparo a un enemigo con estamina quita sobre todo estamina (<code>DMG.shotHpVsSta</code> 0,4), y el guardián solo recibe el 30 % de esa estamina (<code>shotStaMul</code> 0,3). Así casi nunca lo aturden ni lo ejecutan.</p>
-      <p class="fix"><b>Propuesta:</b> que los disparos quiten el doble de vida al guardián. En la simulación, Marea pasa de 51 a 28 s con el Cañonero y Ciruela de 73 a 33 s, al nivel de los tanques. Doblar solo la estamina apenas cambia nada (5-10 %). Tiene que aplicarse a los disparos y no a las explosiones: con explosiones incluidas, Coral bajaría a 14 s y se dispararía.</p></div>
-    <div class="finding"><h3>Escarcha es la última en todo<span class="sev alta">Alta</span></h3>
-      <p>Hace 1,5 DPS al muñeco, cinco veces menos que Ámbar, y tiene 60 PV. Pierde contra el Cañonero, el Ariete y el Dragón en más del 90 % de los combates, y todas sus partidas acaban en el piso 1 o 2. Su nota de diseño de daño (4/5) no se corresponde con lo que pasa en partida.</p>
-      <p class="fix"><b>Propuesta:</b> necesita los dos cambios a la vez. Con 80 PV y el disparo ×1,6, las salas reales pasan del 47 % al 80 % de victorias, pero los guardianes siguen igual. Si además se aplica el arreglo de los tiradores, vence al Cañonero el 100 % de las veces en 50 s.</p></div>
-    <div class="finding"><h3>Los tanques pegan bien pero no aguantan<span class="sev media">Media</span></h3>
-      <p>Ceniza y Musgo hacen 6-7 DPS a los guardianes, más que los tiradores, pero reciben 100-190 PV por minuto. Son grandes y lentos, y no salen a tiempo de las zonas del Gólem ni de los golpes en área de los guardianes. Musgo pierde el 47 % de las veces contra el Dragón, y ninguno de los dos completa la partida en solitario.</p>
-      <p class="fix"><b>Propuesta:</b> que los tanques reciban un 30 % menos de daño. En la simulación, Musgo pasa del 73 % al 100 % de victorias contra el Ariete y del 53 % al 90 % contra el Dragón. Parte de esto es del bot: no usa el escudo alzado de Ceniza ni la Provocación, así que conviene probarlo a mano antes de tocarlo.</p></div>
-    <div class="finding"><h3>Coral es fuerte pero exige mucho<span class="sev media">Vigilar</span></h3>
-      <p>Es la tercera en daño puro (6,1 DPS) y, con el bot experto, casi no recibe daño. Con el bot medio, las partidas completadas bajan del 53 % al 0 %: con 60 PV no perdona errores. No tocaría sus números, pero puede frustrar a jugadores nuevos.</p></div>
+    <div class="finding"><h3>La ejecución al guardián decide casi todo<span class="sev alta">Alta</span></h3>
+      <p>Ahora que los tiradores también se acercan a rematar, la ejecución (−25 % de la vida del guardián cada vez) es entre el 39 % y el 66 % del daño de seis de los ocho personajes. Quien aturde rápido vence a los guardianes en 10-25 s. Los tanques y Escarcha, que aturden poco, tardan entre 39 y 52 s.</p>
+      <p class="fix"><b>Propuesta:</b> bajarla al 12-15 %. Probado al 12 %: el orden se mantiene y los combates pasan a 15-45 s (Brasa y Ámbar 14-41 s, Marea y Ciruela 30-45 s, Coral 12-21 s), así que la diferencia entre personajes se reduce.</p></div>
+    <div class="finding"><h3>Los tanques son ahora el grupo débil<span class="sev alta">Alta</span></h3>
+      <p>Ceniza y Musgo quitan poca estamina (3-4 por segundo frente a 7-11 del resto), ejecutan unas 3 veces por minuto y reciben entre 127 y 147 PV por minuto de los guardianes. Ninguno completa una partida en solitario. Son los únicos a los que la ejecución apenas ayuda.</p>
+      <p class="fix"><b>Propuesta:</b> que reciban un 25 % menos de daño (probado al 30 %: Musgo pasa del 53 % al 90 % contra el Dragón) y que sus golpes quiten más estamina, por ejemplo ×1,5, para que también entren en el ciclo de aturdir y ejecutar. Antes conviene probar a mano el escudo alzado y la Provocación de Ceniza, que el bot no usa.</p></div>
+    <div class="finding"><h3>Escarcha sigue última<span class="sev alta">Alta</span></h3>
+      <p>Rematando mejora mucho contra tier 2 y 3 (15-24 s), pero con 60 PV y 1,5 DPS al muñeco sigue perdiendo contra el Dragón (33 %) y todas sus partidas acaban en el piso 1 o 2.</p>
+      <p class="fix"><b>Propuesta:</b> 80 PV y disparo ×1,6. Probado con el bot nuevo: salas reales del 67 % al 90 % de victorias, el Cañonero del 60 % al 100 % (44 s) y el Dragón del 33 % al 50 %. Con eso queda al nivel de los tanques sin pasar a nadie.</p></div>
+    <div class="finding"><h3>Coral es ahora la más rápida y no recibe daño<span class="sev media">Media</span></h3>
+      <p>Vence a los cuatro guardianes en 10-12 s sin recibir un solo golpe, con 15-18 ejecuciones por minuto. Sus explosiones quitan estamina al guardián al 100 %, porque la reducción del guardián (<code>shotStaMul</code> 0,3) solo se aplica a los disparos normales. Aun así, con el bot medio no completa ninguna partida: con 60 PV no perdona errores en las salas.</p>
+      <p class="fix"><b>Propuesta:</b> aplicar a sus explosiones una parte de la reducción de estamina del guardián (por ejemplo ×0,5). Con la ejecución al 12 % ya baja a 12-21 s, pero sigue siendo la más rápida.</p></div>
+    <div class="finding"><h3>Marea y Ciruela cumplen su papel y son las más seguras<span class="sev media">Datos</span></h3>
+      <p>Rematando de cerca, vencen a los guardianes en 18-29 s, completan el 100 % de las partidas con el bot experto y reciben 9-13 PV por minuto de los guardianes. Ciruela ya no se eterniza: pasa de 95 a 41 s por sala. Ya rompen bien la estamina, así que descarto subir el <code>shotStaMul</code> del guardián.</p></div>
+    <div class="finding"><h3>Brawlers: el riesgo ya existe frente a los tiradores<span class="sev media">Opcional</span></h3>
+      <p>Brasa y Ámbar reciben 46-64 PV por minuto de los guardianes, frente a 9-13 de Marea y Ciruela, así que ya son más arriesgados que los tiradores. Quitarles la invulnerabilidad en las embestidas a ras de suelo (Embestida, Garra taladro, carrera del dragón, golpe del segador) sigue siendo una opción si quieres más riesgo, pero ya no es prioritario.</p></div>
     <div class="finding"><h3>Las notas de diseño no reflejan el daño real<span class="sev media">Datos</span></h3>
-      <p>En <code>RATINGS</code>, Marea tiene 5/5 de daño y queda a mitad de tabla; Escarcha tiene 4/5 y es la última; Ceniza tiene 2/5 y es la tercera en daño a guardianes. La ficha de selección muestra estas notas, así que conviene actualizarlas cuando se decidan los cambios.</p></div>
+      <p>Las notas de daño de <code>RATINGS</code> (Ceniza 2, Escarcha 4, Marea 5…) no coinciden con lo medido. Conviene actualizarlas cuando cerremos los cambios.</p></div>
   </div>
 </section>
 
@@ -201,6 +203,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
   <h2>Cómo se ha medido y qué no mide</h2>
   <ul class="plain">
     <li>El simulador (<code>tools/sim</code>) carga el código real de <code>mazmorra-coop.html</code> en Node y avanza el juego a 60 pasos por segundo. El bot pulsa los mismos botones que un mando, así que golpes, combos, ejecuciones, lanzamientos y habilidades funcionan como en una partida.</li>
+    <li>Los tiradores se acercan a ejecutar a los enemigos aturdidos cuando les da tiempo a llegar, como haría un jugador.</li>
     <li>El bot esquiva las zonas avisadas, las balas y las embestidas con el tiempo de reacción de su nivel, rodea los muros por casillas y usa las dos habilidades cuando están listas.</li>
     <li>Todo es en solitario: no mide sinergias de grupo (lanzar para otro, curar, cubrirse tras el escudo) ni el escalado con más jugadores.</li>
     <li>El bot no usa el escudo alzado ni la Provocación de Ceniza, ni el cambio a bola de nieve de Escarcha. Recoge los corazones de forma automática al terminar cada sala.</li>
