@@ -100,6 +100,9 @@
         b.strafeT -= STEP; if (b.strafeT <= 0) { b.strafeT = 1 + Math.random() * 2; b.strafe = -b.strafe; }
         const rad = gap > want + 40 ? 1 : gap < want - 50 ? -1 : 0;
         gx = p.x + (dx / d) * rad * 60 + (-dy / d) * b.strafe * 40; gy = p.y + (dy / d) * rad * 60 + (dx / d) * b.strafe * 40;
+        // aturdido en el suelo y da tiempo a llegar: acercarse a rematarlo, como haría un jugador
+        b.goExec = SK.execute !== false && tg.stunT > 0 && !tg.airborne && gap / ((c.speed || 200) * 0.9) < tg.stunT - 0.15;
+        if (b.goExec) { gx = tg.x; gy = tg.y; }
       } else {
         const stand = (tg.type === 'bat' && !tg.airborne) ? 60 : 6;
         if (gap > stand) { gx = tg.x; gy = tg.y; }
@@ -168,7 +171,7 @@
         if (!p.lockOn || p.target !== tg) { if (!b.lT || b.lT <= 0) { pulse(b, 'l', 0.04); b.lT = 0.5; } }
         b.lT = (b.lT || 0) - STEP;
         // a quemarropa: ejecutar aturdidos con el ataque
-        if (tg.stunT > 0 && gap < 30) out.a = (ph % 0.2) < 0.05;
+        if (tg.stunT > 0 && !tg.airborne && gap < 40) { out.a = (ph % 0.2) < 0.05; out.s = false; }
       }
       // habilidades
       b.abT -= STEP;
