@@ -1,0 +1,212 @@
+<title>Balance de personajes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Concepto: hoja de bestiario de la mazmorra. Columna de lectura con tablas anchas que desbordan en su propio carril; paleta de los menús del juego */
+:root {
+  --bg: #f4f1f9; --panel: #ffffff; --ink: #1c1726; --muted: #5d5470; --line: #ddd5ea; --accent: #6b4fd8; --gold: #9a6b00;
+  --good: #1f8a5b; --bad: #c2334a; --warn: #a86400;
+  --h1: #1f8a5b; --h2: #63b88c; --h3: #e9e4f2; --h4: #e8a76b; --h5: #d0546a; --hfg: #1c1726; --hfg2: #ffffff;
+  --s1: #7a63d6; --s2: #b49bff; --s3: #3f8ff5; --s4: #3cc9a0; --s5: #e0a020; --s6: #a9a2b4;
+  --f1: #c2334a; --f2: #e07a4f; --f3: #e0b44f; --f4: #8fbf6a; --f5: #1f8a5b;
+  --display: "Chakra Petch", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15111d; --panel: #1c1726; --ink: #f2eefa; --muted: #a59cb8; --line: #322a42; --accent: #b49bff; --gold: #ffd54a;
+  --good: #4fd08f; --bad: #ff6b81; --warn: #ffb44a;
+  --h1: #2a9d68; --h2: #2f6b52; --h3: #2a2338; --h4: #7a4a2a; --h5: #8a2e40; --hfg: #f2eefa; --hfg2: #ffffff;
+  --s1: #8f7bf0; --s2: #cbb8ff; --s3: #5aa2ff; --s4: #3cc9a0; --s5: #ffd54a; --s6: #8a8494;
+  --f1: #d9485f; --f2: #e88a5a; --f3: #e8c35a; --f4: #8fcf6a; --f5: #3cc98a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15111d; --panel: #1c1726; --ink: #f2eefa; --muted: #a59cb8; --line: #322a42; --accent: #b49bff; --gold: #ffd54a;
+  --good: #4fd08f; --bad: #ff6b81; --warn: #ffb44a;
+  --h1: #2a9d68; --h2: #2f6b52; --h3: #2a2338; --h4: #7a4a2a; --h5: #8a2e40; --hfg: #f2eefa; --hfg2: #ffffff;
+  --s1: #8f7bf0; --s2: #cbb8ff; --s3: #5aa2ff; --s4: #3cc9a0; --s5: #ffd54a; --s6: #8a8494;
+  --f1: #d9485f; --f2: #e88a5a; --f3: #e8c35a; --f4: #8fcf6a; --f5: #3cc98a; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.55 var(--body); }
+.wrap { max-width: 980px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 64px; display: grid; gap: 48px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(32px, 6vw, 48px); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 26px; font-weight: 700; }
+h3 { font-size: 18px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font: 600 12px/1 var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+section { display: grid; gap: 16px; min-width: 0; }
+.lede { font-size: 18px; color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; font-family: var(--display); font-weight: 600; }
+.head { display: grid; gap: 14px; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--muted); font-size: 14px; }
+.facts b { color: var(--ink); font-family: var(--display); }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+thead th { font: 600 12px/1.2 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+tbody tr:last-child > * { border-bottom: 0; }
+td.num, th.num { text-align: right; }
+.pos { color: var(--muted); width: 2ch; }
+.who { display: inline-flex; align-items: baseline; gap: 8px; }
+.who small { color: var(--muted); }
+i[style*="--c"] { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--c); transform: rotate(45deg); margin-right: 2px; flex: none; }
+.rowh { font-weight: 600; display: table-cell; }
+.rowh i { margin-right: 8px; }
+.tier { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; font: 700 15px var(--display); }
+.tS { background: var(--gold); color: var(--panel); }
+.tA { background: var(--accent); color: var(--panel); }
+.tB { border: 2px solid var(--accent); color: var(--accent); }
+.tC { border: 2px solid var(--bad); color: var(--bad); }
+.barcell { display: flex; align-items: center; gap: 10px; min-width: 160px; }
+.sbar { flex: 1; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; min-width: 90px; }
+.sbar span { display: block; height: 100%; background: var(--accent); }
+.heat td.hc { text-align: center; font: 600 15px var(--display); font-variant-numeric: tabular-nums; color: var(--hfg); min-width: 64px; }
+.heat td.hc small { display: block; font: 400 11px var(--body); opacity: 0.85; }
+.heat th small { display: block; font: 400 11px var(--body); text-transform: none; letter-spacing: 0; }
+.h1 { background: var(--h1); color: var(--hfg2) !important; } .h2 { background: var(--h2); } .h3 { background: var(--h3); } .h4 { background: var(--h4); } .h5 { background: var(--h5); color: var(--hfg2) !important; }
+.lose { color: var(--bad) !important; background: transparent; }
+.key { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); align-items: center; }
+.key span { display: inline-flex; gap: 6px; align-items: center; }
+.key i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 24px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.panel p { font-size: 14px; color: var(--muted); }
+.bars { display: grid; gap: 7px; }
+.brow { display: grid; grid-template-columns: 92px 1fr 64px; align-items: center; gap: 10px; font-size: 14px; }
+.bl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.bt { height: 14px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bf { display: block; height: 100%; background: var(--c); }
+.bv { text-align: right; font-size: 13px; }
+.stack { display: flex; height: 16px; border-radius: 3px; overflow: hidden; background: var(--line); }
+.stack span { display: block; height: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.f1 { background: var(--f1); } .f2 { background: var(--f2); } .f3 { background: var(--f3); } .f4 { background: var(--f4); } .f5 { background: var(--f5); }
+.warn { color: var(--warn); }
+.findings { display: grid; gap: 14px; counter-reset: f; }
+.finding { display: grid; grid-template-columns: 36px 1fr; gap: 4px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+.finding::before { counter-increment: f; content: counter(f); grid-row: span 3; font: 700 22px var(--display); color: var(--accent); }
+.finding h3 { font-size: 17px; }
+.finding p { font-size: 15px; color: var(--ink); }
+.finding .fix { color: var(--muted); font-size: 14px; }
+.finding .fix b { color: var(--good); font-weight: 600; }
+.sev { font: 600 11px/1 var(--display); letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 7px; border-radius: 4px; margin-left: 8px; vertical-align: 2px; }
+.sev.alta { background: var(--bad); color: var(--hfg2); }
+.sev.media { border: 1px solid var(--warn); color: var(--warn); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 10px; align-content: start; }
+.card header { display: grid; grid-template-columns: 14px 1fr; column-gap: 10px; align-items: center; }
+.card header i { width: 12px; height: 12px; background: var(--c); transform: rotate(45deg); border-radius: 2px; }
+.card header span { grid-column: 2; font-size: 13px; color: var(--muted); }
+.card dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.card dt { font-size: 12px; color: var(--muted); }
+.card dd { margin: 0; font-size: 18px; }
+.card p { font-size: 13px; color: var(--muted); }
+ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72ch; }
+ul.plain li { font-size: 15px; }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; background: var(--line); padding: 1px 5px; border-radius: 4px; }
+@media (max-width: 520px) { .brow { grid-template-columns: 78px 1fr 54px; } }
+</style>
+<div class="wrap">
+
+<header class="head">
+  <span class="eyebrow">Mazmorra Coop · simulación de equilibrio · 8 de noviembre de 2026</span>
+  <h1>Balance de personajes</h1>
+  <p class="lede">Simulé partidas reales con el código del juego (rama main), con un bot que juega cada personaje en solitario. Los brawlers van muy por delante gracias a las ejecuciones, los tiradores se atascan con los guardianes y Escarcha se queda muy por debajo del resto.</p>
+  <div class="facts"><span><b>{{NSIM}}</b> combates y partidas</span><span><b>8</b> personajes</span><span><b>2</b> niveles de bot (experto y medio)</span><span><b>15</b> semillas por escenario</span><span>Escenarios: muñeco, 4 encuentros de prueba, 4 guardianes y partida completa de 4 pisos</span></div>
+</header>
+
+<section>
+  <span class="eyebrow">Ranking</span>
+  <h2>Clasificación general</h2>
+  <p>La puntuación combina daño relativo (45 %: DPS frente a la media de los ocho en cada escenario), supervivencia (35 %: victorias en los 8 encuentros con los dos niveles de bot) y progreso en partida completa (20 %: piso medio alcanzado).</p>
+  <div class="scroll"><table>
+    <thead><tr><th>#</th><th>Personaje</th><th>Nivel</th><th>Puntuación</th><th class="num">Daño relativo</th><th class="num">Victorias</th><th class="num">Piso medio</th><th class="num">Guardián medio</th></tr></thead>
+    <tbody>{{RANK}}</tbody>
+  </table></div>
+  <p style="font-size:14px;color:var(--muted)">Daño relativo: ×1 es la media del grupo. Piso medio: 5 significa que completa los cuatro pisos. Guardián medio: tiempo medio para vencer a los cuatro guardianes con el bot experto.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Tiempo medio de encuentro</span>
+  <h2>Segundos hasta despejar cada encuentro</h2>
+  <p>Bot experto, solo victorias. El color compara con la mediana del escenario: verde es mucho más rápido, rojo mucho más lento. ✕ significa que gana menos de la mitad de las veces. Entre el personaje más rápido y el más lento hay una diferencia de ×{{SPREAD1}} con el Cañonero y de ×{{SPREAD4}} con el Dragón.</p>
+  <div class="scroll">{{HEAT}}</div>
+  <div class="key"><span><i class="h1"></i>≤ 0,5× la mediana</span><span><i class="h2"></i>0,5–0,85×</span><span><i class="h3" style="border:1px solid var(--line)"></i>parecido</span><span><i class="h4"></i>1,2–2×</span><span><i class="h5"></i>&gt; 2×</span></div>
+</section>
+
+<section>
+  <span class="eyebrow">DPS</span>
+  <h2>Daño por segundo según el contexto</h2>
+  <div class="grid2">
+    <div class="panel"><h3>Muñeco de práctica</h3><p>Guardián del piso 1 sin IA (no ataca ni se mueve). Daño puro a un objetivo, sin contar ejecuciones.</p>{{DUMMY}}</div>
+    <div class="panel"><h3>Sala real del piso 2</h3><p>Encuentro generado por el juego (tier 1-3 en oleadas). DPS sobre la duración total.</p>{{MIXDPS}}</div>
+    <div class="panel"><h3>Contra guardianes</h3><p>Media de los cuatro guardianes, incluidas las ejecuciones (−25 % de vida cada una).</p>{{BOSSDPS}}</div>
+    <div class="panel"><h3>De dónde sale el daño</h3><p>Reparto en todos los encuentros. La cifra de la derecha es la parte que viene de ejecuciones.</p>{{STACK}}</div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Supervivencia</span>
+  <h2>Daño recibido y margen de error</h2>
+  <p>«Pérdida con bot medio» mide lo exigente que es el personaje: el bot medio reacciona en 0,35 s y ve el 70 % de los avisos (el experto, en 0,15 s y el 95 %).</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Personaje</th><th class="num">PV</th><th class="num">Daño/min en salas</th><th class="num">Daño/min a guardianes</th><th class="num">Victorias experto</th><th class="num">Victorias medio</th><th class="num">Pérdida con bot medio</th><th class="num">Completa partida (experto)</th><th class="num">Completa (medio)</th></tr></thead>
+    <tbody>{{SURV}}</tbody>
+  </table></div>
+  <div class="panel"><h3>Hasta dónde llega en una partida completa</h3><p>Pisos 1-4 en solitario, todas las salas de combate y el guardián, sin recuperar la vida entre salas (solo los corazones que caen y la curación al bajar de piso). 30 partidas por personaje.</p>{{FLOORS}}</div>
+</section>
+
+<section>
+  <span class="eyebrow">Conclusiones</span>
+  <h2>Qué está desequilibrado y qué haría</h2>
+  <div class="findings">
+    <div class="finding"><h3>Las ejecuciones a los guardianes deciden el combate<span class="sev alta">Alta</span></h3>
+      <p>Brasa y Ámbar ejecutan entre 7 y 9 veces por minuto contra los guardianes, y cada ejecución les quita el 25 % de la vida. Vencen al Cañonero en 10-14 s, cuando el resto tarda entre 26 y 73 s. Las ejecuciones son el 49 % del daño de Brasa y el 39 % del de Ámbar. Además apenas reciben daño, porque son invulnerables durante la embestida, el salto y el taladro.</p>
+      <p class="fix"><b>Propuesta:</b> bajar la ejecución al guardián al 12 % (o dar unos segundos de inmunidad al aturdimiento tras cada ejecución). En la simulación, con el 12 % tardan entre un 15 % y un 57 % más según el guardián (Cañonero 14-16 s, Dragón 39-41 s) y siguen siendo los más rápidos.</p></div>
+    <div class="finding"><h3>Los tiradores casi no hacen daño a los guardianes<span class="sev alta">Alta</span></h3>
+      <p>Marea y Ciruela hacen 3-4 DPS a los guardianes, la mitad que los tanques. Ciruela tarda 73 s con el Cañonero y 163 s con el Dragón, y en la partida completa pasa 95 s por sala. La causa está en la fórmula: el disparo a un enemigo con estamina quita sobre todo estamina (<code>DMG.shotHpVsSta</code> 0,4), y el guardián solo recibe el 30 % de esa estamina (<code>shotStaMul</code> 0,3). Así casi nunca lo aturden ni lo ejecutan.</p>
+      <p class="fix"><b>Propuesta:</b> que los disparos quiten el doble de vida al guardián. En la simulación, Marea pasa de 51 a 28 s con el Cañonero y Ciruela de 73 a 33 s, al nivel de los tanques. Doblar solo la estamina apenas cambia nada (5-10 %). Tiene que aplicarse a los disparos y no a las explosiones: con explosiones incluidas, Coral bajaría a 14 s y se dispararía.</p></div>
+    <div class="finding"><h3>Escarcha es la última en todo<span class="sev alta">Alta</span></h3>
+      <p>Hace 1,5 DPS al muñeco, cinco veces menos que Ámbar, y tiene 60 PV. Pierde contra el Cañonero, el Ariete y el Dragón en más del 90 % de los combates, y todas sus partidas acaban en el piso 1 o 2. Su nota de diseño de daño (4/5) no se corresponde con lo que pasa en partida.</p>
+      <p class="fix"><b>Propuesta:</b> necesita los dos cambios a la vez. Con 80 PV y el disparo ×1,6, las salas reales pasan del 47 % al 80 % de victorias, pero los guardianes siguen igual. Si además se aplica el arreglo de los tiradores, vence al Cañonero el 100 % de las veces en 50 s.</p></div>
+    <div class="finding"><h3>Los tanques pegan bien pero no aguantan<span class="sev media">Media</span></h3>
+      <p>Ceniza y Musgo hacen 6-7 DPS a los guardianes, más que los tiradores, pero reciben 100-190 PV por minuto. Son grandes y lentos, y no salen a tiempo de las zonas del Gólem ni de los golpes en área de los guardianes. Musgo pierde el 47 % de las veces contra el Dragón, y ninguno de los dos completa la partida en solitario.</p>
+      <p class="fix"><b>Propuesta:</b> que los tanques reciban un 30 % menos de daño. En la simulación, Musgo pasa del 73 % al 100 % de victorias contra el Ariete y del 53 % al 90 % contra el Dragón. Parte de esto es del bot: no usa el escudo alzado de Ceniza ni la Provocación, así que conviene probarlo a mano antes de tocarlo.</p></div>
+    <div class="finding"><h3>Coral es fuerte pero exige mucho<span class="sev media">Vigilar</span></h3>
+      <p>Es la tercera en daño puro (6,1 DPS) y, con el bot experto, casi no recibe daño. Con el bot medio, las partidas completadas bajan del 53 % al 0 %: con 60 PV no perdona errores. No tocaría sus números, pero puede frustrar a jugadores nuevos.</p></div>
+    <div class="finding"><h3>Las notas de diseño no reflejan el daño real<span class="sev media">Datos</span></h3>
+      <p>En <code>RATINGS</code>, Marea tiene 5/5 de daño y queda a mitad de tabla; Escarcha tiene 4/5 y es la última; Ceniza tiene 2/5 y es la tercera en daño a guardianes. La ficha de selección muestra estas notas, así que conviene actualizarlas cuando se decidan los cambios.</p></div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Pruebas de cambios</span>
+  <h2>Qué pasa si se aplican las propuestas</h2>
+  <p>Cada cambio se aplicó solo dentro de la simulación (el juego no se ha tocado). Bot experto, 10 semillas. Formato: tiempo actual → tiempo con el cambio; ✕ indica menos de la mitad de victorias.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Personaje</th><th>Cambio</th><th class="num">Sala real</th><th class="num">Cañonero</th><th class="num">Dragón</th></tr></thead>
+    <tbody>{{WHATIF}}</tbody>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">Ficha por personaje</span>
+  <h2>Métricas de cada uno</h2>
+  <div class="cards">{{CARDS}}</div>
+</section>
+
+<section>
+  <span class="eyebrow">Método</span>
+  <h2>Cómo se ha medido y qué no mide</h2>
+  <ul class="plain">
+    <li>El simulador (<code>tools/sim</code>) carga el código real de <code>mazmorra-coop.html</code> en Node y avanza el juego a 60 pasos por segundo. El bot pulsa los mismos botones que un mando, así que golpes, combos, ejecuciones, lanzamientos y habilidades funcionan como en una partida.</li>
+    <li>El bot esquiva las zonas avisadas, las balas y las embestidas con el tiempo de reacción de su nivel, rodea los muros por casillas y usa las dos habilidades cuando están listas.</li>
+    <li>Todo es en solitario: no mide sinergias de grupo (lanzar para otro, curar, cubrirse tras el escudo) ni el escalado con más jugadores.</li>
+    <li>El bot no usa el escudo alzado ni la Provocación de Ceniza, ni el cambio a bola de nieve de Escarcha. Recoge los corazones de forma automática al terminar cada sala.</li>
+    <li>Un jugador humano no esquiva igual que el bot. Las cifras absolutas sirven de referencia; lo fiable es la comparación entre personajes.</li>
+    <li>Para repetirlo: <code>node tools/sim/run.js &lt;personaje 0-7&gt; experto 15</code>, luego <code>analyze.py</code> y <code>report.py</code>. Los cambios de prueba están en <code>whatif.js</code>.</li>
+  </ul>
+</section>
+
+</div>
