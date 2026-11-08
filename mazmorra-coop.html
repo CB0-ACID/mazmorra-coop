@@ -6536,6 +6536,9 @@ const BOSS = {
     beam: { wind: 1.9, windRage: 1.5, lock: 0.6, turn: 1.0, w: 70, max: 1000, dur: 1.0, sweepRage: 0.35 },
     // Rayos del cielo: 2 o 3 áreas juntas sobre un jugador (con rabia, sobre dos jugadores); caen uno tras otro
     bolt: { wind: 0.5, windRage: 0.4, n: [2, 3], r: 54, spread: 70, delay: 1.1, gap: 0.18 },
+    // Pisotón: para alejar a quien está muy cerca. Se marca el área alrededor; al soltarlo, una onda sale del cuerpo hasta r
+    // en «wave» s; a quien alcanza el frente de la onda lo daña y lo empuja hacia fuera (aunque esté invulnerable, lo empuja igual)
+    stomp: { wind: 1.1, windRage: 0.9, r: 190, wave: 0.45, thick: 34, push: 760, near: 95 },
     // Vuelo: despega (invulnerable), 2 pasadas de bombardeo (3 con rabia) siguiendo la sombra, y cae con daño en área
     fly: { first: 9, cd: 20, cdRage: 15, takeoff: 0.9, height: 620, passes: 2, passesRage: 3,
            passWind: 0.9, passSpd: 380, bombR: 44, bombStep: 64, bombLead: 0.25,
@@ -6816,6 +6819,22 @@ BOSS_AI_BY_KIND.dragon = function (e, p, d, dt) {
     if (e.t <= 0) bossRecover(e);
     return [0, 0];
   }
+  if (e.state === 'stompWind') { // se alza sobre las patas: el área del pisotón ya se ve alrededor
+    if (e.t <= 0) { e.state = 'stomp'; e.t = C.stomp.wave; e.waveHit = new Set(); shake = Math.max(shake, 10); burst(e.x, upY(e.y, 6), '#d8cfe6', 24); SFX.hit(true); }
+    return [0, 0];
+  }
+  if (e.state === 'stomp') { // la onda se expande; daña y empuja hacia fuera a quien alcanza su frente
+    const S = C.stomp, k = 1 - Math.max(0, e.t) / S.wave, front = e.r + (S.r - e.r) * k;
+    for (const q of players) {
+      if (q.down || e.waveHit.has(q)) continue;
+      const dx = q.x - e.x, dy = q.y - e.y, dd = Math.hypot(dx, dy) || 1;
+      if (dd - q.r > front || dd + q.r < front - S.thick) continue;
+      e.waveHit.add(q); hurtPlayer(q, e.x, e.y, null, edmg(e, 'stomp'));
+      q.kbx = dx / dd * S.push; q.kby = dy / dd * S.push; // empujón hacia fuera
+    }
+    if (e.t <= 0) { e.waveHit = null; bossRecover(e); }
+    return [0, 0];
+  }
   if (e.state === 'boltWind') { // alza la cabeza: las áreas ya están en el suelo
     if (e.t <= 0) bossRecover(e);
     return [0, 0];
@@ -6824,8 +6843,12 @@ BOSS_AI_BY_KIND.dragon = function (e, p, d, dt) {
   bossTurn(e, p.x, p.y, C.turn, dt);
   if (e.t <= 0) {
     const off = Math.abs(bossAng(Math.atan2(p.y - e.y, p.x - e.x) - e.dir)), canFly = e.flyCd <= 0;
-    const k = bossPick({ fly: canFly ? 1.2 + bossAreaWeight(e) : 0, beam: off < 1 ? 1.4 : 0.4, bolt: d > 160 ? 1.3 : 0.6 + (canFly ? 0 : 0.6 * bossFlank(e)) });
-    e.lastAtk = k === 'fly' ? 'area' : 'front';
+    // const k = bossPick({ fly: canFly ? 1.2 + bossAreaWeight(e) : 0, beam: off < 1 ? 1.4 : 0.4, bolt: d > 160 ? 1.3 : 0.6 + (canFly ? 0 : 0.6 * bossFlank(e)) }); // [RETIRADO 2026-11-08] sin pisotón
+    const ps = players.filter(q => !q.down), near = ps.length ? ps.filter(q => Math.hypot(q.x - e.x, q.y - e.y) - q.r - e.r < C.stomp.near).length / ps.length : 0;
+    const k = bossPick({ stomp: near > 0 ? (0.4 + 3 * near) * (e.lastAtk === 'stomp' ? 0.4 : 1) : 0,
+                         fly: canFly ? 1.2 + bossAreaWeight(e) : 0, beam: off < 1 ? 1.4 : 0.4, bolt: d > 160 ? 1.3 : 0.6 + (canFly ? 0 : 0.6 * bossFlank(e)) });
+    e.lastAtk = k === 'fly' ? 'area' : k === 'stomp' ? 'stomp' : 'front';
+    if (k === 'stomp') { bossWind(e, 'stompWind', C.stomp); return [0, 0]; }
     if (k === 'fly') { dragonTakeoff(e); return [0, 0]; }
     if (k === 'beam') { bossWind(e, 'beamWind', C.beam); const [mx, my] = bossMuzzle(e); e.beamL = rayLen(mx, my, e.dir, C.beam.max); }
     else { // rayos del cielo: sobre el jugador más cercano (con rabia, también sobre otro)
@@ -8913,6 +8936,23 @@ function drawBossTells() {
         ctx.save(); ctx.translate(mx, my); ctx.rotate(e.dir); ctx.fillStyle = D.energy; ctx.strokeStyle = D.energy;
         ctx.globalAlpha = locked ? 0.3 : 0.08 + 0.15 * k; ctx.fillRect(0, -w, L, w * 2);
         ctx.globalAlpha = locked ? 1 : 0.55; ctx.lineWidth = locked ? 3 : 2; if (!locked) ctx.setLineDash([12, 8]); ctx.strokeRect(0, -w, L, w * 2);
+        ctx.restore();
+      }
+      if (e.state === 'stompWind' || e.state === 'stomp') { // pisotón: área alrededor y onda que se expande
+        const S = D.stomp, R = S.r; ctx.save(); ctx.strokeStyle = '#ff4d5e'; ctx.fillStyle = '#ff4d5e';
+        ctx.beginPath(); ctx.arc(e.x, e.y, R, 0, Math.PI * 2);
+        if (e.state === 'stompWind') {
+          ctx.globalAlpha = 0.1 + 0.12 * k; ctx.fill(); ctx.globalAlpha = 0.8; ctx.lineWidth = 2.5; ctx.setLineDash([12, 8]); ctx.lineDashOffset = time * 30; ctx.stroke(); ctx.setLineDash([]);
+          for (let i = 0; i < 3; i++) { // ondas de aviso que salen del cuerpo y se aceleran al acercarse el golpe
+            const f = ((time * (1 + 2 * k)) + i / 3) % 1, rr = e.r + (R - e.r) * f;
+            ctx.globalAlpha = 0.5 * (1 - f) * (0.4 + 0.6 * k); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y, rr, 0, Math.PI * 2); ctx.stroke();
+          }
+        } else {
+          const kk = 1 - Math.max(0, e.t) / S.wave, front = e.r + (R - e.r) * kk;
+          ctx.globalAlpha = 0.12 * (1 - kk); ctx.fill();
+          ctx.globalAlpha = 0.95 * (1 - kk * 0.5); ctx.strokeStyle = '#f2eefa'; ctx.lineWidth = S.thick * 0.6; ctx.beginPath(); ctx.arc(e.x, e.y, Math.max(1, front - S.thick * 0.3), 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = 0.6; ctx.strokeStyle = D.energy; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(e.x, e.y, front, 0, Math.PI * 2); ctx.stroke();
+        }
         ctx.restore();
       }
       if (e.sky) { // sombra que guía: grande y clara, para prever las pasadas y la caída
