@@ -7271,7 +7271,9 @@ function solidAt(x, y) { return x < 0 || y < 0 || x >= COLS || y >= ROWS || (roo
 // Suelo de la sala en caché: se pinta una vez por sala (y al cambiar la escala o al limpiar la sala) y cada frame solo se copia.
 let floorCache = null, floorCacheKey = '';
 function drawFloor() {
-  const SC = cvs.width / W; // píxeles de pantalla por unidad de mundo
+  // píxeles de pantalla por unidad de mundo; en mapas muy grandes (asedio) se limita la resolución del lienzo cacheado
+  // para no pasar del máximo de los navegadores (unos 16 millones de píxeles en Safari)
+  const SC = Math.min(cvs.width / W, 8000 / (COLS * T), Math.sqrt(14e6 / (COLS * T * ROWS * TK)));
   const key = [room.rng, floor.depth, room.cleared, SC, COLS, ROWS].join('|');
   if (key !== floorCacheKey) {
     floorCacheKey = key;
@@ -8478,7 +8480,8 @@ function drawOffscreen() {
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(an); ctx.fillStyle = color; ctx.globalAlpha = 0.85;
     ctx.beginPath(); ctx.moveTo(size, 0); ctx.lineTo(-size * 0.7, -size * 0.75); ctx.lineTo(-size * 0.7, size * 0.75); ctx.closePath(); ctx.fill(); ctx.restore();
   };
-  for (const e of enemies) if (!e.dead && e.spawnT <= 0) mark(e.x, e.y * K - 12, e.type === 'boss' ? '#ff4d5e' : 'rgba(255,107,122,0.8)', e.tier >= 3 ? 9 : 6);
+  for (const e of enemies) if (!e.dead && e.spawnT <= 0 && !(SIEGE.on && Math.hypot(e.x - cam.x, e.y * K - cam.y) > 1300)) mark(e.x, // asedio: el mapa es enorme, solo avisa de los cercanos
+     e.y * K - 12, e.type === 'boss' ? '#ff4d5e' : 'rgba(255,107,122,0.8)', e.tier >= 3 ? 9 : 6);
   for (const p of players) mark(p.x, p.y * K - 14, p.slotColor, 10);
 }
 
@@ -9315,9 +9318,11 @@ function drawGuide() {
 }
 
 // ---------- Modo Asedio (prototipo · fase 1: Murallas exteriores) ----------
-// Defender la fortaleza contra oleadas. Tres zonas separadas (Muralla oeste, Patio y Muralla este), cada una es una
-// sala propia; el grupo viaja entre ellas con las piedras de paso. Las zonas donde no está el grupo se simulan de
-// forma simplificada (los enemigos avanzan en línea recta y golpean objetivos, las trampas y torres siguen disparando).
+// Defender la fortaleza contra oleadas. Un único mapa continuo con tres zonas (Muralla oeste, Patio y Muralla este)
+// unidas por pasos abiertos en los muros interiores; se va andando de una a otra y las piedras de paso son atajos
+// (votación: todos confirman y el grupo viaja a la vez). Todos los enemigos se simulan siempre con la IA normal.
+// [RETIRADO: antes cada zona era una sala aparte, solo se cambiaba de zona con las piedras de paso y las zonas sin
+//  jugadores se simulaban de forma simplificada (sgOffZone, sgLeave/sgArrive con un viaje de SG.travel segundos)]
 // Las incursiones entran por la brecha de cada muralla, se reparten entre los objetivos (como los minions de un moba)
 // y los supervivientes convergen en el patio contra la Puerta de la fortaleza.
 // Oro compartido: reparar, reconstruir, construir trampas. Mantenimiento: rearmar pinchos, recargar ballestas y
@@ -9370,7 +9375,9 @@ function sgGold(d) {
 }
 function sgBeep(last) { if (actx && !muted && AUD.sfxOn && sfxOk('sgBeep', 0.3)) tone(last ? 0.35 : 0.1, last ? 660 : 880, last ? 660 : 880, last ? 0.12 : 0.08, 'square'); } // cuenta atrás
 function sgObjs() { return SIEGE.zones ? SIEGE.zones.flatMap(z => z.objs) : []; }
-function sgList(z) { return z === SIEGE.cur ? enemies : z.enemies; } // la zona activa usa la lista global
+function sgList(z) { return enemies; } // mapa continuo: una sola lista de enemigos [antes: la zona activa usaba la global y las demás su propia lista]
+function sgZoneAt(x) { const Z = SIEGE.zones; for (const z of Z) if (x >= z.x0 && x < z.x1) return z; return x < Z[0].x0 ? Z[0] : Z[Z.length - 1]; } // zona por posición
+function sgSeen(x, y) { return players.some(p => !p.down && Math.hypot(p.x - x, p.y - y) < 640); } // ¿lo ve algún jugador? (para los avisos de fuera de la vista)
 function sgZone(id) { return SIEGE.zones.find(z => z.id === id); }
 
 // ---------- Construcción de las zonas ----------
@@ -9393,7 +9400,7 @@ function sgObj(z, kind, name, tx, ty, r, hp) {
 }
 // Mapas algo más grandes que la pantalla (también en el móvil apaisado), para que la cámara de grupo los recorra como en la mazmorra
 // [RETIRADO: murallas de 33 × 19 y patio de 29 × 21, que en pantallas anchas cabían enteros y la cámara no se movía]
-function sgWallZone(id, east) {
+function sgWallZoneOld(id, east) { // [RETIRADO] muralla como sala aparte (zonas separadas)
   const C = 45, R = 25, my = 12, M = x => east ? C - 1 - x : x; // la muralla este es la oeste en espejo
   const gaps = [[M(0), my - 1], [M(0), my], [M(0), my + 1], [M(44), my - 1], [M(44), my], [M(44), my + 1]];
   const rocks = [[5, 5], [6, 5], [5, 6], [5, 18], [6, 19], [5, 19], [30, 4], [30, 20], [39, 5], [40, 5], [39, 19], [40, 19], [12, 3], [12, 21]].map(([x, y]) => [M(x), y]);
@@ -9410,7 +9417,7 @@ function sgWallZone(id, east) {
   z.cover = east ? { x0: M(37), y0: 9, x1: M(31), y1: 15 } : { x0: 31, y0: 9, x1: 37, y1: 15 }; // zona techada (refugio de la lluvia de fuego)
   return z;
 }
-function sgPatio() {
+function sgPatioOld() { // [RETIRADO] patio como sala aparte (zonas separadas)
   const C = 41, R = 29;
   const gaps = [[0, 20], [0, 21], [0, 22], [40, 20], [40, 21], [40, 22]];
   const rocks = [[3, 9], [37, 9], [9, 24], [10, 24], [30, 24], [31, 24], [8, 5], [32, 5]];
@@ -9426,6 +9433,50 @@ function sgPatio() {
   z.cover = { x0: 15, y0: 1, x1: 25, y1: 5 };
   return z;
 }
+// Mapa continuo de la fase 1: [muro exterior | Muralla oeste | paso | Patio de armas | paso | Muralla este | muro exterior]
+// Casillas: 0 muro exterior con la brecha, 1-39 Muralla oeste, 40 muro interior con paso de 5, 41-79 Patio, 80 muro interior, 81-119 Muralla este, 120 muro exterior.
+const SGW = { C: 121, R: 29, my: 14, div: [40, 80], gate: 2 }; // gate: el paso mide 2·gate+1 casillas
+function sgWorldTiles() {
+  const { C, R, my, div, gate } = SGW, t = [];
+  for (let y = 0; y < R; y++) { t.push([]); for (let x = 0; x < C; x++) t[y].push((x === 0 || y === 0 || x === C - 1 || y === R - 1 || div.includes(x)) ? 1 : 0); }
+  const cham = (x0, x1, n) => { for (let y = 1; y <= n; y++) for (let x = 0; x < n; x++) if (x + y <= n) for (const [a, b] of [[x0 + 1 + x, y], [x1 - 1 - x, y], [x0 + 1 + x, R - 1 - y], [x1 - 1 - x, R - 1 - y]]) t[b][a] = 1; };
+  cham(0, div[0], 4); cham(div[0], div[1], 3); cham(div[1], C - 1, 4); // esquinas en diagonal de cada zona
+  for (let y = my - gate; y <= my + gate; y++) for (const x of div) t[y][x] = 0; // pasos entre zonas
+  for (let y = my - 1; y <= my + 1; y++) { t[y][0] = 0; t[y][C - 1] = 0; } // brechas de las murallas
+  return t;
+}
+function sgWallZone(id, east) {
+  const my = SGW.my, L = x => east ? SGW.C - 1 - x : x, P = (x, y) => sgPt(L(x), y); // coordenadas locales: 0 = muro exterior, 40 = paso al patio
+  const z = { id, name: east ? 'Muralla este' : 'Muralla oeste', short: east ? 'Este' : 'Oeste', east, objs: [], slots: [], stones: [], crates: [], enemies: [], midY: my, side: id };
+  z.x0 = east ? (SGW.div[1] + 0.5) * T : -1e9; z.x1 = east ? 1e9 : (SGW.div[0] + 0.5) * T;
+  z.rocks = [[5, 5], [6, 5], [5, 6], [5, 22], [6, 23], [5, 23], [28, 4], [28, 24], [33, 6], [33, 22], [12, 3], [12, 25], [16, 20], [16, 8]].map(([x, y]) => [L(x), y]);
+  z.B = P(1, my); z.F = P(12, my); // brecha y bifurcación
+  z.exitPt = P(37, my); // ante el paso al patio
+  z.door = { x: SGW.div[east ? 1 : 0], y0: my - SGW.gate, y1: my + SGW.gate }; // paso al patio (se cierra si la zona se pierde)
+  sgObj(z, 'tower', 'Torre de vigía ' + (east ? 'este' : 'oeste'), L(20), 5, 34, 400);
+  if (east) sgObj(z, 'powder', 'Polvorín', L(20), 23, 36, 350);
+  else sgObj(z, 'store', 'Almacén', L(20), 23, 38, 400);
+  z.slots.push({ ...P(7, my), kind: 'spikes', trap: null }, { ...P(16, my), kind: 'ballista', trap: null }, { ...P(25, my), kind: 'brazier', trap: null }, { ...P(24, 19), kind: 'spikes', trap: null });
+  z.stones.push({ ...P(10, 8), to: 'patio', label: 'Viajar al Patio', zone: z }); // atajo: cerca de la brecha, lejos del patio
+  z.crates.push({ ...P(33, 19) });
+  z.cover = { x0: L(29), y0: 9, x1: L(35), y1: 12 }; // zona techada (refugio de la lluvia de fuego), junto al camino
+  return z;
+}
+function sgPatio() {
+  const my = SGW.my, ox = SGW.div[0], P = (x, y) => sgPt(ox + x, y); // coordenadas locales: 0 = paso oeste, 40 = paso este
+  const z = { id: 'patio', name: 'Patio de armas', short: 'Patio', objs: [], slots: [], stones: [], crates: [], enemies: [], midY: my };
+  z.x0 = (SGW.div[0] + 0.5) * T; z.x1 = (SGW.div[1] + 0.5) * T;
+  z.rocks = [[9, 24], [10, 24], [30, 24], [31, 24], [8, 5], [32, 5]].map(([x, y]) => [ox + x, y]);
+  const g = sgObj(z, 'gate', 'Puerta de la fortaleza', ox + 20, 1, 58, 900); g.y = T * 2.1;
+  z.entries = { west: [P(1, my), P(8, my)], east: [P(39, my), P(32, my)] }; // por dónde entran los que llegan de cada muralla
+  z.slots.push({ ...P(5, my), kind: 'spikes', trap: null }, { ...P(35, my), kind: 'spikes', trap: null }, { ...P(20, 13), kind: 'ballista', trap: null }, { ...P(20, 8), kind: 'brazier', trap: null },
+    { ...P(12, 19), kind: 'ballista', trap: null }, { ...P(28, 19), kind: 'ballista', trap: null });
+  z.stones.push({ ...P(6, 8), to: 'west', label: 'Viajar a la Muralla oeste', zone: z }, { ...P(34, 8), to: 'east', label: 'Viajar a la Muralla este', zone: z });
+  z.crates.push({ ...P(13, 6) });
+  z.horn = P(27, 6);
+  z.cover = { x0: ox + 15, y0: 1, x1: ox + 25, y1: 5 };
+  return z;
+}
 function sgInCover(z, x, y) { const c = z.cover; if (!c) return false; const x0 = Math.min(c.x0, c.x1) * T, x1 = (Math.max(c.x0, c.x1) + 1) * T; return x >= x0 && x <= x1 && y >= c.y0 * T && y <= (c.y1 + 1) * T; }
 
 // ---------- Inicio, viaje entre zonas y oleadas ----------
@@ -9436,21 +9487,31 @@ function siegeStart() {
     mods: { repair: 1, bolt: 1, fuel: 1, cost: 1 }, alertT: {}, storeT: 0, time: 0, result: null, upOpts: null, upSel: 0, log: [] };
   const W0 = sgWallZone('west', false), P = sgPatio(), E0 = sgWallZone('east', true);
   SIEGE.zones = [W0, P, E0];
-  floor = { rooms: new Map(SIEGE.zones.map(z => [z.id, z.room])), start: P.room, boss: null, depth: 1, siege: true };
-  siegeEnter(P, sgPt(20, 16));
+  const t = sgWorldTiles();
+  for (const z of SIEGE.zones) for (const [x, y] of z.rocks) t[y][x] = 2;
+  const r = { gx: 0, gy: 0, type: 'start', cols: SGW.C, rows: SGW.R, tiles: t, rng: hash(seed, 777, 5), cleared: true, visited: true, siege: true,
+    doors: { up: null, down: null, left: null, right: null }, pickups: [] };
+  r.decor = genDecor(r, 1);
+  r.decor.floor = r.decor.floor.filter(dc => dc.y > 2 && dc.y < SGW.R - 3 && Math.abs(dc.y - SGW.my) > 3); // poca decoración: que no se confunda con trampas
+  for (const z of SIEGE.zones) z.room = r;
+  SIEGE.room = r;
+  floor = { rooms: new Map([['asedio', r]]), start: r, boss: null, depth: 1, siege: true };
+  siegeEnter(P, sgPt(SGW.div[0] + 20, 16));
   showBanner('Asedio: prepara las defensas (' + SG.prep0 + ' s)');
 }
-function siegeEnter(z, at) {
+function siegeEnter(z, at) { // entra en el mapa del asedio (solo al empezar)
   const S = SIEGE;
-  if (S.cur) S.cur.enemies = enemies.filter(e => !e.dead && !e.sgLeft);
   S.cur = z;
   for (const p of players) p.sgTask = null;
-  enterRoom(z.room, null);
-  enemies = z.enemies; z.enemies = null;
-  for (const e of enemies) { e.spawnT = 0; e.lastHp = e.hp; }
-  const n = players.length;
-  players.forEach((p, i) => { const a = n > 1 ? i / n * Math.PI * 2 : 0; p.x = at.x + Math.cos(a) * 34; p.y = at.y + 44 + Math.sin(a) * 22; });
-  S.marks = [];
+  enterRoom(S.room, null);
+  enemies = [];
+  sgPlace(at);
+}
+function sgPlace(at) { // coloca al grupo junto a un punto (inicio y piedras de paso)
+  const S = SIEGE, n = players.length;
+  for (const p of players) { p.sgTask = null; p.sgZ0 = null; }
+  players.forEach((p, i) => { const a = n > 1 ? i / n * Math.PI * 2 : 0; p.x = at.x + Math.cos(a) * 34; p.y = at.y + 44 + Math.sin(a) * 22; p.vx = p.vy = 0; });
+  S.cur = sgZoneAt(at.x);
   snapCamera();
 }
 function sgReadyCount(stone) { // [listos, necesarios]: cuentan los humanos en pie; los caídos y el aliado IA van con el grupo
@@ -9459,7 +9520,7 @@ function sgReadyCount(stone) { // [listos, necesarios]: cuentan los humanos en p
 }
 function sgReadyUpdate() {
   const S = SIEGE; if (S.tp) return;
-  for (const q of players) if (q.sgReady && (q.down || q.npc || Math.hypot(q.x - q.sgReady.x, q.y - q.sgReady.y) > 70 || !S.cur.stones.includes(q.sgReady))) q.sgReady = null;
+  for (const q of players) if (q.sgReady && (q.down || q.npc || Math.hypot(q.x - q.sgReady.x, q.y - q.sgReady.y) > 70)) q.sgReady = null;
   const st = players.find(q => q.sgReady) ? players.find(q => q.sgReady).sgReady : null;
   if (!st) return;
   const [n, m] = sgReadyCount(st);
@@ -9467,7 +9528,7 @@ function sgReadyUpdate() {
 }
 function sgTravel(p, stone) {
   const S = SIEGE; if (S.tp) return;
-  const to = sgZone(stone.to), back = to.stones.find(s => s.to === S.cur.id) || to.stones[0];
+  const to = sgZone(stone.to), back = to.stones.find(s => s.to === stone.zone.id) || to.stones[0];
   S.tp = { to, at: back, t: 0.45 }; fade = 0.45;
   for (const q of players) q.sgReady = null;
   floatText(p.x, p.y - 50, 'Viajando…', '#b49bff');
@@ -9503,7 +9564,6 @@ function sgSpawn(q) {
   e.hp *= f; e.maxHp *= f; e.lastHp = e.hp;
   e.sgZ = z; e.sg = { inc: q.inc, wp: [{ x: z.F.x, y: z.F.y + (Math.random() - 0.5) * 60 }], after: 'assign', obj: null, attacking: false };
   if (q.banner) { e.banner = true; q.inc.banner = e; }
-  if (z !== S.cur) e.spawnT = 0;
   sgList(z).push(e); S.all.push(e);
   q.inc.spawned++; q.inc.alive++;
 }
@@ -9536,7 +9596,7 @@ function sgSpot(e, o) { // punto desde el que ataca: los de distancia se quedan 
 function sgAssign(e, z) { // olfato: prefieren objetivos dañados y sin defensores; al azar ponderado, así la incursión se reparte
   const g = e.sg, alive = z.objs.filter(o => !o.destroyed);
   if (!alive.length) { sgNext(e, z); return; }
-  const wt = alive.map(o => 1 + (1 - o.hp / o.max) * 1.5 + (z === SIEGE.cur && players.some(p => !p.down && Math.hypot(p.x - o.x, p.y - o.y) < 220) ? 0 : 1));
+  const wt = alive.map(o => 1 + (1 - o.hp / o.max) * 1.5 + (players.some(p => !p.down && Math.hypot(p.x - o.x, p.y - o.y) < 220) ? 0 : 1));
   let pick = 0;
   if (e.banner) pick = wt.indexOf(Math.max(...wt));
   else { let r = Math.random() * wt.reduce((a, b) => a + b, 0); for (pick = 0; pick < wt.length - 1; pick++) { r -= wt[pick]; if (r <= 0) break; } }
@@ -9545,7 +9605,17 @@ function sgAssign(e, z) { // olfato: prefieren objetivos dañados y sin defensor
 function sgNext(e, z) { // su objetivo ha caído: convergen hacia el patio (o, en el patio, a la puerta)
   const g = e.sg; g.attacking = false;
   if (z.id === 'patio') { const gate = z.objs.find(o => o.kind === 'gate' && !o.destroyed); g.obj = gate || null; g.wp = gate ? [sgSpot(e, gate)] : []; g.after = 'attack'; return; }
-  g.obj = null; g.wp = [z.exitPt, z.X]; g.after = 'exit';
+  // g.obj = null; g.wp = [z.exitPt, z.X]; g.after = 'exit'; // [RETIRADO] salían del mapa y llegaban al patio tras un viaje
+  const b = sgZone('patio').entries[z.side][1];
+  g.obj = null; g.wp = [{ x: z.exitPt.x, y: z.exitPt.y + (Math.random() - 0.5) * 70 }, { x: b.x, y: b.y + (Math.random() - 0.5) * 90 }]; g.after = 'enterPatio'; // cruzan el paso andando
+}
+function sgReachPatio(e, z) { // un superviviente entra en el patio: cuenta como fuga de su incursión
+  const S = SIEGE, P = sgZone('patio');
+  if (e.sg.inc) { e.sg.inc.leaked++; e.sg.inc.alive--; sgCheckInc(e.sg.inc); e.sg.inc = null; }
+  e.sgZ = P;
+  S.stab = Math.max(0, S.stab - SG.stabLeak);
+  if (!sgSeen(e.x, e.y)) sgAlert('arrive', 'Llegan supervivientes al patio');
+  sgNext(e, P);
 }
 function sgThink(e, z) { // devuelve el punto al que va, o null si está atacando o se ha ido
   const g = e.sg;
@@ -9555,7 +9625,8 @@ function sgThink(e, z) { // devuelve el punto al que va, o null si está atacand
   if (!g.wp.length) {
     if (g.after === 'assign') sgAssign(e, z);
     else if (g.after === 'attack') { if (g.obj && !g.obj.destroyed) { g.attacking = true; return null; } sgNext(e, z); }
-    else if (g.after === 'exit') { sgLeave(e, z); return null; }
+    else if (g.after === 'exit') { sgLeave(e, z); return null; } // [RETIRADO] (zonas separadas)
+    else if (g.after === 'enterPatio') sgReachPatio(e, z);
   }
   return g.wp[0] || null;
 }
@@ -9574,8 +9645,9 @@ function siegeSteer(e, p, d, dt) {
     else { if (e.state === 'sgWind' || e.state === 'sgRec') { e.state = 'walk'; e.t = 0.5; } g.attacking = false; return null; }
   } else g.lx = null;
   if (e.state !== 'walk' && e.state !== 'sgWind' && e.state !== 'sgRec') return null; // termina el ataque que ya había empezado
-  const tgt = sgThink(e, SIEGE.cur);
+  const tgt = sgThink(e, e.sgZ || sgZoneAt(e.x));
   if (e.sgLeft) return [0, 0];
+  if (!g.attacking && (e.state === 'sgWind' || e.state === 'sgRec')) e.state = 'walk'; // su objetivo cayó a media preparación: deja de avisar y sigue andando
   if (g.attacking) {
     const o = g.obj; e.face = Math.atan2(o.y - e.y, o.x - e.x);
     if (e.state === 'walk') { e.state = 'sgWind'; e.t = e.windDur = SG.wind; }
@@ -9588,13 +9660,13 @@ function siegeSteer(e, p, d, dt) {
   e.face = Math.atan2(dy, dx);
   return [dx / dd * s, dy / dd * s];
 }
-function sgLeave(e, z) { // llega a la salida: desaparece de la muralla y va de camino al patio
+function sgLeave(e, z) { // [RETIRADO, sin uso con el mapa continuo] llega a la salida: desaparece de la muralla y va de camino al patio
   const S = SIEGE;
   e.sgLeft = true;
   if (e.sg.inc) { e.sg.inc.leaked++; e.sg.inc.alive--; sgCheckInc(e.sg.inc); e.sg.inc = null; }
   S.transit.push({ e, t: SG.travel, side: z.id });
 }
-function sgArrive(tr) { // los supervivientes convergen en el patio
+function sgArrive(tr) { // [RETIRADO, sin uso con el mapa continuo] los supervivientes convergen en el patio
   const S = SIEGE, P = sgZone('patio'), e = tr.e, [a, b] = P.entries[tr.side];
   e.sgZ = P; e.sgLeft = false; e.x = a.x; e.y = a.y + (Math.random() - 0.5) * 60; e.state = 'walk'; e.kbx = e.kby = 0; e.z = e.flyZ || 0; e.airborne = false; e.lastHp = e.hp;
   const gate = P.objs.find(o => o.kind === 'gate');
@@ -9613,12 +9685,12 @@ function sgObjHit(o, e) {
   const S = SIEGE, dmg = SG.objDmg[e.tier] * (e.elite ? ELITE.dmg : 1);
   if (o.destroyed) return;
   o.hp -= dmg; o.hitT = S.time; o.flash = 0.15;
-  if (o.zone === S.cur) {
-    const ranged = e.type === 'shooter' || e.type === 'bat' || e.type === 'splitter';
-    if (ranged) effects.push({ type: 'execShot', x1: e.x, y1: e.y - 14, x2: o.x, y2: o.y - 20, t: 0, dur: 0.25, color: e.color });
-    burst(o.x + (e.x - o.x) * 0.3, o.y - 20, '#d8cfe6', 6);
-  } else sgAlert(o.name, '¡Atacan: ' + o.name + '!');
-  if (!o.burn && o.kind !== 'gate' && o.hp < o.max * 0.5 && Math.random() < SG.burnChance) { o.burn = true; if (o.zone !== S.cur) sgAlert(o.name + 'f', '¡Arde: ' + o.name + '!'); }
+  const ranged = e.type === 'shooter' || e.type === 'bat' || e.type === 'splitter';
+  if (ranged) effects.push({ type: 'execShot', x1: e.x, y1: e.y - 14, x2: o.x, y2: o.y - 20, t: 0, dur: 0.25, color: e.color });
+  burst(o.x + (e.x - o.x) * 0.3, o.y - 20, '#d8cfe6', 6);
+  const seen = sgSeen(o.x, o.y);
+  if (!seen) sgAlert(o.name, '¡Atacan: ' + o.name + '!');
+  if (!o.burn && o.kind !== 'gate' && o.hp < o.max * 0.5 && Math.random() < SG.burnChance) { o.burn = true; if (!seen) sgAlert(o.name + 'f', '¡Arde: ' + o.name + '!'); }
   if (o.hp <= 0) sgDestroy(o);
 }
 function sgDestroy(o) {
@@ -9630,15 +9702,15 @@ function sgDestroy(o) {
   const z = o.zone;
   if (z.id !== 'patio' && !z.lost && z.objs.every(q => q.destroyed)) { // zona perdida: queda cerrada y hay que retirarse al patio
     z.lost = true;
-    showBanner(z.name + ' perdida: id todos a la piedra de paso y viajad al patio');
+    showBanner(z.name + ' perdida: retiraos al patio (andando o por la piedra de paso); su paso se cierra a vuestra espalda');
     sgAlert('lost' + z.id, z.name + ' perdida');
     for (const sl of z.slots) sl.trap = null; // sus defensas caen con ella
   }
-  if (o.zone === S.cur) { burst(o.x, o.y - 30, '#a89cbd', 40); shake = Math.max(shake, 8); effects.push({ type: 'ring', x: o.x, y: o.y, r: o.r + 40, t: 0, dur: 0.5, color: '#ff6b6b' }); }
+  { burst(o.x, o.y - 30, '#a89cbd', 40); shake = Math.max(shake, 8); effects.push({ type: 'ring', x: o.x, y: o.y, r: o.r + 40, t: 0, dur: 0.5, color: '#ff6b6b' }); }
   if (o.kind === 'powder') { // el polvorín explota
     const L = sgList(o.zone);
     for (const e of L) if (Math.hypot(e.x - o.x, e.y - o.y) < 150) sgDmg(e, o.zone, 6, o.x, o.y, 260);
-    if (o.zone === S.cur) {
+    {
       for (const p of players) if (!p.down && Math.hypot(p.x - o.x, p.y - o.y) < 150) hurtPlayer(p, o.x, o.y, null, 30);
       effects.push({ type: 'ring', x: o.x, y: o.y, r: 150, t: 0, dur: 0.6, color: '#ff8a3d' }); burst(o.x, o.y - 20, '#ff8a3d', 50); shake = Math.max(shake, 14);
     }
@@ -9662,15 +9734,25 @@ function sgAlert(key, text) { // avisos de lo que pasa fuera de la vista, sin re
 // fuera de la vista solo resta vida
 function sgDmg(e, z, dmg, sx, sy, kb) {
   if (e.dead || e.spawnT > 0) return;
-  if (z === SIEGE.cur) { const sh = shake; damageEnemy(e, sx, sy, dmg, dmg * 0.8, kb || 40, true); shake = Math.max(sh, Math.min(shake, 4)); e.lastHp = e.hp; }
-  else { e.hp -= dmg; if (e.hp <= 0) e.dead = true; }
+  const sh = shake; damageEnemy(e, sx, sy, dmg, dmg * 0.8, kb || 40, true); shake = Math.max(sh, Math.min(shake, 4)); e.lastHp = e.hp;
+  // [RETIRADO] fuera de la zona activa solo restaba vida: else { e.hp -= dmg; if (e.hp <= 0) e.dead = true; }
 }
 
 // ---------- Actualización del asedio (cada paso, en vez de puertas y oleadas de sala) ----------
 function siegeUpdate(dt) {
-  const S = SIEGE, cur = S.cur;
+  const S = SIEGE;
   S.time += dt;
-  if (S.tp) { S.tp.t -= dt; if (S.tp.t <= 0) { const tp = S.tp; S.tp = null; siegeEnter(tp.to, tp.at); showBanner(tp.to.name); } return; }
+  { // zona del grupo (la de su centro): la lluvia de fuego cae allí y la barra de zonas la marca como «aquí»
+    const live = players.filter(p => !p.down), L = live.length ? live : players;
+    S.cur = sgZoneAt(L.reduce((a, p) => a + p.x, 0) / L.length);
+  }
+  const cur = S.cur;
+  for (const p of players) { // zona perdida: su paso se cierra para quien está fuera (quien sigue dentro puede salir)
+    const z = sgZoneAt(p.x);
+    if (z.lost && p.sgZ0 && p.sgZ0 !== z) p.x = z.east ? Math.min(p.x, z.x0 - p.r) : Math.max(p.x, z.x1 + p.r);
+    else p.sgZ0 = z;
+  }
+  if (S.tp) { S.tp.t -= dt; if (S.tp.t <= 0) { const tp = S.tp; S.tp = null; sgPlace(tp.at); showBanner(tp.to.name); } return; }
   // fases: preparación y oleada
   if (S.phase === 'prep') {
     const before = Math.ceil(S.phaseT); S.phaseT -= dt;
@@ -9686,10 +9768,10 @@ function siegeUpdate(dt) {
     if (S.storeT >= SG.store.every) { S.storeT = 0; if (sgObjs().some(o => o.kind === 'store' && !o.destroyed)) sgGold(SG.store.gold); }
   }
   // zona activa: adoptar enemigos sin plan y quitar los que se han ido
-  for (const e of enemies) if (!e.sg && !e.dead) sgAdopt(e, cur);
+  for (const e of enemies) if (!e.sg && !e.dead) sgAdopt(e, sgZoneAt(e.x));
   enemies = enemies.filter(e => !e.sgLeft);
-  // zonas fuera de la vista: simulación sencilla
-  for (const z of S.zones) if (z !== cur) sgOffZone(z, dt);
+  // [RETIRADO] zonas fuera de la vista: simulación sencilla
+  // for (const z of S.zones) if (z !== cur) sgOffZone(z, dt);
   // de camino al patio
   for (const tr of S.transit) { tr.t -= dt; if (tr.t <= 0) sgArrive(tr); }
   S.transit = S.transit.filter(tr => tr.t > 0);
@@ -9698,8 +9780,8 @@ function siegeUpdate(dt) {
   sgBolts(dt);
   for (const o of sgObjs()) {
     o.flash = Math.max(0, o.flash - dt);
-    if (o.burn && !o.destroyed) { o.hp -= SG.burnDps * dt; if (o.zone === cur && Math.random() < dt * 14) particles.push({ x: o.x + (Math.random() - 0.5) * o.r, y: o.y - 20 - Math.random() * 40, vx: 0, vy: -40, life: 0.5, max: 0.5, color: Math.random() < 0.5 ? '#ff8a3d' : '#ffd54a', s: 4 }); if (o.hp <= 0) sgDestroy(o); }
-    if (o.zone === cur && !o.destroyed) for (const q of players.concat(enemies)) { // los edificios ocupan su sitio
+    if (o.burn && !o.destroyed) { o.hp -= SG.burnDps * dt; if (Math.random() < dt * 14) particles.push({ x: o.x + (Math.random() - 0.5) * o.r, y: o.y - 20 - Math.random() * 40, vx: 0, vy: -40, life: 0.5, max: 0.5, color: Math.random() < 0.5 ? '#ff8a3d' : '#ffd54a', s: 4 }); if (o.hp <= 0) sgDestroy(o); }
+    if (!o.destroyed) for (const q of players.concat(enemies)) { // los edificios ocupan su sitio
       if (q.airborne || (q.z || 0) > 30) continue;
       const dx = q.x - o.x, dy = q.y - o.y, dd = Math.hypot(dx, dy) || 1, m = o.r + q.r;
       if (dd < m) { q.x = o.x + dx / dd * m; q.y = o.y + dy / dd * m; }
@@ -9711,10 +9793,10 @@ function siegeUpdate(dt) {
   // recompensas por bajas
   for (const e of S.all) if (e.dead && !e.sgDone) {
     e.sgDone = true; if (e.sgLeft) continue;
-    const z = e.sgZ || cur;
+    const z = e.sgZ || sgZoneAt(e.x);
     const g = Math.round(SG.goldKill[e.tier] * (e.elite ? 2 : 1) + (e.banner ? SG.goldBanner : 0));
     sgGold(g);
-    if (z === cur) floatText(e.x, e.y - 34, '+' + g, '#ffd54a');
+    floatText(e.x, e.y - 34, '+' + g, '#ffd54a');
     if (e.banner) sgBannerFall(e, z);
     if (e.sg && e.sg.inc) { e.sg.inc.alive--; e.sg.inc.killed++; sgCheckInc(e.sg.inc); }
   }
@@ -9725,9 +9807,9 @@ function siegeUpdate(dt) {
 }
 function sgBannerFall(e, z) { // cae el portaestandarte: su escuadra se desmoraliza
   showBanner('¡Ha caído el portaestandarte! +' + SG.goldBanner + ' oro');
-  for (const q of sgList(z)) if (!q.dead && q.sg && q.sg.inc === e.sg.inc && Math.hypot(q.x - e.x, q.y - e.y) < 260) { q.getup = Math.max(q.getup || 0, 1.2); if (z === SIEGE.cur) floatText(q.x, q.y - 40, 'Desmoralizado', '#b9afc9'); }
+  for (const q of sgList(z)) if (!q.dead && q.sg && q.sg.inc === e.sg.inc && Math.hypot(q.x - e.x, q.y - e.y) < 260) { q.getup = Math.max(q.getup || 0, 1.2); floatText(q.x, q.y - 40, 'Desmoralizado', '#b9afc9'); }
 }
-function sgOffZone(z, dt) {
+function sgOffZone(z, dt) { // [RETIRADO, sin uso con el mapa continuo] simulación sencilla de las zonas sin jugadores
   const L = z.enemies;
   for (const e of L) {
     if (e.dead || e.sgLeft) continue;
@@ -9747,8 +9829,7 @@ function sgNearest(L, x, y, R, ground) {
 }
 function sgBoltMul() { return SIEGE.mods.bolt * (sgObjs().some(o => o.kind === 'powder' && !o.destroyed) ? SG.powderMul : 1); }
 function sgShoot(z, x, y, e, dmg, color) {
-  if (z === SIEGE.cur) SIEGE.bolts.push({ z, x, y, e, dmg, color, life: 1.2 });
-  else sgDmg(e, z, dmg, x, y);
+  SIEGE.bolts.push({ z, x, y, e, dmg, color, life: 1.2 });
 }
 function sgDefenses(z, dt) {
   const S = SIEGE, L = sgList(z), active = S.phase === 'wave';
@@ -9767,7 +9848,7 @@ function sgDefenses(z, dt) {
     }
     if (s.kind === 'brazier' && t.fuel > 0) {
       if (active) t.fuel -= dt * S.mods.fuel;
-      if (t.cd <= 0) { t.cd = D.tick; for (const e of L) if (!e.dead && !e.flying && e.spawnT <= 0 && !e.sgLeft && Math.hypot(e.x - s.x, e.y - s.y) < D.r) { sgDmg(e, z, z === S.cur ? D.dmg : D.dmg * 2, s.x, s.y, 10); if (z === S.cur) applyBurn(e, null); } }
+      if (t.cd <= 0) { t.cd = D.tick; for (const e of L) if (!e.dead && !e.flying && e.spawnT <= 0 && !e.sgLeft && Math.hypot(e.x - s.x, e.y - s.y) < D.r) { sgDmg(e, z, D.dmg, s.x, s.y, 10); applyBurn(e, null); } }
     }
     t.pop = Math.max(0, (t.pop || 0) - dt);
   }
@@ -9780,7 +9861,7 @@ function sgBolts(dt) {
   const S = SIEGE;
   for (const b of S.bolts) {
     b.life -= dt;
-    if (b.z !== S.cur || b.e.dead || b.e.sgLeft) { b.life = 0; continue; }
+    if (b.e.dead || b.e.sgLeft) { b.life = 0; continue; }
     const tx = b.e.x, ty = b.e.y - 12 - (b.e.z || 0) * 0.5, dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy), s = 620 * dt;
     b.ang = Math.atan2(dy, dx);
     if (d <= s + 8) { sgDmg(b.e, b.z, b.dmg, b.x, b.y, 70); b.life = 0; burst(tx, ty, b.color, 4); }
@@ -9792,9 +9873,10 @@ function sgBolts(dt) {
 // ---------- Acciones de los jugadores (botón de fijar = confirmar) ----------
 function sgCost(kind) { return Math.round(SG_TRAPS[kind].cost * SIEGE.mods.cost); }
 function siegeInteract(p) {
-  const S = SIEGE, z = S.cur; if (!z || S.tp) return null;
+  const S = SIEGE; if (!S.cur || S.tp) return null;
   if (p.sgTask) { const k = p.sgTask.kind; return { label: k === 'repair' ? 'Reparando… (pulsa para parar)' : k === 'douse' ? 'Apagando el fuego…' : 'Apuntalando…', act: q => { q.sgTask = null; } }; }
   const opts = [], near = (o, r) => Math.hypot(p.x - o.x, p.y - o.y) < r;
+  for (const z of S.zones) { // mapa continuo: lo que haya cerca, sea de la zona que sea
   for (const s of z.stones) if (near(s, 52)) { // viajar es una votación: todos junto a la piedra confirman y el grupo avanza a la vez
     const dest = sgZone(s.to), [n, m] = sgReadyCount(s);
     if (dest.lost) continue; // zona perdida: la piedra ya no lleva allí (se ve tachada)
@@ -9818,7 +9900,8 @@ function siegeInteract(p) {
     else if (o.burn) opts.push([o, { label: 'Apagar el fuego', act: q => { q.sgTask = { kind: 'douse', o, t: 0 }; } }]);
     else if (o.hp < o.max - 1) opts.push([o, { label: 'Reparar ' + o.name.split(' ')[0].toLowerCase() + ' (oro)', act: q => { q.sgTask = { kind: 'repair', o }; } }]);
   }
-  for (const tn of S.tunnels) if (tn.z === z) for (const pr of tn.props) if (near(pr, 46)) opts.push([pr, { label: 'Apuntalar el túnel', act: q => { q.sgTask = { kind: 'brace', pr, tn }; } }]);
+  }
+  for (const tn of S.tunnels) for (const pr of tn.props) if (near(pr, 46)) opts.push([pr, { label: 'Apuntalar el túnel', act: q => { q.sgTask = { kind: 'brace', pr, tn }; } }]);
   if (!opts.length) return null;
   opts.sort((a, b) => Math.hypot(p.x - a[0].x, p.y - a[0].y) - Math.hypot(p.x - b[0].x, p.y - b[0].y));
   return opts[0][1];
@@ -9866,7 +9949,7 @@ function sgEvent(kind) {
   } else { // zapadores: un túnel junto a un objetivo; hay que apuntalarlo (dos jugadores a la vez si sois varios)
     const zs = S.zones.filter(z => z.objs.some(o => !o.destroyed)), z = zs[Math.floor(Math.random() * zs.length)] || S.cur;
     const alive = z.objs.filter(o => !o.destroyed), o = alive[Math.floor(Math.random() * alive.length)];
-    const ang = z.id === 'patio' ? Math.PI / 2 : Math.atan2(sgTc(z.midY) - o.y, sgTc(z.east ? 30 : 14) - o.x);
+    const ang = z.id === 'patio' ? Math.PI / 2 : Math.atan2(z.F.y - o.y, z.F.x - o.x);
     const x = o.x + Math.cos(ang) * (o.r + 110), y = o.y + Math.sin(ang) * (o.r + 110);
     S.tunnels.push({ z, x, y, cd: 1.5, prog: 0, props: [{ x: x - 70, y }, { x: x + 70, y }] });
     showBanner('¡Zapadores! Túnel junto a: ' + o.name + ' (' + z.short + '). Apuntaladlo' + (humans().length > 1 ? ' entre dos' : ''));
@@ -9877,17 +9960,17 @@ function sgEvents(dt) {
   if (S.warn) { const b0 = Math.ceil(S.warn.t); S.warn.t -= dt; if (Math.ceil(S.warn.t) < b0) sgBeep(S.warn.t <= 0); if (S.warn.t <= 0) { S.rain = { z: S.warn.z, t: R.dur, acc: 0 }; S.warn = null; } }
   if (S.rain) {
     S.rain.t -= dt;
-    if (S.rain.z === S.cur) {
+    { // cae en su zona aunque el grupo se vaya
       S.rain.acc += dt;
       while (S.rain.acc >= R.every) {
         S.rain.acc -= R.every;
-        const z = S.cur, live = players.filter(p => !p.down);
+        const z = S.rain.z, live = players.filter(p => !p.down && sgZoneAt(p.x) === z);
         for (let k = 0; k < 8; k++) {
           let x, y;
           if (live.length && Math.random() < 0.6) { const p = live[Math.floor(Math.random() * live.length)]; x = p.x + (Math.random() - 0.5) * 320; y = p.y + (Math.random() - 0.5) * 240; }
-          else { x = T + Math.random() * (z.room.cols - 2) * T; y = T + Math.random() * (z.room.rows - 2) * T; }
+          else { const a = Math.max(T, z.x0), b = Math.min((SGW.C - 1) * T, z.x1); x = a + Math.random() * (b - a); y = T + Math.random() * (z.room.rows - 2) * T; }
           const tx = Math.floor(x / T), ty = Math.floor(y / T);
-          if (tx < 1 || ty < 1 || tx >= z.room.cols - 1 || ty >= z.room.rows - 1 || z.room.tiles[ty][tx] !== 0 || sgInCover(z, x, y)) continue;
+          if (tx < 1 || ty < 1 || tx >= z.room.cols - 1 || ty >= z.room.rows - 1 || z.room.tiles[ty][tx] !== 0 || sgZoneAt(x) !== z || sgInCover(z, x, y)) continue;
           S.marks.push({ x, y, t: 0 }); break;
         }
       }
@@ -9899,7 +9982,7 @@ function sgEvents(dt) {
     if (m.t >= R.delay && !m.done) {
       m.done = true;
       for (const p of players) if (!p.down && Math.hypot(p.x - m.x, p.y - m.y) < R.r + p.r) hurtPlayer(p, m.x, m.y, null, R.dmg);
-      for (const e of enemies) if (!e.dead && Math.hypot(e.x - m.x, e.y - m.y) < R.r + e.r) { sgDmg(e, S.cur, R.edmg, m.x, m.y, 60); applyBurn(e, null); }
+      for (const e of enemies) if (!e.dead && Math.hypot(e.x - m.x, e.y - m.y) < R.r + e.r) { sgDmg(e, sgZoneAt(e.x), R.edmg, m.x, m.y, 60); applyBurn(e, null); }
       effects.push({ type: 'ring', x: m.x, y: m.y, r: R.r, t: 0, dur: 0.3, color: '#ff8a3d' }); burst(m.x, m.y - 6, '#ff8a3d', 6);
     }
   }
@@ -9908,9 +9991,9 @@ function sgEvents(dt) {
     tn.cd -= dt;
     if (tn.cd <= 0) { // salen enemigos del túnel
       tn.cd = SG.sappers.every;
-      const e = makeEnemy(Math.random() < 0.3 ? 'slime' : 'mite', tn.x, tn.y, false); e.spawnT = tn.z === S.cur ? 0.5 : 0;
+      const e = makeEnemy(Math.random() < 0.3 ? 'slime' : 'mite', tn.x, tn.y, false); e.spawnT = 0.5;
       sgList(tn.z).push(e); sgAdopt(e, tn.z);
-      if (tn.z !== S.cur) sgAlert('tunnel' + tn.z.id, 'Salen zapadores en ' + tn.z.short.toLowerCase());
+      if (!sgSeen(tn.x, tn.y)) sgAlert('tunnel' + tn.z.id, 'Salen zapadores en ' + tn.z.short.toLowerCase());
     }
     const need = Math.min(2, Math.max(1, humans().length)), braced = new Set(players.filter(p => p.sgTask && p.sgTask.kind === 'brace' && p.sgTask.tn === tn).map(p => p.sgTask.pr));
     if (braced.size >= need) tn.prog += dt / SG.sappers.seal; else tn.prog = Math.max(0, tn.prog - dt * 0.3);
@@ -9960,8 +10043,15 @@ function siegeUpDraw() {
 
 // ---------- Dibujo ----------
 function sgFloorRect(z, c) { const x0 = Math.min(c.x0, c.x1) * T, x1 = (Math.max(c.x0, c.x1) + 1) * T; return [x0, c.y0 * T, x1 - x0, (c.y1 + 1 - c.y0) * T]; }
-function siegeDrawFloor() { // capa del suelo (coordenadas de mundo, aplastadas)
-  const S = SIEGE, z = S.cur; if (!z) return;
+function siegeDrawFloor() { // capa del suelo (coordenadas de mundo, aplastadas): todas las zonas del mapa
+  const S = SIEGE; if (!S.cur) return;
+  for (const z of S.zones) sgDrawFloorZ(z);
+  ctx.save(); ctx.scale(1, K);
+  for (const m of S.marks) { const q = Math.min(1, m.t / SG.rain.delay); ctx.fillStyle = `rgba(255,107,60,${0.15 + 0.3 * q})`; ctx.beginPath(); ctx.arc(m.x, m.y, SG.rain.r * (0.4 + 0.6 * q), 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(255,170,90,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(m.x, m.y, SG.rain.r, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.restore();
+}
+function sgDrawFloorZ(z) {
+  const S = SIEGE;
   ctx.save(); ctx.scale(1, K);
   if (z.cover) { // zona techada: sombra de tejado
     const [x, y, w, h] = sgFloorRect(z, z.cover), hot = (S.rain && S.rain.z === z) || (S.warn && S.warn.z === z);
@@ -9988,7 +10078,10 @@ function siegeDrawFloor() { // capa del suelo (coordenadas de mundo, aplastadas)
     ctx.strokeStyle = '#6b5a3e'; ctx.lineWidth = 4; ctx.stroke();
     for (const pr of tn.props) { ctx.strokeStyle = 'rgba(255,213,74,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.arc(pr.x, pr.y, 22, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
   }
-  for (const m of S.marks) { const q = Math.min(1, m.t / SG.rain.delay); ctx.fillStyle = `rgba(255,107,60,${0.15 + 0.3 * q})`; ctx.beginPath(); ctx.arc(m.x, m.y, SG.rain.r * (0.4 + 0.6 * q), 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(255,170,90,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(m.x, m.y, SG.rain.r, 0, Math.PI * 2); ctx.stroke(); }
+  if (z.lost && z.door) { // paso cerrado: rastrillo bajado
+    const d = z.door, x = (d.x + 0.5) * T, y0 = d.y0 * T, y1 = (d.y1 + 1) * T;
+    ctx.fillStyle = 'rgba(255,80,80,0.18)'; ctx.fillRect(x - T / 2, y0, T, y1 - y0);
+  }
   ctx.restore();
 }
 function sgBar(x, y, w, f, col) { ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, 7); ctx.fillStyle = col; ctx.fillRect(x - w / 2, y, w * Math.max(0, Math.min(1, f)), 5); }
@@ -10067,22 +10160,32 @@ function sgDrawStone(st) {
     sgLabel('Listos ' + n + '/' + m, x, y - 94, '#ffd54a');
   }
 }
-function sgDrawCrate(c) {
+function sgDrawCrate(c, z) {
   const x = c.x, y = c.y * K;
   ctx.fillStyle = '#7a5a34'; ctx.fillRect(x - 16, y - 24, 32, 24); ctx.strokeStyle = '#3e2a17'; ctx.lineWidth = 2; ctx.strokeRect(x - 16, y - 24, 32, 24);
   ctx.beginPath(); ctx.moveTo(x - 16, y - 24); ctx.lineTo(x + 16, y); ctx.moveTo(x + 16, y - 24); ctx.lineTo(x - 16, y); ctx.stroke();
-  sgLabel(SIEGE.cur.id === 'patio' ? 'Armería' : 'Pertrechos', x, y - 30, '#d9a066');
+  sgLabel(z.id === 'patio' ? 'Armería' : 'Pertrechos', x, y - 30, '#d9a066');
 }
 function siegeDrawList(list) { // objetos «de pie»: se ordenan con personajes y enemigos
-  const S = SIEGE, z = S.cur; if (!z) return;
+  const S = SIEGE; if (!S.cur) return;
+  for (const z of S.zones) sgDrawListZ(list, z);
+  for (const tn of S.tunnels) for (const pr of tn.props) list.push({ y: pr.y, f: () => { const x = pr.x, y = pr.y * K; ctx.fillStyle = '#6b5a3e'; ctx.fillRect(x - 3, y - 34, 6, 34); ctx.fillRect(x - 14, y - 36, 28, 5); } });
+  for (const e of enemies) if (e.banner && !e.dead) list.push({ y: e.y + 0.1, f: () => { const x = e.x + 14, y = e.y - 30 - (e.z || 0); ctx.strokeStyle = '#d8cfe6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y + 20); ctx.lineTo(x, y - 34); ctx.stroke(); ctx.fillStyle = '#e5484d'; ctx.beginPath(); ctx.moveTo(x, y - 34); ctx.lineTo(x + 22 + Math.sin(time * 6) * 2, y - 27); ctx.lineTo(x, y - 18); ctx.fill(); } });
+  for (const p of players) if (p.sgCarry && !p.down) list.push({ y: p.y + 0.2, f: () => { const x = p.x, y = p.y - 52 * p.ch.size - (p.z || 0); ctx.fillStyle = '#7a5a34'; ctx.fillRect(x - 10, y - 12, 20, 14); ctx.strokeStyle = '#3e2a17'; ctx.lineWidth = 1.5; ctx.strokeRect(x - 10, y - 12, 20, 14); } });
+}
+function sgDrawListZ(list, z) {
+  const S = SIEGE;
+  if (z.lost && z.door) for (let ty = z.door.y0; ty <= z.door.y1; ty++) list.push({ y: (ty + 1) * T - 1, f: () => { // rastrillo de la zona perdida
+    const x = (z.door.x + 0.5) * T, y = (ty + 1) * TK;
+    ctx.fillStyle = '#3e3448'; ctx.fillRect(x - T / 2, y - 6 - 46, T, 6);
+    ctx.fillStyle = '#8f86a0'; for (let k = 0; k < 4; k++) ctx.fillRect(x - T / 2 + 4 + k * 10, y - 46, 3, 46);
+    ctx.fillStyle = '#ff6b6b'; ctx.fillRect(x - T / 2, y - 2, T, 2);
+  } });
   for (const o of z.objs) list.push({ y: o.y, f: () => sgDrawObj(o) });
   for (const s of z.slots) list.push({ y: s.y, f: () => sgDrawSlot(s) });
   for (const st of z.stones) list.push({ y: st.y, f: () => sgDrawStone(st) });
-  for (const c of z.crates) list.push({ y: c.y, f: () => sgDrawCrate(c) });
+  for (const c of z.crates) list.push({ y: c.y, f: () => sgDrawCrate(c, z) });
   if (z.horn && S.phase === 'prep') list.push({ y: z.horn.y, f: () => { const x = z.horn.x, y = z.horn.y * K; ctx.fillStyle = '#d9a066'; ctx.beginPath(); ctx.moveTo(x - 14, y - 30); ctx.quadraticCurveTo(x, y - 10, x + 14, y - 40); ctx.lineTo(x + 8, y - 44); ctx.quadraticCurveTo(x, y - 20, x - 10, y - 34); ctx.fill(); sgLabel('Cuerno', x, y - 52, '#d9a066'); } });
-  for (const tn of S.tunnels) if (tn.z === z) for (const pr of tn.props) list.push({ y: pr.y, f: () => { const x = pr.x, y = pr.y * K; ctx.fillStyle = '#6b5a3e'; ctx.fillRect(x - 3, y - 34, 6, 34); ctx.fillRect(x - 14, y - 36, 28, 5); } });
-  for (const e of enemies) if (e.banner && !e.dead) list.push({ y: e.y + 0.1, f: () => { const x = e.x + 14, y = e.y - 30 - (e.z || 0); ctx.strokeStyle = '#d8cfe6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y + 20); ctx.lineTo(x, y - 34); ctx.stroke(); ctx.fillStyle = '#e5484d'; ctx.beginPath(); ctx.moveTo(x, y - 34); ctx.lineTo(x + 22 + Math.sin(time * 6) * 2, y - 27); ctx.lineTo(x, y - 18); ctx.fill(); } });
-  for (const p of players) if (p.sgCarry && !p.down) list.push({ y: p.y + 0.2, f: () => { const x = p.x, y = p.y - 52 * p.ch.size - (p.z || 0); ctx.fillStyle = '#7a5a34'; ctx.fillRect(x - 10, y - 12, 20, 14); ctx.strokeStyle = '#3e2a17'; ctx.lineWidth = 1.5; ctx.strokeRect(x - 10, y - 12, 20, 14); } });
 }
 function siegeDrawAir() { // proyectiles, bolas de fuego que caen y progreso de tareas (dentro de la proyección)
   const S = SIEGE;
@@ -10094,8 +10197,8 @@ function siegeDrawAir() { // proyectiles, bolas de fuego que caen y progreso de 
     ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = k.kind === 'douse' ? '#7ab8ff' : '#ffd54a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, k.prog)); ctx.stroke();
   }
-  for (const tn of S.tunnels) if (tn.z === S.cur && tn.prog > 0) sgBar(tn.x, tn.y * K - 40, 60, tn.prog, '#d8cfe6');
-  if (S.cur && S.cur.cover) { const [x, y, w, h] = sgFloorRect(S.cur, S.cur.cover); sgLabel('Zona techada', x + w / 2, (y + h) * K - 6, '#7ee0c3'); }
+  for (const tn of S.tunnels) if (tn.prog > 0) sgBar(tn.x, tn.y * K - 40, 60, tn.prog, '#d8cfe6');
+  for (const z of S.zones) if (z.cover) { const [x, y, w, h] = sgFloorRect(z, z.cover); sgLabel('Zona techada', x + w / 2, (y + h) * K - 6, '#7ee0c3'); }
 }
 // Reloj del asedio, arriba en el centro: cuánto falta para la oleada, qué viene y cuándo
 function HUD_PX() { return HUD; } // alto real del marcador (la variable global HUD), visible desde funciones con variables locales del mismo nombre
@@ -10153,7 +10256,7 @@ function siegeDrawUI() { // panel de estado, zonas y avisos (coordenadas de pant
   // zonas: tres casillas con sus objetivos
   const bw = 132, gap = 8, bx0 = W / 2 - (3 * bw + 2 * gap) / 2, by = H - 52;
   S.zones.forEach((z, i) => {
-    const bx = bx0 + i * (bw + gap), here = z === S.cur, L = sgList(z), n = L ? L.filter(e => !e.dead && !e.sgLeft).length : 0, hit = z.objs.some(o => S.time - o.hitT < 1.5 && !o.destroyed);
+    const bx = bx0 + i * (bw + gap), here = z === S.cur, n = enemies.filter(e => !e.dead && e.spawnT <= 0 && sgZoneAt(e.x) === z).length, hit = z.objs.some(o => S.time - o.hitT < 1.5 && !o.destroyed);
     rrect(bx, by, bw, 44, 7); ctx.fillStyle = here ? 'rgba(47,38,64,0.92)' : 'rgba(14,10,22,0.8)'; ctx.fill();
     ctx.lineWidth = here ? 2.5 : 1.5; ctx.strokeStyle = hit && Math.sin(time * 10) > 0 ? '#ff6b6b' : (here ? '#b49bff' : '#3b3349'); ctx.stroke();
     ctx.textAlign = 'left'; ctx.font = '700 12px ' + FONT; ctx.fillStyle = here ? '#f2eefa' : '#b9afc9'; ctx.fillText(z.short + (here ? ' · aquí' : '') + (z.lost ? ' · perdida' : ''), bx + 8, by + 16);
