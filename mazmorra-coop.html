@@ -448,9 +448,11 @@ const JUMP = {
 // de movimiento y de ataque) y sus habilidades cambian: la 1 pasa a Garra taladro y la 2 a Izuna de furia (sin necesidad de lanzar)
 const FURY = {
   // [RETIRADO] versión anterior: max: 50, execGain: 8, idle: 2.5, drain: 10 (se llenaba demasiado despacio)
-  max: 32,            // daño necesario para llenar la barra
+  // [RETIRADO 2026-11-08] max: 32 (se rellenaba en ~4 s: furia casi permanente)
+  max: 75,            // daño necesario para llenar la barra (≈40 % del tiempo en furia pegando sin parar)
   execGain: 12,       // cada ejecución suma esto a la barra
-  idle: 3.5, drain: 6, // segundos sin pegar antes de que la barra empiece a vaciarse, y cuánto pierde por segundo
+  // [RETIRADO 2026-11-08] idle: 3.5, drain: 6 (la furia apenas se perdía: Ámbar estaba en furia el 60 % del tiempo)
+  idle: 2, drain: 10,  // segundos sin pegar antes de que la barra empiece a vaciarse, y cuánto pierde por segundo
   fx: 0.9,            // duración del destello naranja en los bordes de la pantalla al entrar en furia
   time: 6.5,          // duración del modo furia
   speed: 1.3,         // velocidad de movimiento
@@ -461,7 +463,9 @@ const FURY = {
   sta: 1.6,           // estamina que quitan los golpes en furia
   color: '#ff8c1a',   // Ámbar se tiñe de naranja mientras dura
   // Garra taladro (habilidad 1 en furia): se lanza girando hacia delante; atrapa a los que toca, los arrastra con muchos golpes y al final los lanza
-  drill: { dist: 300, speed: 560, catchR: 10, tick: 0.06, dmg: 0.32, sta: 0.6, endDmg: 1.6, endKb: 420, cd: 2.2 },
+  // [RETIRADO 2026-11-08] drill: { dist: 300, speed: 560, catchR: 10, tick: 0.06, dmg: 0.32, sta: 0.6, endDmg: 1.6, endKb: 420, cd: 2.2 }, (al final los lanzaba lejos y rompía el combo)
+  drill: { dist: 300, speed: 560, catchR: 10, tick: 0.06, dmg: 0.32, sta: 0.6, endDmg: 1.6, endKb: 420, cd: 2.2,
+           suck: true, suckR: 90, stun: 0.6 }, // succión: al terminar deja a los atrapados (y a los cercanos) pegados delante de Ámbar, aturdidos un momento, para seguir el combo
   // Izuna de furia (habilidad 2 en furia): agarra al enemigo más cercano (no al guardián), suben juntos muy alto y caen en picado
   grab: { range: 220, dash: 0.14, rise: 0.42, h: 190, hang: 0.14, fall: 0.17, dmgMul: 1.6, sta: 1, radius: 95, areaDmg: 2, kb: 360, getup: 0.9, cd: 2.5 }
 };
@@ -3624,13 +3628,24 @@ function endDrill(p) {
   if (!R) return;
   const dmg = c.melee * D.endDmg * DMG.melee * DMG.ability;
   let n = 0;
-  for (const e of R.caught) { // remate: los suelta lanzándolos por los aires
-    if (e.dead) continue;
-    damageEnemy(e, p.x, p.y, dmg, dmg, D.endKb, true); n++;
-    if (e.dead) continue;
-    impactFx(p, e, true);
-    if (e.type !== 'boss') { if (e.airborne) e.vz = Math.max(e.vz, LAUNCH_VZ); else tryLaunch(e, true); }
+  // [RETIRADO 2026-11-08] remate que los lanzaba por los aires:
+  // for (const e of R.caught) { if (e.dead) continue; damageEnemy(e, p.x, p.y, dmg, dmg, D.endKb, true); n++; if (e.dead) continue; impactFx(p, e, true);
+  //   if (e.type !== 'boss') { if (e.airborne) e.vz = Math.max(e.vz, LAUNCH_VZ); else tryLaunch(e, true); } }
+  if (D.suck) for (const e of liveTargets()) { // succión: los cercanos que no atrapó también vienen hacia ella
+    if (R.caught.includes(e) || e.type === 'boss' || e.airborne || e.grabbed) continue;
+    if (Math.hypot(e.x - p.x, e.y - p.y) - e.r < D.suckR) R.caught.push(e);
   }
+  R.caught.forEach((e, i) => { // remate: golpe final sin empuje; los deja pegados delante, aturdidos un momento
+    if (e.dead) return;
+    damageEnemy(e, p.x, p.y, dmg, dmg, 0, true); n++;
+    if (e.dead) return;
+    impactFx(p, e, true);
+    if (e.type !== 'boss' && !e.airborne) {
+      const a = Math.atan2(p.ay, p.ax) + (i - (R.caught.length - 1) / 2) * 0.6, fd = p.r + e.r + 4;
+      e.x = p.x + Math.cos(a) * fd; e.y = p.y + Math.sin(a) * fd; e.kbx = e.kby = 0; collide(e, false);
+    }
+    e.hitstun = Math.max(e.hitstun || 0, D.stun);
+  });
   effects.push({ type: 'ring', x: p.x + p.ax * 16, y: p.y + p.ay * 16, r: 46, t: 0, dur: 0.3, color: FURY.color });
   burst(p.x + p.ax * 16, p.y - 12, FURY.color, 14);
   if (n) { shake = Math.max(shake, 7); hitstop = Math.max(hitstop, 0.06); SFX.hit(true); }
@@ -7768,7 +7783,8 @@ const ABILITY_TEXT = {
   roots: ['Enredaderas', 'Mantén para ampliar el área a tu alrededor; inmoviliza y los enredados pierden más estamina'],
   reaper: ['Puño ejecutor', 'Salta al ejecutable más cercano y lo ejecuta; si no hay, golpea al más cercano'],
   dragon: ['Poder del dragón', 'Nivel 1: bola de fuego · 2: dragón que gira · 3: forma de dragón'],
-  drill: ['Garra taladro', 'Furia: se lanza girando, arrastra a los que pilla con muchos golpes y los lanza'],
+  // [RETIRADO 2026-11-08] drill: ['Garra taladro', 'Furia: se lanza girando, arrastra a los que pilla con muchos golpes y los lanza'],
+  drill: ['Garra taladro', 'Furia: se lanza girando, arrastra a los que pilla con muchos golpes y al final los succiona delante de ti, aturdidos'],
   furyDrop: ['Izuna de furia', 'Furia: agarra al más cercano, subís juntos y lo estampa; la onda lanza a los de alrededor']
 };
 const CHARGED_TEXT = {
