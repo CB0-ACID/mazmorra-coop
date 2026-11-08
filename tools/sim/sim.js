@@ -45,6 +45,7 @@ function makeSim(skill) {
     globalThis.__simStart = function (ci, nBots, depth, seedv) {
       slots = []; for (let i = 0; i < nBots; i++) slots.push({ dev: 'bot' + i, cur: Array.isArray(ci) ? ci[i] : ci, locked: true });
       want = slots.length; npcMode = false; siegeMode = false; devStartDepth = depth || 1;
+      if (typeof RUNLOG !== 'undefined') { RUNLOG.chosen = true; RUNLOG.kind = 'prueba'; } // el bot no entra en el registro de partidas
       startGame(); if (state === 'tutorial') resume();
       testMode = false;
     };

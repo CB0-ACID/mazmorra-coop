@@ -641,7 +641,7 @@ const cvs = document.getElementById('game');
 let ctx = cvs.getContext('2d'); // let: los iconos de los botones táctiles lo cambian un instante para pintar en su propio lienzo
 const stage = document.getElementById('stage');
 let lastMenu = null;
-function isMenuState() { return state === 'count' || state === 'select' || state === 'options' || state === 'ideas' || state === 'dev' || state === 'levels'; }
+function isMenuState() { return state === 'count' || state === 'select' || state === 'options' || state === 'ideas' || state === 'dev' || state === 'levels' || state === 'runkind' || state === 'runlog'; }
 // ---------- Tamaño del marcador en partida ----------
 // Se diseña a escala 1 (pantalla de escritorio) y se amplía cuando el lienzo se ve pequeño, para que en el móvil
 // lo importante no baje de unos mínimos en píxeles reales (CSS): iconos ≈ 26 px, texto ≥ 12 px, barra de vida ≈ 15 px.
@@ -1872,7 +1872,7 @@ function drawMenuHint(extra) {
 // ---------- Dev Options (menú principal): autosalto por los aires, selección de nivel y diario de ideas ----------
 let devStartDepth = 1, devSel = 0, levelSel = 0; // nivel con el que empieza la próxima partida
 // Dev Options: lista de filas (0-4). Volver: botón «‹ Volver», Esc o Movimiento
-const DEV_ROWS = 5;
+const DEV_ROWS = 6; // 5: Registro de partidas
 function devRow(i) { const w = Math.min(520, LW - 80); return [(LW - w) / 2, 128 + i * 72, w, 60]; }
 function levelRect(n) { const cols = 4, w = 200, h = 120, gap = 16, x0 = (LW - (cols * w + (cols - 1) * gap)) / 2, r = Math.floor((n - 1) / cols), c = (n - 1) % cols; return [x0 + c * (w + gap), 130 + r * (h + gap), w, h]; }
 // function devBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; } // antes: «Volver» abajo; ahora backBtnRect() arriba a la izquierda en todas las subpantallas
@@ -1888,6 +1888,7 @@ function devAct(i) {
   else if (i === 2) openIdeas();
   else if (i === 3) location.href = 'diagnostico-mando.html'; // test de mandos (la página tiene «Volver al juego»)
   else if (i === 4) location.href = 'https://github.com/CB0-ACID/mazmorra-coop/releases/download/tv-latest/app-debug.apk'; // APK para Android TV
+  else if (i === 5) openRunLog();
 }
 function updateDev() {
   let back = escPressed();
@@ -1915,8 +1916,8 @@ function drawDev() {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Dev Options', LW / 2, 66);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Herramientas para probar y revisar el juego', LW / 2, 94);
-  const names = ['Autosaltar enemigos por los aires', 'Selección de nivel', 'Diario de ideas', 'Test de mandos', 'Descargar app Android TV'];
-  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Ideas que quiero implementar y que aún considero no viables', 'Muestra qué botones y ejes llegan desde los mandos (sale del juego)', 'APK para instalar la app con mandos en la tele'];
+  const names = ['Autosaltar enemigos por los aires', 'Selección de nivel', 'Diario de ideas', 'Test de mandos', 'Descargar app Android TV', 'Registro de partidas'];
+  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Ideas que quiero implementar y que aún considero no viables', 'Muestra qué botones y ejes llegan desde los mandos (sale del juego)', 'APK para instalar la app con mandos en la tele', 'Partidas reales terminadas: resumen por personaje y exportación'];
   for (let i = 0; i < DEV_ROWS; i++) {
     const [x, y, w, h] = devRow(i), sel = devSel === i;
     rrect(x, y, w, h, 9); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
@@ -2085,6 +2086,7 @@ cvs.addEventListener('mousemove', e => {
   const [x, y] = canvasPoint(e);
   if (state === 'count') { for (let n = 1; n <= 5; n++) if (insideAt(x, y, countBox(n))) { mmRow = 1; countSel = n; } for (let i = 0; i < 2; i++) if (insideAt(x, y, actRect(i))) { mmRow = 2; mmAct = i; } for (let i = 0; i < 2; i++) if (insideAt(x, y, modeSeg(i))) mmRow = 0; }
   else if (state === 'dev') { for (let i = 0; i < DEV_ROWS; i++) if (insideAt(x, y, devRow(i))) devSel = i; }
+  else if (state === 'runkind') { for (let i = 0; i < 2; i++) if (insideAt(x, y, runKindRect(i))) RUNLOG.sel = i; }
   else if (state === 'levels') { for (let n = 1; n <= 8; n++) if (insideAt(x, y, levelRect(n))) levelSel = n - 1; }
   else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i)) && pauseSel !== i) { pauseSel = i; pauseQuit = false; } }
   else if (state === 'options') { for (let r = 1; r <= optList().length + 1; r++) if (insideAt(x, y, optRowRect(r))) OPT.row = r; }
@@ -2108,6 +2110,14 @@ cvs.addEventListener('pointerdown', e => {
     for (let i = 0; i < 2; i++) if (inside(modeSeg(i))) { mmRow = 0; siegeMode = i === 1; return; }
     for (let i = 0; i < 2; i++) if (inside(actRect(i))) { mmRow = 2; mmAct = i; mmActivate(i); return; }
     for (let n = 1; n <= 5; n++) if (inside(countBox(n))) { mmRow = 1; countSel = n; goSelect(dev); return; }
+  } else if (state === 'runkind') {
+    if (inside(backBtnRect())) { runKindBack(); return; }
+    for (let i = 0; i < 2; i++) if (inside(runKindRect(i))) { RUNLOG.sel = i; runKindChoose(i); return; }
+  } else if (state === 'runlog') {
+    if (inside(backBtnRect())) { closeRunLog(); return; }
+    if (inside(runLogBtn(0))) { runLogCopy(); return; }
+    if (inside(runLogBtn(1))) { runLogDownload(); return; }
+    RUNLOG.dragY = y;
   } else if (state === 'dev') {
     if (inside(backBtnRect())) { closeDev(); return; }
     for (let i = 0; i < DEV_ROWS; i++) if (inside(devRow(i))) { devSel = i; devAct(i); return; }
@@ -7471,6 +7481,8 @@ function update(dt) {
   if (state === 'ideas') { updateIdeas(); return; }
   if (state === 'dev') { updateDev(); return; }
   if (state === 'levels') { updateLevels(); return; }
+  if (state === 'runkind') { updateRunKind(dt); return; }
+  if (state === 'runlog') { updateRunLog(dt); return; }
   if (state === 'tutorial') { updateTutorial(dt); return; }
   if (state === 'siegeUp') { siegeUpUpdate(dt); return; }
   if (state === 'over') {
@@ -9865,6 +9877,8 @@ function draw() {
   else if (state === 'ideas') drawIdeas();
   else if (state === 'dev') drawDev();
   else if (state === 'levels') drawLevels();
+  else if (state === 'runkind') drawRunKind();
+  else if (state === 'runlog') drawRunLog();
   else { drawGame(); if (state === 'pause') drawPause(); if (state === 'tutorial') drawTutorial(); if (state === 'siegeUp') siegeUpDraw(); }
 }
 
@@ -11519,6 +11533,215 @@ function frame(now) {
 resize();
 requestAnimationFrame(frame);
 // Gancho de depuración para pruebas automáticas: solo existe si la URL lleva ?debug
+// ---------- Registro de partidas (para equilibrar con datos reales) ----------
+// Al confirmar los personajes se elige: «Partida real» (se registra) o «Partida de prueba» (no se registra).
+// Solo se guardan partidas reales que empiezan en el piso 1, siguen la progresión normal (sin Dev Options:
+// piso inicial distinto, autosalto o ?debug) y terminan: derrota (cae todo el grupo) o victoria (cae el Dragón, fin del ciclo).
+// Las que se abandonan (volver al menú, reintentar a medias, cerrar) no se guardan. Asedio no se registra.
+// Se guarda en localStorage (mz-registro) en este dispositivo; Dev Options > Registro de partidas lo muestra y lo exporta.
+const RUNLOG = { kind: (() => { try { return localStorage.getItem('mz-runkind') || 'real'; } catch (_) { return 'real'; } })(), chosen: false, sel: 0, cur: null, last: null, scroll: 0, dragY: null, msg: '', msgT: 0 };
+const RUNLOG_MAX = 1000;
+function runLogLoad() { try { return JSON.parse(localStorage.getItem('mz-registro') || '[]'); } catch (_) { return []; } }
+function runLogSave(list) { try { localStorage.setItem('mz-registro', JSON.stringify(list.slice(-RUNLOG_MAX))); return true; } catch (_) { return false; } }
+function runLogBlock() { // motivo por el que la próxima partida no puede ser real (o null)
+  if (siegeMode) return 'El modo Asedio no se registra';
+  if (devStartDepth !== 1) return 'Empieza en el piso ' + devStartDepth + ' (Dev Options): solo prueba';
+  if (testMode) return 'Autosalto activado (Dev Options): solo prueba';
+  if (/[?&]debug\b/.test(location.search)) return 'Modo depuración (?debug): solo prueba';
+  return null;
+}
+function devName(dev) { return dev === 'npc' ? 'IA' : dev.startsWith('pad') ? 'mando' : dev === 'touch' ? 'táctil' : 'teclado'; }
+function runLogStart() {
+  RUNLOG.cur = null; RUNLOG.last = null;
+  if (RUNLOG.kind !== 'real' || runLogBlock()) return;
+  const hum = players.filter(p => !p.npc);
+  RUNLOG.cur = {
+    v: 1, fecha: new Date().toISOString(), semilla: seed, t: 0, roomT0: 0, roomTaken: 0,
+    modo: players.some(p => p.npc) ? '1 + IA' : hum.length === 1 ? 'solo' : 'coop ' + hum.length,
+    jugadores: players.map(p => ({ personaje: p.ch.name, control: devName(p.dev), recibido: 0, caidas: 0, ejecuciones: 0, habilidades: {}, ultimoGolpe: null })),
+    hecho: 0, bajas: 0, ejecuciones: 0, salas: [], guardianes: [], pisoMax: 1, tainted: false
+  };
+}
+function runLogPlayer(p) { const c = RUNLOG.cur; return c && players.includes(p) ? c.jugadores[players.indexOf(p)] : null; }
+function runLogEnd(win, why) {
+  const c = RUNLOG.cur; RUNLOG.cur = null;
+  if (!c || c.tainted) { RUNLOG.last = null; return; }
+  const rec = {
+    v: c.v, fecha: c.fecha, resultado: win ? 'victoria' : 'derrota', modo: c.modo, semilla: c.semilla,
+    duracion: Math.round(c.t), pisoMax: c.pisoMax, salasDespejadas: c.salas.length,
+    jugadores: c.jugadores, hecho: Math.round(c.hecho), bajas: c.bajas, ejecuciones: c.ejecuciones,
+    guardianes: c.guardianes, salas: c.salas, final: why || null
+  };
+  const list = runLogLoad(); list.push(rec);
+  RUNLOG.last = runLogSave(list) ? { n: list.length, win } : null;
+}
+// Ganchos sobre funciones del juego (no cambian su comportamiento; solo anotan)
+{ const _nr = newRun; newRun = function () { const r = _nr.apply(this, arguments); runLogStart(); return r; }; }
+{ const _sg = startGame; startGame = function () { // antes de empezar: ¿partida real o de prueba?
+    if (!RUNLOG.chosen && !siegeMode) { state = 'runkind'; RUNLOG.sel = RUNLOG.kind === 'prueba' || runLogBlock() ? 1 : 0; menuSwallow(); return; }
+    RUNLOG.chosen = false; return _sg.apply(this, arguments); }; }
+{ const _er = enterRoom; enterRoom = function (r) { const res = _er.apply(this, arguments); const c = RUNLOG.cur; if (c) { c.roomT0 = c.t; c.roomTaken = 0; c.pisoMax = Math.max(c.pisoMax, floor.depth); } return res; }; }
+{ const _rc = roomCleared; roomCleared = function () {
+    const c = RUNLOG.cur, wasBoss = room.type === 'boss';
+    const res = _rc.apply(this, arguments);
+    if (c) {
+      const sec = Math.round((c.t - c.roomT0) * 10) / 10;
+      c.salas.push({ piso: floor.depth, tipo: room.type || 'sala', t: sec, recibido: Math.round(c.roomTaken) });
+      if (wasBoss) c.guardianes.push({ piso: floor.depth, guardian: bossKindFor(floor.depth), t: sec, recibido: Math.round(c.roomTaken) });
+      if (wasBoss && isFinalBoss(floor.depth)) { runLogEnd(true); if (RUNLOG.last) showBanner('¡Ciclo completado! Partida registrada (n.º ' + RUNLOG.last.n + ')'); }
+    }
+    return res; }; }
+{ const _hp = hurtPlayer; hurtPlayer = function (p, sx, sy, srcEnemy) {
+    const h0 = p.hp, wasDown = p.down; const r = _hp.apply(this, arguments); const j = r && runLogPlayer(p);
+    if (j) { const d = Math.max(0, h0 - Math.max(0, p.hp)); j.recibido += d; RUNLOG.cur.roomTaken += d; j.ultimoGolpe = srcEnemy ? (srcEnemy.type === 'boss' ? 'guardián ' + (srcEnemy.kind || '') : srcEnemy.type) : 'zona o proyectil'; if (!wasDown && p.down) j.caidas++; }
+    return r; }; }
+{ const _de = damageEnemy; damageEnemy = function (e) { const h0 = Math.max(0, e.hp), d0 = e.dead; const r = _de.apply(this, arguments); if (RUNLOG.cur && !d0) RUNLOG.cur.hecho += h0 - Math.max(0, e.hp); return r; }; }
+{ const _ex = executeEnemy; executeEnemy = function (e, p) { const h0 = Math.max(0, e.hp); const r = _ex.apply(this, arguments); const c = RUNLOG.cur; if (c) { c.hecho += h0 - Math.max(0, e.hp); c.ejecuciones++; const j = runLogPlayer(p); if (j) j.ejecuciones++; } return r; }; }
+{ const _ke = killEnemy; killEnemy = function (e) { if (RUNLOG.cur && !e.dead) RUNLOG.cur.bajas++; return _ke.apply(this, arguments); }; }
+{ const _ua = useAbility; useAbility = function (p, slot) { const cd0 = slot === 'pri' ? p.priCd : p.secCd, t = abilityType(p, slot); const r = _ua.apply(this, arguments); const j = runLogPlayer(p); if (j && t && (slot === 'pri' ? p.priCd : p.secCd) > cd0) j.habilidades[t] = (j.habilidades[t] || 0) + 1; return r; }; }
+{ const _up = update; update = function (dt) {
+    const c = RUNLOG.cur, before = state;
+    if (c && state === 'play') c.t += dt;
+    if (c && testMode) c.tainted = true; // activar el autosalto a mitad de partida: deja de contar
+    const r = _up.apply(this, arguments);
+    if (RUNLOG.cur && before === 'play' && state === 'over' && !SIEGE.on) {
+      const j = RUNLOG.cur.jugadores.find(q => q.ultimoGolpe);
+      runLogEnd(false, { piso: floor.depth, sala: room.type || 'sala', golpe: j ? j.ultimoGolpe : null });
+    }
+    return r; }; }
+
+{ const _bm = backToMain; backToMain = function () { RUNLOG.cur = null; return _bm.apply(this, arguments); }; } // abandonar: no se guarda
+{ const _do = drawOver; drawOver = function () { // aviso en la pantalla de derrota: si la partida ha quedado registrada
+    const r = _do.apply(this, arguments);
+    if (!SIEGE.on) { ctx.textAlign = 'center'; ctx.font = '400 13px ' + FONT;
+      ctx.fillStyle = RUNLOG.last ? '#ffd54a' : '#8f86a0';
+      ctx.fillText(RUNLOG.last ? 'Partida registrada (n.º ' + RUNLOG.last.n + ')' : 'Partida de prueba: no se registra', W / 2, H / 2 - 16); }
+    return r; }; }
+
+// Pantalla de elección: partida real o de prueba
+function runKindRect(i) { const w = Math.min(330, (LW - 72) / 2), g = 24, x0 = LW / 2 - w - g / 2; return [x0 + i * (w + g), 150, w, 190]; }
+function runKindChoose(i) {
+  if (i === 0 && runLogBlock()) { RUNLOG.msg = runLogBlock(); RUNLOG.msgT = 2.5; return; }
+  RUNLOG.kind = i === 0 ? 'real' : 'prueba';
+  try { localStorage.setItem('mz-runkind', RUNLOG.kind); } catch (_) {}
+  RUNLOG.chosen = true; startGame();
+}
+function runKindBack() { // vuelve a la selección de personajes
+  slots = slots.filter(s => s.dev !== 'npc').map(s => ({ dev: s.dev, cur: s.cur, locked: false }));
+  startT = -1; state = 'select'; menuSwallow();
+}
+function updateRunKind(dt) {
+  RUNLOG.msgT -= dt;
+  let back = escPressed();
+  for (const dev of DEVICES) {
+    const m = menuInput(dev);
+    if (m.dx || m.dy) RUNLOG.sel = 1 - RUNLOG.sel;
+    if (m.a) { runKindChoose(RUNLOG.sel); return; }
+    if (m.d) back = true;
+  }
+  if (back) runKindBack();
+}
+function drawRunKind() {
+  drawMenuBg(); drawBackBtn(false);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('¿Qué tipo de partida?', LW / 2, 70);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Las partidas reales se guardan en el registro para equilibrar el juego', LW / 2, 98);
+  const block = runLogBlock();
+  const opts = [
+    ['Partida real', ['Se registra si termina con', 'victoria o con la caída del grupo.', 'Si la abandonas, no cuenta.'], '#ffd54a'],
+    ['Partida de prueba', ['No se registra.', 'Para probar personajes,', 'controles o cambios.'], '#b49bff']
+  ];
+  opts.forEach(([t, lines, col], i) => {
+    const [x, y, w, h] = runKindRect(i), sel = RUNLOG.sel === i, off = i === 0 && block;
+    ctx.globalAlpha = off ? 0.45 : 1;
+    rrect(x, y, w, h, 12); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 3 : 1.5; ctx.strokeStyle = sel ? col : '#3b3349'; ctx.stroke();
+    ctx.fillStyle = col; ctx.font = '700 22px ' + FONT; ctx.fillText(t, x + w / 2, y + 48);
+    ctx.fillStyle = '#d8d0e6'; ctx.font = '400 14px ' + FONT;
+    lines.forEach((l, k) => ctx.fillText(l, x + w / 2, y + 90 + k * 22));
+    ctx.globalAlpha = 1;
+  });
+  const n = runLogLoad().length;
+  ctx.fillStyle = block ? '#ff9a6b' : '#8f86a0'; ctx.font = '400 13px ' + FONT;
+  ctx.fillText(block || ('Partidas reales registradas en este dispositivo: ' + n), LW / 2, 370);
+  if (RUNLOG.msgT > 0) { ctx.fillStyle = '#ff9a6b'; ctx.font = '700 14px ' + FONT; ctx.fillText(RUNLOG.msg, LW / 2, 396); }
+  drawMenuHint();
+}
+
+// Dev Options > Registro de partidas: resumen por personaje, últimas partidas y exportación
+function openRunLog() { state = 'runlog'; RUNLOG.scroll = 0; RUNLOG.msgT = 0; menuSwallow(); }
+function closeRunLog() { state = 'dev'; devSel = 5; menuSwallow(); }
+function runLogBtn(i) { const w = 190, g = 12, x0 = LW / 2 - w - g / 2; return [x0 + i * (w + g), LH - 72, w, 34]; } // 0 Copiar · 1 Descargar
+function runLogJSON() { return JSON.stringify(runLogLoad(), null, 1); }
+function runLogCopy() {
+  const txt = runLogJSON(), ok = () => { RUNLOG.msg = 'Registro copiado al portapapeles'; RUNLOG.msgT = 2.5; }, ko = () => { RUNLOG.msg = 'No se pudo copiar: usa Descargar'; RUNLOG.msgT = 3; };
+  try { navigator.clipboard.writeText(txt).then(ok, ko); } catch (_) { ko(); }
+}
+function runLogDownload() {
+  try {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([runLogJSON()], { type: 'application/json' }));
+    a.download = 'mazmorra-registro-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove();
+    RUNLOG.msg = 'Descargado'; RUNLOG.msgT = 2.5;
+  } catch (_) { RUNLOG.msg = 'No se pudo descargar: usa Copiar'; RUNLOG.msgT = 3; }
+}
+function runLogLines() { // texto del panel: resumen por personaje y partidas recientes
+  const list = runLogLoad(), out = [];
+  if (!list.length) return [{ s: 'Aún no hay partidas reales registradas en este dispositivo.', head: false }, { s: 'Elige «Partida real» al empezar y juega desde el piso 1 hasta ganar o caer.', head: false }];
+  const by = {};
+  for (const r of list) for (const j of r.jugadores) { if (j.control === 'IA') continue; const o = by[j.personaje] || (by[j.personaje] = { n: 0, w: 0, piso: 0, t: 0 }); o.n++; if (r.resultado === 'victoria') o.w++; o.piso += r.pisoMax; o.t += r.duracion; }
+  out.push({ s: 'Por personaje (' + list.length + ' partidas)', head: true });
+  for (const [k, o] of Object.entries(by).sort((a, b) => b[1].n - a[1].n))
+    out.push({ s: k + ': ' + o.n + ' partidas · ' + Math.round(o.w / o.n * 100) + ' % victorias · piso medio ' + (o.piso / o.n).toFixed(1) + ' · ' + Math.round(o.t / o.n / 60) + ' min de media', head: false });
+  out.push({ s: '', head: false }, { s: 'Últimas partidas', head: true });
+  for (const r of list.slice().reverse().slice(0, 60)) {
+    const f = new Date(r.fecha), d = f.toLocaleDateString('es-ES') + ' ' + f.toTimeString().slice(0, 5);
+    const who = r.jugadores.map(j => j.personaje + (j.control === 'IA' ? ' (IA)' : '')).join(' + ');
+    out.push({ s: d + ' · ' + (r.resultado === 'victoria' ? 'Victoria' : 'Derrota en piso ' + r.pisoMax) + ' · ' + who + ' · ' + Math.round(r.duracion / 60) + ' min', head: false, win: r.resultado === 'victoria' });
+  }
+  return out;
+}
+function updateRunLog(dt) {
+  RUNLOG.msgT -= dt;
+  let back = escPressed();
+  for (const dev of DEVICES) {
+    const m = menuInput(dev);
+    if (m.dy) RUNLOG.scroll += m.dy * 40;
+    if (m.a) runLogCopy();
+    if (m.d) back = true;
+  }
+  if (back) closeRunLog();
+}
+cvs.addEventListener('pointermove', e => { if (state === 'runlog' && RUNLOG.dragY != null) { const y = canvasPoint(e)[1]; RUNLOG.scroll += RUNLOG.dragY - y; RUNLOG.dragY = y; } });
+addEventListener('pointerup', () => { RUNLOG.dragY = null; });
+cvs.addEventListener('wheel', e => { if (state === 'runlog') { RUNLOG.scroll += e.deltaY; e.preventDefault(); } }, { passive: false });
+function drawRunLog() {
+  drawMenuBg();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Registro de partidas', LW / 2, 58);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 14px ' + FONT; ctx.fillText('Partidas reales terminadas en este dispositivo (victoria o caída del grupo)', LW / 2, 80);
+  const pw = Math.min(760, LW - 40), px = (LW - pw) / 2, py = 100, ph = Math.max(120, LH - 190);
+  rrect(px, py, pw, ph, 10); ctx.fillStyle = '#16121e'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#3b3349'; ctx.stroke();
+  ctx.save(); rrect(px, py, pw, ph, 10); ctx.clip();
+  const lh = 22, top = py + 30, lines = runLogLines();
+  RUNLOG.scroll = Math.min(Math.max(0, RUNLOG.scroll), Math.max(0, lines.length * lh - (ph - 50)));
+  ctx.textAlign = 'left';
+  lines.forEach((l, i) => {
+    const y = top + i * lh - RUNLOG.scroll;
+    if (y < py - lh || y > py + ph) return;
+    ctx.fillStyle = l.head ? '#ffd54a' : l.win ? '#9fe6b8' : '#d8d0e6'; ctx.font = (l.head ? '700 ' : '400 ') + '14px ' + FONT;
+    ctx.fillText(l.s, px + 22, y);
+  });
+  ctx.restore();
+  ['Copiar registro', 'Descargar .json'].forEach((t, i) => {
+    const [x, y, w, h] = runLogBtn(i);
+    rrect(x, y, w, h, 8); ctx.fillStyle = '#1c1726'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#b49bff'; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 14px ' + FONT; ctx.fillText(t, x + w / 2, y + 22);
+  });
+  if (RUNLOG.msgT > 0) { ctx.textAlign = 'center'; ctx.fillStyle = '#9fe6b8'; ctx.font = '700 13px ' + FONT; ctx.fillText(RUNLOG.msg, LW / 2, LH - 84); }
+  drawBackBtn(false);
+  drawMenuHint(isTouch ? 'Desliza para leer' : '↑ ↓ desplazan · Golpe copia');
+}
+
 // [RETIRADO 2026-11-08] if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
 if (/[?&]debug\b/.test(location.search)) window.MZ = { sfx: { SND, playSnd, initAudio, lastSfx }, get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
   // menús (pruebas del recorrido): rectángulos en coordenadas lógicas del lienzo y estado de la navegación

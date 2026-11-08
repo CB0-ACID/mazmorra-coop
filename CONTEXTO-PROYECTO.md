@@ -98,7 +98,32 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
 - **Reglas por tier en una tabla** (`TIER_RULES`, función `tierRule(e)`): ventana de levantar e interrumpir (`launchSta`: tier 1-2 siempre, tier 3 al 50 %, guardián al 25 %), empuje recibido, duración del aturdimiento, extra de daño aturdido, estamina de los disparos y probabilidad de soltar corazón. Las funciones `enVentana`, `levantable`, `guardianLevantable`, `launchable` e `interruptible` leen de ahí.
 - **Daño enemigo sin huecos**: `edmg(e, ataque)` avisa en la consola (una vez, con `warnOnce`) si falta una entrada en `ENEMY_DMG`, y usa `DMG_FALLBACK` (20) para no romper la partida.
 - **Nombres en código = nombres del glosario**: familias de personaje `tanque`, `agil`, `brawler`, `tirador` (antes `grande` y `golpe`). El guardián conserva el identificador interno `boss` (tipo de enemigo, tipo de sala y pistas de música).
+- **Simulador de equilibrio** (`tools/sim`): carga el juego en Node y juega con un bot por personaje (niveles experto y medio); `run.js` mide encuentros, guardianes y partidas completas, `whatif.js` prueba cambios sin tocar el juego, `analyze.py` y `report.py` generan el informe.
 - **Banco de pruebas**: con `?debug` en la URL; las comprobaciones de balance comparan una huella numérica (vida y estamina por piso y jugadores, daño de cada golpe y disparo a cada enemigo, reglas por tier) y simulaciones deterministas con cuatro aliados IA en mazmorra y asedio.
+
+## Criterios de equilibrio (desde el 2026-11-08)
+Vara de medir para todas las decisiones de balance del proyecto. Se mide con el simulador (`tools/sim`) y se calibra con el registro de partidas reales.
+- **La dificultad la pone el contenido, no el personaje.** Cada reto tiene su franja objetivo de éxito y todos los personajes deben caer dentro de ella. No se busca que «se pase más»: un 100 % de éxito es tan mala señal como un 0 %.
+- **Franjas objetivo en solitario** (propuesta inicial, se recalibra con datos reales):
+
+  | Reto | Bot experto | Bot medio |
+  |---|---|---|
+  | Sala normal | 95–100 % | 85–95 % |
+  | Guardián de piso | 75–90 % | 50–70 % |
+  | Partida completa (pisos 1-4) | 30–60 % | 5–25 % |
+
+- **Diferencia entre personajes**: como mucho unos 15–20 puntos de éxito en cada reto (referencia: en Slay the Spire se considera desequilibrio una distancia de ~15 puntos entre personajes).
+- **La habilidad debe contar**: el bot experto tiene que rendir claramente mejor que el medio con todos los personajes. Si rinden igual, el personaje no premia jugar bien; si la distancia es enorme, castiga demasiado a los nuevos.
+- **El bot mide diferencias, no cifras absolutas**: su porcentaje no es el de una persona. Se calibra comparando con el registro de partidas reales (como hace King con sus bots de Candy Crush).
+- **Roles en coop**: los melee (brawlers) pueden ser los que más daño hacen porque asumen más riesgo; los tiradores rompen la estamina y también pueden acercarse a rematar; los tanques aguantan. El riesgo tiene que verse en los datos (daño recibido), no solo en la intención.
+- **Para facilitar, ayudar a quien falla** (estilo Modo Dios de Hades, ayuda creciente tras cada derrota) antes que subir a todos los personajes.
+- Nada de dos juegos de estadísticas (solo y coop) por personaje: el número de jugadores se compensa con el escalado de los enemigos.
+
+## Registro de partidas (desde el 2026-11-08)
+- Al confirmar los personajes se elige **Partida real** (se registra) o **Partida de prueba** (no se registra). «Reintentar» mantiene la elección; «Cambiar de personaje» vuelve a preguntar.
+- Solo cuentan partidas reales que empiezan en el piso 1 sin herramientas de Dev (piso inicial distinto, autosalto, `?debug`) y que terminan en **derrota** (cae el grupo) o **victoria** (cae el Dragón, fin del ciclo). Las abandonadas no se guardan. Asedio no se registra.
+- Se guarda en `localStorage` (`mz-registro`), por dispositivo. Dev Options > Registro de partidas muestra el resumen por personaje y las últimas partidas, y permite copiar o descargar el JSON para analizarlo.
+- Cada partida guarda: fecha, resultado, modo (solo, coop N, 1 + IA), semilla, duración, piso máximo, por jugador (personaje, control, daño recibido, caídas, ejecuciones, habilidades usadas, último golpe recibido), daño total hecho, bajas, ejecuciones, tiempo y daño recibido de cada sala y de cada guardián, y dónde cayó el grupo.
 
 ## Glosario
 Término canónico en **negrita**; entre paréntesis, el anglicismo o la palabra que se usaba y el identificador en el código. En la interfaz y en los documentos se usa siempre el término canónico.
