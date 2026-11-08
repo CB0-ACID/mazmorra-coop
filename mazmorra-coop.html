@@ -377,19 +377,22 @@ const AB = {
   overdrive: { r: 100, dmg: 2, kb: 420, time: 3 }, // Purga: onda de calor que daña y empuja; luego dispara más rápido sin calentarse
   // ---- Coral · Demoledora (lanzagranadas) ----
   // [RETIRADO] bomb: { range: 270, r: 40, dmg: 1.5, sta: 0.16, kb: 240, juggle: 0.55, fly0: 0.22, fly1: 0.45, arc: 70, reloadDelay: 0.45, reloadEach: 0.5, tapMax: 0.2 },
-  bomb:      { range: 270, r: 60, dmg: 2.4, sta: 0.22, kb: 300, juggle: 0.55, fly0: 0.22, fly1: 0.45, arc: 70,  // granada de impacto: en arco, pasa por encima y estalla al tocar
+  // [RETIRADO 2026-11-08] sta: 0.22 → la granada normal aturdía a todo, incluido el guardián (15-18 aturdimientos por minuto); romper la estamina pasa a las cargas detonadas
+  bomb:      { range: 270, r: 60, dmg: 2.4, sta: 0.07, kb: 300, juggle: 0.55, fly0: 0.22, fly1: 0.45, arc: 70,  // granada de impacto: en arco, pasa por encima y estalla al tocar
                bounces: 2, bounceK: 0.5, bounceMin: 50, bounceArc: 26, bounceDur: 0.2, nearK: 0.5, // rebota hasta 2 veces por el suelo si no cae junto a nadie
                tapMax: 0.2 },                                        // pulsación corta = granada (sin cargador)
   sticky:    { d0: 90, d1: 300, chargeTime: 0.8, fly: 0.42, arc: 80, max: 3, attachR: 20, // carga pegajosa: mantener aleja la mira; se pega a enemigo, aliado o suelo
                ammo: 3, reload: 2.5,                                   // cargador propio: 3 cargas; se repone 1 cada 2,5 s
                r: 55, dmg: 2, sta: 0.35, stackR: 0.25,                 // al detonar: daño y estamina (× DMG.ability); cada carga extra en el mismo enemigo suma daño y +25 % de radio
+               breakFrac: 0.4, breakBoss: 0.22,                         // rompe estamina: cada carga detonada en un enemigo le quita esta parte de su estamina máxima (3 cargas = aturdido; en el guardián, 0,22 por carga)
                // [RETIRADO] allyR: 85, allyMul: 1.5 },
                allyR: 85, allyMul: 1.9 },                              // bomba humana: pegada a un compañero, estalla a su alrededor, lanza a todos y a él no le hace nada (×1,9 de daño para premiar el combo)
   doll:      { hop: 0.3, rest: 0.07, step: 46, h: 20, life: 7, max: 2, seek: 420, touch: 8, // muñeco bomba: salta hacia el enemigo fijado y estalla al tocarlo
                r: 58, dmg: 2.2, sta: 2.2 },                             // explosión (× DMG.ability): daña y lanza por los aires
   recoil:    { reach: 34, r: 58, dmg: 1.6, sta: 0.3, kb: 620, push: 700, inv: 0.25 }, // escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás
   detonator: { cd: 0.6 },
-  mortar:    { cd: 9, range: 360, near: 240, r: 85, n: 6, delay0: 0.35, step: 0.22, shellR: 42, dmg: 1.2, sta: 0.12, fall: 0.3 }, // Lluvia de mortero
+  // [RETIRADO 2026-11-08] mortar: { cd: 9, range: 360, near: 240, r: 85, n: 6, delay0: 0.35, step: 0.22, shellR: 42, dmg: 1.2, sta: 0.12, fall: 0.3 },
+  mortar:    { cd: 9, range: 360, near: 240, r: 85, n: 6, delay0: 0.35, step: 0.22, shellR: 42, dmg: 1.2, sta: 0.06, fall: 0.3 }, // Lluvia de mortero (menos estamina: romperla es cosa de las cargas)
   // ---- Coral · Chamuscado: marca de calor en los enemigos (de 0 a 3 llamitas) [RETIRADO: sin uso desde la Demoledora] ----
   scorch:    { max: 3, time: 4, fade: 1.5,      // cada llamita dura 4 s; después se apagan de una en una cada 1,5 s
                perShot: 0.5,                      // disparo normal Al rojo: 1 llamita cada 2 impactos
@@ -454,6 +457,8 @@ const FURY = {
   atk: 1.45,          // recuperación entre golpes (más alto = golpea más seguido)
   anim: 1.3,          // los golpes salen más rápidos
   move: 1.3,          // el salto se recarga antes
+  dmg: 1.6,           // daño de los golpes en furia (2026-11-08: la furia pasa a ser la fuente de poder de Ámbar)
+  sta: 1.6,           // estamina que quitan los golpes en furia
   color: '#ff8c1a',   // Ámbar se tiñe de naranja mientras dura
   // Garra taladro (habilidad 1 en furia): se lanza girando hacia delante; atrapa a los que toca, los arrastra con muchos golpes y al final los lanza
   drill: { dist: 300, speed: 560, catchR: 10, tick: 0.06, dmg: 0.32, sta: 0.6, endDmg: 1.6, endKb: 420, cd: 2.2 },
@@ -608,7 +613,8 @@ const CHARS = [
     moveType: 'jump', moveCd: 0.75 }, // salta en vez de esquivar
   { name: 'Ámbar',    color: '#f5c542', mark: 'star',    family: 'brawler', chargedMelee: 'starfall', role: 'Brawler · Sombra',
     meleeKit: CLAW_KIT, meleeStyle: 'claw', finisher: 'heavy',
-    moveType: 'jump', moveCd: 0.75, fury: true }, // salta en vez de esquivar; con la barra de furia llena entra en modo furia (FURY)
+    moveType: 'jump', moveCd: 0.75, fury: true, // salta en vez de esquivar; con la barra de furia llena entra en modo furia (FURY)
+    melee: 3.2 }, // [RETIRADO 2026-11-08] melee 4 heredado de brawler: su golpe básico era tan fuerte que la furia no se notaba; ahora el poder está en la furia (FURY.dmg)
   { name: 'Marea',    color: '#3f8ff5', mark: 'ring',    family: 'tirador', role: 'Tirador · Rebote',
     priType: 'grenade', priCd: 5,                                      // granada en arco al objetivo fijado
     shotStyle: 'revolver', shotCd: 0.08, shot: 2.7, shotKb: 2.5,        // revólver: dispara a cada pulsación, contundente y con empuje
@@ -628,10 +634,10 @@ const RATINGS = {
   Ceniza:   { dmg: 2, tec: 4, sup: 5 }, // martillo de poco daño; lanza con el martillo y el sísmico; escudo que cubre al grupo y Provocación
   Musgo:    { dmg: 3, tec: 4, sup: 3 }, // orbe arcano y liana que dañan; raíces inmovilizan y la onda empuja a todos; la liana une aliados
   Escarcha: { dmg: 4, tec: 5, sup: 2 }, // rayo continuo y bola de nieve; congela, rompe congelados y la estalactita controla zonas
-  Coral:    { dmg: 4, tec: 3, sup: 1 }, // lanzagranadas de impacto, carga pegajosa (también en aliados), muñeco bomba y lluvia de mortero; varias explosiones lanzan
+  Coral:    { dmg: 4, tec: 4, sup: 1 }, // [RETIRADO 2026-11-08] tec: 3 · granadas de impacto que dañan y lanzan; cargas pegajosas que, detonadas, rompen la estamina (también bomba humana en un aliado); muñeco bomba y lluvia de mortero
   // [RETIRADO 2026-11-08] comentario de la Coral de pistolas: // dos pistolas en ráfaga; el abanico al rojo lanza
   Brasa:    { dmg: 5, tec: 5, sup: 1 }, // ráfaga de remate y ejecución; embestida, uppercut y caída lanzan
-  Ámbar:    { dmg: 4, tec: 4, sup: 1 }, // combo rápido de garras; tajo sombra atraviesa; modo furia con Garra taladro e Izuna de furia; sin apoyo al grupo
+  Ámbar:    { dmg: 4, tec: 4, sup: 1 }, // combo rápido de garras (más ligero fuera de furia); tajo sombra atraviesa; en furia pega y aturde mucho más, con Garra taladro e Izuna de furia; sin apoyo al grupo
   Marea:    { dmg: 5, tec: 4, sup: 1 }, // revólver de mayor daño sostenido; la granada lanza y los rebotes encadenan
   Ciruela:  { dmg: 4, tec: 2, sup: 5 }  // gatling y torreta; la sobrecarga cura a los aliados cerca
 };
@@ -4365,7 +4371,9 @@ function coralBlast(x, y, r, hp, sta, kb, opt) {
     if (Math.hypot(e.x - x, e.y - y) > r + e.r) continue;
     if (e.airborne && (e.z || 0) > 150) continue; // demasiado alto: la explosión no le llega
     const mul = opt.host === e ? opt.hostMul || 1 : 1;
-    damageEnemy(e, x, y, hp * mul, (opt.staFrac ? e.maxSta * opt.staFrac : sta) * mul, e.airborne ? 0 : kb, true);
+    // [RETIRADO 2026-11-08] damageEnemy(e, x, y, hp * mul, (opt.staFrac ? e.maxSta * opt.staFrac : sta) * mul, e.airborne ? 0 : kb, true);
+    const staV = opt.host === e && opt.hostStaFrac ? e.maxSta * opt.hostStaFrac : (opt.staFrac ? e.maxSta * opt.staFrac : sta) * mul; // carga detonada: rompe estamina según las cargas
+    damageEnemy(e, x, y, hp * mul, staV, e.airborne ? 0 : kb, true);
     if (e.dead) continue;
     hit.push(e);
     if (e.airborne) { if (!guardianAturdidoEnAire(e)) e.vz = Math.max(e.vz, LAUNCH_VZ * (opt.juggle || AB.bomb.juggle)); }
@@ -4523,7 +4531,9 @@ function castDetonator(p) {
       launched.push(...hit);
       floatText(q.x, q.y - 56 * q.ch.size, '¡Bum!', p.slotColor); shake = Math.max(shake, 10); hitstop = Math.max(hitstop, 0.08);
     } else if (k0.kind === 'enemy') { // pegada a un enemigo: lo lanza; varias cargas en el mismo, más daño y más radio
-      const e = k0.host, hit = coralBlast(e.x, e.y, S.r * (1 + S.stackR * (n - 1)), dmg, dmg * 0.6, 300, { host: e, hostMul: n * 1.5, juggle: 0.75 });
+      // [RETIRADO 2026-11-08] const e = k0.host, hit = coralBlast(e.x, e.y, S.r * (1 + S.stackR * (n - 1)), dmg, dmg * 0.6, 300, { host: e, hostMul: n * 1.5, juggle: 0.75 });
+      const e = k0.host, brk = (e.type === 'boss' ? S.breakBoss : S.breakFrac) * n; // cuantas más cargas, más estamina rompe (3 cargas aturden a tier 1-3)
+      const hit = coralBlast(e.x, e.y, S.r * (1 + S.stackR * (n - 1)), dmg, dmg * 0.6, 300, { host: e, hostMul: n * 1.5, hostStaFrac: brk, juggle: 0.75 });
       launched.push(e); if (n > 1) floatText(e.x, upY(e.y, 50 + (e.z || 0)), '×' + n, '#ffb347');
     } else coralBlast(k0.x, k0.y, S.r, dmg * 0.8, dmg * 0.5, 300, { juggle: 0.7 }); // en el suelo: explosión normal
   }
@@ -6511,14 +6521,17 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   if (airBreak && !e.dead) breakFrozen(e, sx, sy, kbBase);
 }
 function meleeHit(p, e, s) {
-  const dmg = p.ch.melee * s.def.dmg * DMG.melee, heavy = s.kind === 'heavy' || s.def.dmg >= 1.5;
+  // [RETIRADO 2026-11-08] const dmg = p.ch.melee * s.def.dmg * DMG.melee, heavy = s.kind === 'heavy' || s.def.dmg >= 1.5;
+  const furyOn = p.furyT > 0; // Ámbar en furia: golpes más fuertes y que aturden más
+  const dmg = p.ch.melee * s.def.dmg * DMG.melee * (furyOn ? FURY.dmg : 1), heavy = s.kind === 'heavy' || s.def.dmg >= 1.5;
   const airHit = !!s.def.launcher || !!p.jump || (p.z || 0) > 8; // lanzador o golpe desde el aire: alcanza a los voladores
   // [RETIRADO 2026-11-08] if (e.flying && !s.def.launcher) { ... 'Solo a distancia' ... return; }
   if (e.flying && !e.airborne && !airHit) { // volador: el golpe normal desde el suelo no le hace nada, y se avisa
     if (!s.noted) { s.noted = true; floatText(e.x, upY(e.y, 16 + (e.z || 0)), 'Salta o lánzalo', '#c9b8ff'); }
     return;
   }
-  damageEnemy(e, p.x, p.y, dmg, dmg, s.def.kb, airHit);
+  // [RETIRADO 2026-11-08] damageEnemy(e, p.x, p.y, dmg, dmg, s.def.kb, airHit);
+  damageEnemy(e, p.x, p.y, dmg, dmg * (furyOn ? FURY.sta / FURY.dmg : 1), s.def.kb, airHit); // en furia, la estamina sube FURY.sta (no se dobla con el daño)
   impactFx(p, e, heavy, s.kind === 'flurry');
   if (e.dead) return;
   if (s.def.launcher && tryLaunch(e, s.def.forceLaunch)) { p.lockOn = true; p.target = e; } // quien lo lanza lo fija al instante
@@ -7738,7 +7751,8 @@ const ABILITY_TEXT = {
   volley: ['Abanico', 'Gasta el calor en un cono de disparos; al rojo, lanza'],
   overdrive: ['Purga', 'Onda que vacía el calor; luego dispara rápido sin calentarse'],
   detonate: ['Detonar', 'Al rojo: hace estallar a todos los chamuscados; con 2+ llamitas los lanza'],
-  detonator: ['Detonador', 'Estallan tus cargas: lanzan a quien las lleve; en un compañero, bomba humana'],
+  // [RETIRADO 2026-11-08] detonator: ['Detonador', 'Estallan tus cargas: lanzan a quien las lleve; en un compañero, bomba humana'],
+  detonator: ['Detonador', 'Estallan tus cargas: cada una rompe estamina (3 en el mismo enemigo lo aturden) y lo lanza; en un compañero, bomba humana'],
   mortar: ['Lluvia de mortero', 'Mantén para apuntar: caen 6 granadas sobre la zona'],
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla. Cualquiera puede cargarla a la espalda'],
   overcharge: ['Sobrecarga', 'Más cadencia y apenas calienta; la torreta cura a los aliados cerca'],
@@ -7771,7 +7785,7 @@ function chargedSlot(c, p) {
   if (!c.canShoot) return null;
   if (c.shotMode === 'frost') { const m = FROST_MODE[p ? frostModeOf(p) : 0]; return { icon: m.icon, title: 'Disparo: ' + m.name, desc: m.desc }; }
   if (c.shotMode === 'heat') return { icon: 'heat', title: 'Fuego continuo: Ráfaga', desc: 'Sin carga; si no paras, se sobrecalienta' };
-  if (c.shotMode === 'launcher') return { icon: 'sticky', title: 'Disparo cargado: Carga pegajosa', desc: 'Cargador de 3. Se pega a enemigo, compañero o suelo; estalla con el Detonador' };
+  if (c.shotMode === 'launcher') return { icon: 'sticky', title: 'Disparo cargado: Carga pegajosa', desc: 'Cargador de 3. Se pega a enemigo, compañero o suelo; detonada, rompe la estamina' }; // [RETIRADO 2026-11-08] desc: '…; estalla con el Detonador'
   // if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: 'Sin carga ni calentamiento' };
   if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: c.gatling ? 'Coge velocidad al mantenerlo; se sobrecalienta' : 'Sin carga ni calentamiento' };
   return { icon: 'chargedShot', title: 'Disparo cargado: Tiro perforante', desc: 'Mantén y suelta: hasta ×' + c.chargeMaxMul + ' de daño y atraviesa' };
@@ -7812,7 +7826,8 @@ function shotText(c) {
   if (!c.canShoot) return 'Sin disparo';
   if (c.shotMode === 'auto') return c.postMoveMissile ? 'Continuo, cada vez más rápido y con calor; tras moverte, misil teledirigido (y otro de la torreta)' : 'Instantáneo y continuo, sin carga';
   if (c.shotMode === 'heat') return 'Ráfaga instantánea que se sobrecalienta';
-  if (c.shotMode === 'launcher') return 'Granadas en arco que rebotan y estallan al tocar; tras esquivar, muñeco bomba';
+  // [RETIRADO 2026-11-08] if (c.shotMode === 'launcher') return 'Granadas en arco que rebotan y estallan al tocar; tras esquivar, muñeco bomba';
+  if (c.shotMode === 'launcher') return 'Granadas en arco que rebotan y estallan al tocar: dañan y lanzan, pero apenas aturden; tras esquivar, muñeco bomba';
   if (c.shotType === 'hitscan') return 'Instantáneo, cargable';
   return c.shotSpeed < 300 ? 'Proyectil lento, cargable' : 'Proyectil, cargable';
 }
@@ -7913,7 +7928,7 @@ function abilityBody(type, cd) {
 // Etiquetas de interacción: con qué hace el personaje daño, control o apoyo (sacadas de su kit y habilidades)
 const ABILITY_CHIP = {
   beam: 'Daño lineal', area: 'Lanza en área', rush: 'Embiste', drop: 'Caída Izuna', ricochet: 'Rebota',
-  shield: 'Bloquea balas', raiseShield: 'Bloquea balas', volley: 'Cono de disparos', overdrive: 'Purga de calor', detonate: 'Detona marcas', detonator: 'Bomba humana', mortar: 'Bombardeo en zona',
+  shield: 'Bloquea balas', raiseShield: 'Bloquea balas', volley: 'Cono de disparos', overdrive: 'Purga de calor', detonate: 'Detona marcas', detonator: 'Rompe estamina', mortar: 'Bombardeo en zona',
   turret: 'Torreta', overcharge: 'Cura aliados', taunt: 'Provoca', grenade: 'Explota', frostburst: 'Congela',
   frostMode: 'Cambia de disparo', vine: 'Barrido', roots: 'Inmoviliza', reaper: 'Ejecuta', dragon: 'Multiobjetivo'
 };
@@ -10144,9 +10159,12 @@ const TUT_STRAT = {
   'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
   'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
   'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
-  'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
+  // [RETIRADO 2026-11-08] (textos de la Coral de pistolas con calor)
+  // 'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
+  'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido, listo para rematar.', 'Pega una carga a un compañero y detónala: bomba humana que lanza a todos los de alrededor. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
   'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.'],
-  'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: humo, más velocidad y Garra taladro (1) e Izuna de furia (2), que agarra sin lanzar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
+  // [RETIRADO 2026-11-08] 'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: humo, más velocidad y Garra taladro (1) e Izuna de furia (2), que agarra sin lanzar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
+  'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: tus golpes pegan y aturden mucho más, vas más rápida y tienes Garra taladro (1) e Izuna de furia (2). Fuera de furia pegas menos: no dejes de atacar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
   'Marea': ['El revólver tiene 6 balas y se recarga solo si no disparas durante unos segundos.', 'La granada (1) va al enemigo fijado: úsala para agrupar enemigos.', 'Disparo rebotante (2): mantenlo cargado para rebotar con más daño.'],
   'Ciruela': ['El gatling es continuo y sin carga: mantén el fuego y reposiciónate con el movimiento.', 'La torreta (1) dispara sola un rato; colócala donde pasen los enemigos.', 'Sobrecarga (2) acelera a la torreta y cura a los aliados cercanos.']
 };
