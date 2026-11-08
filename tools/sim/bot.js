@@ -57,6 +57,30 @@
     }
     return best;
   }
+  // Ruta por casillas (BFS) cuando hay muros entre el bot y su destino: devuelve el siguiente punto de paso
+  function pathStep(p, gx, gy) {
+    if (!segSolid(p.x, p.y, gx, gy)) return [gx, gy];
+    const sx = Math.floor(p.x / T), sy = Math.floor(p.y / T), tx = Math.floor(gx / T), ty = Math.floor(gy / T);
+    const key = (x, y) => y * COLS + x, prev = new Map([[key(sx, sy), -1]]), q = [[sx, sy]];
+    let found = false;
+    for (let i = 0; i < q.length && i < 2000; i++) {
+      const [x, y] = q[i];
+      if (x === tx && y === ty) { found = true; break; }
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy, k = key(nx, ny);
+        if (prev.has(k) || (isSolid(nx, ny, false) && !(nx === tx && ny === ty))) continue;
+        prev.set(k, key(x, y)); q.push([nx, ny]);
+      }
+    }
+    if (!found) return [gx, gy];
+    const path = []; let k = key(tx, ty);
+    while (k !== -1) { path.push(k); k = prev.get(k); }
+    path.reverse();
+    // el punto más lejano del camino que se ve en línea recta
+    let best = path[1] != null ? path[1] : path[0];
+    for (let i = 1; i < path.length; i++) { const cx = (path[i] % COLS + 0.5) * T, cy = (Math.floor(path[i] / COLS) + 0.5) * T; if (segSolid(p.x, p.y, cx, cy)) break; best = path[i]; }
+    return [(best % COLS + 0.5) * T, (Math.floor(best / COLS) + 0.5) * T];
+  }
   function pulse(b, k, dur) { if (!b.hold[k]) b.hold[k] = dur; }
   globalThis.__BOTF = function (p) {
     const out = { x: 0, y: 0, a: false, s: false, d: false, q: false, e: false, l: false, c: false, p: false, t: false, rx: 0, ry: 0 };
@@ -85,6 +109,12 @@
       // sin enemigos (refuerzos por llegar): al centro
       gx = (MID_X + 0.5) * T; gy = (MID_Y + 0.5) * T;
     }
+    // muros por medio (o sin línea de tiro): rodearlos por casillas
+    if (tg && (segSolid(p.x, p.y, gx, gy) || (c.canShoot && segSolid(p.x, p.y, tg.x, tg.y)))) {
+      b.pathT = (b.pathT || 0) - STEP;
+      if (b.pathT <= 0 || !b.way) { b.way = pathStep(p, c.canShoot ? tg.x : gx, c.canShoot ? tg.y : gy); b.pathT = 0.25; }
+      gx = b.way[0]; gy = b.way[1];
+    } else b.way = null;
     // esquivar: evaluar 16 direcciones y quedarse con la más segura que siga acercando al objetivo
     let mx = gx - p.x, my = gy - p.y; const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; } else { mx = my = 0; }
     if (SK.dodge) {
