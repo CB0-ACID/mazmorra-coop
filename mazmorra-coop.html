@@ -816,11 +816,13 @@ const DEVLABEL = { npc: 'Aliado IA', kb1: 'Teclado A', kb2: 'Teclado B', touch: 
 
 // Pulsaciones nuevas para navegar menús (dirección digital incluida)
 const mprev = {};
-function menuInput(dev) {
+// [RETIRADO 2026-11-08] function menuInput(dev) {
+function menuInput(dev, quiet) { // quiet: solo actualiza los flancos, sin sonido de menú
   const i = readDevice(dev), p = mprev[dev] || {};
   const dx = i.x > 0.5 ? 1 : i.x < -0.5 ? -1 : 0, dy = i.y > 0.5 ? 1 : i.y < -0.5 ? -1 : 0;
   const r = { a: i.a && !p.a, s: i.s && !p.s, d: i.d && !p.d, l: i.l && !p.l, dx: dx !== p.dx ? dx : 0, dy: dy !== p.dy ? dy : 0 };
   mprev[dev] = { a: i.a, s: i.s, d: i.d, l: i.l, dx, dy };
+  if (!quiet) menuSfx(r);
   return r;
 }
 let escPrev = false;
@@ -942,15 +944,19 @@ function sfxOk(name, gap) {
   if (lastSfx[name] && t - lastSfx[name] < gap) return false;
   lastSfx[name] = t; return true;
 }
-function noise(dur, f0, f1, gain, type, q) {
-  const t = actx.currentTime, src = actx.createBufferSource(), flt = actx.createBiquadFilter(), g = actx.createGain();
+// [RETIRADO 2026-11-08] function noise(dur, f0, f1, gain, type, q) {
+  // [RETIRADO 2026-11-08] const t = actx.currentTime, src = actx.createBufferSource(), flt = actx.createBiquadFilter(), g = actx.createGain();
+function noise(dur, f0, f1, gain, type, q, at = 0) {
+  const t = actx.currentTime + at, src = actx.createBufferSource(), flt = actx.createBiquadFilter(), g = actx.createGain();
   src.buffer = noiseBuf; flt.type = type; flt.Q.value = q;
   flt.frequency.setValueAtTime(f0, t); flt.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   src.connect(flt); flt.connect(g); g.connect(sfxNode); src.start(t); src.stop(t + dur + 0.02);
 }
-function tone(dur, f0, f1, gain, type) {
-  const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+// [RETIRADO 2026-11-08] function tone(dur, f0, f1, gain, type) {
+  // [RETIRADO 2026-11-08] const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+function tone(dur, f0, f1, gain, type, at = 0) {
+  const t = actx.currentTime + at, o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g); g.connect(sfxNode); o.start(t); o.stop(t + dur + 0.02);
@@ -989,6 +995,128 @@ const SFX = {
   },
   claw(heavy) { if (sfxOk('swing', 0.03)) { noise(heavy ? 0.14 : 0.07, heavy ? 5000 : 7000, heavy ? 1500 : 2500, heavy ? 0.45 : 0.3, 'highpass', 0.8); tone(0.05, 1400, 900, 0.08, 'triangle'); } }
 };
+// ---------- Efectos por acción (sintetizados, sin archivos) ----------
+// Cada acción tiene su sonido. SND es el catálogo de trazos (SN_T = tono, SN_N = ruido; el último número es el retardo en s).
+// Las tablas de abajo asignan un trazo a cada movimiento, habilidad, estado de enemigo o efecto del guardián.
+// playSnd reproduce un trazo con su propio límite de frecuencia (gap), así que varias acciones iguales no se apilan.
+// Para añadir un sonido: crear la entrada en SND y, si pertenece a una habilidad, movimiento o estado, en su tabla.
+const SN_T = (dur, f0, f1, g, type, at = 0) => ({ k: 't', dur, f0, f1, g, type, at });
+const SN_N = (dur, f0, f1, g, type, q = 1, at = 0) => ({ k: 'n', dur, f0, f1, g, type, q, at });
+const SND = {
+  // movimiento
+  dash:      [SN_N(0.14, 2600, 500, 0.35, 'bandpass', 1.1)],
+  stride:    [SN_N(0.08, 900, 300, 0.3, 'lowpass', 0.8), SN_T(0.06, 120, 60, 0.12, 'sine')],
+  teleport:  [SN_T(0.16, 500, 1800, 0.14, 'sine'), SN_N(0.16, 4000, 1200, 0.25, 'highpass', 0.6)],
+  roll:      [SN_N(0.3, 220, 120, 0.4, 'lowpass', 0.7), SN_N(0.12, 3000, 1500, 0.18, 'bandpass', 2, 0.05)],
+  land:      [SN_T(0.12, 120, 45, 0.5, 'sine'), SN_N(0.06, 900, 300, 0.25, 'lowpass', 0.8)],
+  jump:      [SN_N(0.25, 500, 1400, 0.25, 'bandpass', 0.9), SN_T(0.2, 260, 620, 0.12, 'triangle')],
+  flip:      [SN_N(0.22, 1600, 500, 0.3, 'bandpass', 1.0), SN_T(0.18, 500, 900, 0.1, 'sine')],
+  block:     [SN_T(0.12, 200, 140, 0.4, 'square'), SN_N(0.08, 2500, 900, 0.25, 'bandpass', 1.4)],
+  // habilidades
+  area:       [SN_N(0.3, 300, 1800, 0.4, 'bandpass', 0.9), SN_T(0.25, 180, 90, 0.25, 'sine')],
+  rush:       [SN_N(0.2, 1200, 300, 0.45, 'bandpass', 1.2), SN_T(0.15, 260, 120, 0.2, 'square')],
+  drop:       [SN_T(0.35, 1100, 150, 0.22, 'triangle'), SN_N(0.35, 2500, 600, 0.12, 'highpass', 0.7)],
+  ricochet:   [SN_T(0.08, 1600, 900, 0.14, 'square'), SN_T(0.08, 1600, 900, 0.1, 'square', 0.09), SN_T(0.08, 1600, 900, 0.08, 'square', 0.18)],
+  shield:     [SN_T(0.2, 600, 900, 0.14, 'square'), SN_N(0.18, 5000, 2500, 0.2, 'highpass', 0.8)],
+  pillar:     [SN_N(0.4, 200, 80, 0.6, 'lowpass', 0.8), SN_T(0.35, 110, 55, 0.5, 'sine')],
+  taunt:      [SN_T(0.5, 150, 95, 0.35, 'sawtooth'), SN_N(0.4, 400, 1200, 0.2, 'bandpass', 1)],
+  roots:      [SN_N(0.35, 400, 180, 0.4, 'bandpass', 1.5), SN_T(0.2, 90, 60, 0.3, 'triangle')],
+  volley:     [SN_T(0.06, 900, 600, 0.12, 'square'), SN_T(0.06, 900, 600, 0.12, 'square', 0.04), SN_T(0.06, 900, 600, 0.12, 'square', 0.08), SN_N(0.1, 2500, 1000, 0.15, 'bandpass', 1)],
+  overdrive:  [SN_N(0.5, 4000, 1200, 0.4, 'highpass', 0.6), SN_T(0.4, 220, 100, 0.2, 'sawtooth')],
+  overcharge: [SN_T(0.4, 220, 440, 0.16, 'sawtooth'), SN_N(0.4, 6000, 3000, 0.15, 'highpass', 0.6)],
+  reaper:     [SN_N(0.3, 2000, 400, 0.35, 'bandpass', 1.2), SN_T(0.3, 200, 90, 0.2, 'sawtooth')],
+  detonator:  [SN_T(0.1, 300, 150, 0.25, 'square'), SN_T(0.1, 300, 150, 0.25, 'square', 0.15)],
+  turret:     [SN_T(0.06, 320, 320, 0.25, 'square'), SN_N(0.05, 2400, 1200, 0.3, 'bandpass', 2, 0.06), SN_T(0.08, 260, 260, 0.2, 'square', 0.14)],
+  recall:     [SN_T(0.15, 700, 300, 0.2, 'square'), SN_N(0.1, 2000, 800, 0.15, 'bandpass', 1)],
+  turretBreak:[SN_N(0.4, 2500, 300, 0.5, 'bandpass', 0.8), SN_T(0.3, 300, 80, 0.3, 'square')],
+  tshot:      [SN_T(0.06, 1400, 700, 0.1, 'square')],
+  // enemigos: avisos (windup), ataques, saltos, muertes
+  windup:     [SN_T(0.25, 260, 520, 0.12, 'triangle')],
+  spit:       [SN_T(0.12, 500, 250, 0.2, 'square'), SN_N(0.1, 2000, 800, 0.2, 'bandpass', 1)],
+  swipe:      [SN_N(0.14, 2200, 700, 0.35, 'bandpass', 1.2)],
+  charge:     [SN_N(0.25, 300, 180, 0.35, 'lowpass', 0.8), SN_T(0.2, 130, 70, 0.2, 'sawtooth')],
+  slam:       [SN_T(0.5, 90, 35, 0.9, 'sine'), SN_N(0.3, 500, 150, 0.5, 'lowpass', 0.7)],
+  leap:       [SN_N(0.35, 300, 1200, 0.25, 'bandpass', 0.9), SN_T(0.3, 160, 320, 0.15, 'triangle')],
+  eshot:      [SN_T(0.08, 1100, 500, 0.12, 'square')],
+  sonic:      [SN_T(0.3, 1800, 900, 0.1, 'sine'), SN_T(0.3, 1900, 1000, 0.06, 'sine', 0.06)],
+  blinkOut:   [SN_T(0.25, 900, 200, 0.2, 'sine'), SN_N(0.2, 3000, 800, 0.15, 'highpass', 0.6)],
+  blinkIn:    [SN_T(0.2, 200, 900, 0.2, 'sine')],
+  daze:       [SN_T(0.4, 220, 90, 0.4, 'triangle')],
+  passWind:   [SN_N(0.5, 1200, 300, 0.3, 'bandpass', 0.8)],
+  takeoff:    [SN_N(0.6, 400, 1600, 0.35, 'bandpass', 0.8), SN_T(0.5, 90, 160, 0.2, 'triangle')],
+  dive:       [SN_N(0.8, 2000, 200, 0.45, 'bandpass', 0.9)],
+  bolt:       [SN_N(0.3, 6000, 1500, 0.4, 'highpass', 0.9), SN_T(0.25, 900, 150, 0.2, 'sawtooth')],
+  die1:       [SN_T(0.08, 900, 300, 0.2, 'sine')],
+  die2:       [SN_N(0.15, 1500, 400, 0.3, 'bandpass', 1), SN_T(0.12, 240, 90, 0.2, 'triangle')],
+  die3:       [SN_N(0.35, 800, 120, 0.5, 'lowpass', 0.8), SN_T(0.3, 160, 40, 0.5, 'sine')],
+  dieBoss:    [SN_T(0.8, 120, 30, 0.9, 'sine'), SN_N(0.6, 900, 150, 0.4, 'lowpass', 0.7)],
+  split:      [SN_N(0.2, 800, 2000, 0.3, 'bandpass', 1.5), SN_T(0.15, 500, 300, 0.2, 'square')],
+  freeze:     [SN_N(0.25, 6000, 2000, 0.25, 'highpass', 0.7), SN_T(0.15, 1600, 2400, 0.08, 'sine', 0.05)],
+  ice:        [SN_N(0.12, 5000, 2200, 0.35, 'highpass', 0.8), SN_T(0.1, 1500, 700, 0.1, 'triangle')],
+  boom:       [SN_N(0.25, 600, 120, 0.45, 'lowpass', 0.8), SN_T(0.2, 120, 50, 0.4, 'sine')],
+  boomBig:    [SN_N(0.5, 500, 80, 0.7, 'lowpass', 0.7), SN_T(0.5, 90, 30, 0.9, 'sine')],
+  // jugadores y salas
+  down:       [SN_T(0.5, 330, 90, 0.35, 'triangle'), SN_N(0.4, 800, 200, 0.12, 'lowpass', 0.8)],
+  heal:       [SN_T(0.12, 880, 1320, 0.12, 'sine'), SN_T(0.14, 1320, 1760, 0.1, 'sine', 0.07)],
+  door:       [SN_N(0.4, 200, 600, 0.3, 'lowpass', 0.9), SN_T(0.4, 90, 140, 0.2, 'sawtooth')],
+  clear:      [SN_T(0.12, 523, 523, 0.14, 'triangle'), SN_T(0.12, 659, 659, 0.14, 'triangle', 0.1), SN_T(0.25, 784, 784, 0.16, 'triangle', 0.2)],
+  bossWin:    [SN_T(0.12, 523, 523, 0.14, 'triangle'), SN_T(0.12, 659, 659, 0.14, 'triangle', 0.1), SN_T(0.12, 784, 784, 0.14, 'triangle', 0.2), SN_T(0.6, 1046, 1046, 0.18, 'sine', 0.32)],
+  stairs:     [SN_T(0.3, 900, 300, 0.2, 'sine'), SN_T(0.3, 600, 200, 0.12, 'sine', 0.15)],
+  wave:       [SN_T(0.5, 196, 196, 0.25, 'sawtooth'), SN_T(0.5, 294, 294, 0.15, 'square', 0.08)],
+  thud:       [SN_T(0.1, 160, 60, 0.35, 'sine')],
+  ignite:     [SN_N(0.3, 1500, 3000, 0.25, 'bandpass', 0.8), SN_T(0.2, 200, 500, 0.08, 'sawtooth')],
+  pause:      [SN_T(0.1, 600, 400, 0.12, 'sine')],
+  resume:     [SN_T(0.1, 400, 600, 0.12, 'sine')],
+  lose:       [SN_T(0.6, 392, 392, 0.18, 'triangle'), SN_T(0.6, 330, 330, 0.18, 'triangle', 0.3), SN_T(0.9, 262, 262, 0.18, 'triangle', 0.6)],
+  win:        [SN_T(0.15, 523, 523, 0.16, 'triangle'), SN_T(0.15, 659, 659, 0.16, 'triangle', 0.15), SN_T(0.15, 784, 784, 0.16, 'triangle', 0.3), SN_T(0.4, 1046, 1046, 0.18, 'triangle', 0.45)],
+  alert:      [SN_T(0.15, 880, 880, 0.12, 'square'), SN_T(0.15, 660, 660, 0.12, 'square', 0.18)],
+  objHit:     [SN_N(0.08, 900, 300, 0.3, 'bandpass', 1.2), SN_T(0.06, 180, 90, 0.2, 'triangle')],
+  objBreak:   [SN_N(0.6, 1200, 150, 0.6, 'lowpass', 0.7), SN_T(0.5, 110, 40, 0.6, 'sine')],
+  portal:     [SN_T(0.4, 300, 1600, 0.16, 'sine'), SN_N(0.4, 2000, 6000, 0.12, 'highpass', 0.6)],
+  pick:       [SN_T(0.1, 660, 660, 0.12, 'square'), SN_T(0.14, 990, 990, 0.12, 'square', 0.1)],
+  ballista:   [SN_T(0.12, 500, 180, 0.3, 'triangle'), SN_N(0.05, 3000, 1500, 0.2, 'highpass', 1)],
+  // menús
+  ui_move:    [SN_T(0.03, 1300, 1300, 0.08, 'square')],
+  ui_ok:      [SN_T(0.06, 880, 880, 0.1, 'square'), SN_T(0.06, 1320, 1320, 0.08, 'square', 0.05)],
+  ui_back:    [SN_T(0.08, 660, 330, 0.1, 'square')],
+  ui_tap:     [SN_N(0.03, 2000, 1000, 0.15, 'bandpass', 2)],
+};
+// Movimiento (tipo de MOVES) → sonido al empezarlo
+const SFX_MOVE = { dash: 'dash', stride: 'stride', teleport: 'teleport', roll: 'roll', flip: 'flip', block: 'block' };
+// Habilidad → sonido al usarla con éxito. Las que ya suenan dentro de su propia función (escudo arrojadizo, granada, etc.) no están aquí
+// [RETIRADO 2026-11-08] lista anterior incluía vine, detonate, mortar, grenade, frostburst, frostMode, shieldThrow, dragon, drill y furyDrop:
+// ya suenan dentro de su función (swing/exec/launch) y se apilaban con el sonido de uso.
+const SFX_ABILITY = { area: 'area', rush: 'rush', drop: 'drop', ricochet: 'ricochet', shield: 'shield', pillar: 'pillar', taunt: 'taunt', roots: 'roots', volley: 'volley', overdrive: 'overdrive', overcharge: 'overcharge', reaper: 'reaper', detonator: 'detonator' };
+// Estado del enemigo → sonido al entrar en él (avisos de ataque, ataques, saltos y aturdimientos)
+const SFX_STATE = { wind: 'windup', swipeWind: 'windup', slamWind: 'windup', leapWind: 'windup', chargeWind: 'windup', fanWind: 'windup', ringWind: 'windup', sgWind: 'windup', passWind: 'passWind', spit: 'spit', swipe: 'swipe', sweep: 'swipe', pass: 'swipe', dash: 'charge', charge: 'charge', slam: 'slam', stomp: 'slam', leap: 'leap', blinkOut: 'blinkOut', blinkIn: 'blinkIn', dazed: 'daze', takeoff: 'takeoff', dive: 'dive', beam: 'bolt' };
+// Efecto de ataque del guardián (bossFxAt) → sonido, en el momento en que llega
+const BOSS_FX_SND = { blast: 'boomBig', bolt: 'bolt', land: 'slam' };
+// Reproduce un sonido del catálogo. at = retardo en segundos; gap = mínimo entre dos iguales
+function playSnd(name, gap = 0.04, at = 0) {
+  const rec = SND[name];
+  if (!rec || !actx || !sfxOk(name, gap)) return;
+  for (const L of rec) {
+    if (L.k === 't') tone(L.dur, L.f0, L.f1, L.g, L.type, at + L.at);
+    else noise(L.dur, L.f0, L.f1, L.g, L.type, L.q, at + L.at);
+  }
+}
+function playAbility(type) { if (SFX_ABILITY[type]) playSnd(SFX_ABILITY[type], 0.05); }
+// Explosión: la escala según el radio del área
+function boomSnd(r) { playSnd(r >= 60 ? 'boomBig' : 'boom', 0.06); }
+// Un enemigo que cambia a un estado con sonido lo anuncia (se comprueba cada paso, así cubre a todos los enemigos y jefes)
+function enemyCue(e) {
+  if (e.state === e.sndState) return;
+  e.sndState = e.state;
+  if (e.dead || e.spawnT > 0) return;
+  const k = SFX_STATE[e.state];
+  if (k) playSnd(k, 0.05);
+}
+// Navegación de menús: movimiento, confirmar o volver
+function menuSfx(r) {
+  if (r.dx || r.dy) playSnd('ui_move', 0.03);
+  else if (r.a) playSnd('ui_ok', 0.05);
+  else if (r.d) playSnd('ui_back', 0.05);
+}
 // ---------- Música de fondo sintetizada (sin archivos): arreglo orquestal y dinámico ----------
 // Todo son variaciones de la «Danza deslizante de las doncellas» de las Danzas polovtsianas de Borodin (Príncipe Igor, dominio público),
 // la melodía que se hizo famosa como «Stranger in Paradise».
@@ -1748,7 +1876,8 @@ const DEV_ROWS = 5;
 function devRow(i) { const w = Math.min(520, LW - 80); return [(LW - w) / 2, 128 + i * 72, w, 60]; }
 function levelRect(n) { const cols = 4, w = 200, h = 120, gap = 16, x0 = (LW - (cols * w + (cols - 1) * gap)) / 2, r = Math.floor((n - 1) / cols), c = (n - 1) % cols; return [x0 + c * (w + gap), 130 + r * (h + gap), w, h]; }
 // function devBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; } // antes: «Volver» abajo; ahora backBtnRect() arriba a la izquierda en todas las subpantallas
-function menuSwallow() { for (const dev of DEVICES) menuInput(dev); escPressed(); } // el botón que abrió la pantalla no debe activar nada en ella
+// [RETIRADO 2026-11-08] function menuSwallow() { for (const dev of DEVICES) menuInput(dev); escPressed(); } // el botón que abrió la pantalla no debe activar nada en ella
+function menuSwallow() { for (const dev of DEVICES) menuInput(dev, true); escPressed(); } // el botón que abrió la pantalla no debe activar nada en ella
 function openDev() { state = 'dev'; menuSwallow(); }
 function closeDev() { state = 'count'; mmRow = 2; mmAct = 1; menuSwallow(); }
 function openLevels() { levelSel = devStartDepth - 1; state = 'levels'; menuSwallow(); }
@@ -1973,6 +2102,7 @@ cvs.addEventListener('mouseleave', () => { hoverCard = -1; });
 cvs.addEventListener('pointerdown', e => {
   const [x, y] = canvasPoint(e), inside = b => insideAt(x, y, b);
   const dev = e.pointerType === 'touch' ? 'touch' : 'kb1';
+  if (state !== 'play') playSnd('ui_tap', 0.05);
   if (state === 'select' && detailChar >= 0) { detailChar = -1; return; } // cualquier toque cierra la ficha completa
   if (state === 'count') {
     for (let i = 0; i < 2; i++) if (inside(modeSeg(i))) { mmRow = 0; siegeMode = i === 1; return; }
@@ -2203,6 +2333,7 @@ function isSolid(tx, ty, canDoor) {
 function showBanner(text) { banner = { text, t: 1.8 }; }
 
 function enterRoom(r, dir) {
+  playSnd('door', 0.3);
   useRoom(r);
   room = r; r.visited = true; portalT = 0; enemies = []; bossFx = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; embers = []; cBombs = []; stickies = []; shells = []; dolls = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
   if (!r.pickups) r.pickups = [];
@@ -2335,6 +2466,7 @@ function makeEnemy(type, x, y, elite) {
 function roomCleared() {
   room.cleared = true; bullets = []; hazards = [];
   musicFanfare(room.type === 'boss' ? 'boss' : 'room');
+  playSnd(room.type === 'boss' ? 'bossWin' : 'clear', 0.5);
   let revived = false;
   for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
   if (room.type === 'boss') { room.stairs = true; showBanner(isFinalBoss(floor.depth) ? '¡Ciclo completado! El Dragón ha caído: ve al portal' : 'Guardián derrotado: ve al portal y pulsa Fijar'); }
@@ -2355,6 +2487,7 @@ function newRun() {
   showBanner(isTouch ? 'Piso ' + devStartDepth + '. Pausa con el botón II' : 'Piso ' + devStartDepth + '. Pausa con Esc o Start');
 }
 function nextFloor() {
+  playSnd('stairs', 0.5);
   const d = floor.depth + 1;
   floor = genFloor(seed, d);
   for (const p of players) { if (p.down) { p.down = false; p.ghost = false; p.hp = Math.min(p.maxHp, REVIVE.hp); } healPlayer(p, HEAL.floor); }
@@ -2499,6 +2632,7 @@ function startMovement(p, mx, my) {
   const c = p.ch, m = moveOf(c);
   p.moveCd = c.moveCd;
   if (c.moveCharges) { p.mCh--; if (p.mChT <= 0) p.mChT = c.moveRecharge; } // gasta una carga; se recargan de una en una
+  if (SFX_MOVE[c.moveType]) playSnd(SFX_MOVE[c.moveType], 0.04);
   if (m.start) m.start(p, c, mx, my);
 }
 // ---------- Salto ----------
@@ -2524,7 +2658,8 @@ function startJump(p, mx, my) {
   p.jump = { phase: 'arc', t: 0, x0: p.x, y0: p.y, dx, dy, target: null };
   const e = jumpTarget(p, dx, dy, moving);
   if (e) beginJumpReach(p, e);
-  burst(p.x, p.y, '#d8cfe6', 8); SFX.swing(false);
+  // [RETIRADO 2026-11-08] burst(p.x, p.y, '#d8cfe6', 8); SFX.swing(false);
+  burst(p.x, p.y, '#d8cfe6', 8); SFX.swing(false); playSnd('jump', 0.05);
 }
 function beginJumpReach(p, e) {
   const J = p.jump, vx = e.x - p.x, vy = e.y - p.y, d = Math.hypot(vx, vy) || 1;
@@ -2534,6 +2669,7 @@ function beginJumpReach(p, e) {
   p.lockOn = true; p.target = e;
 }
 function jumpLand(p) {
+  playSnd('land', 0.05);
   p.z = 0; p.jump = null; p.postMoveT = p.ch.postMoveWindow; collide(p, true);
   burst(p.x, p.y, '#d8cfe6', 8);
 }
@@ -3714,6 +3850,7 @@ function useAbility(p, slot) {
   const fn = ABILITIES[abilityType(p, slot)];
   const t0 = abilityType(p, slot);
   if (!fn || fn(p) === false) return;
+  playAbility(t0);
   p.idleT = 0; // usar habilidades también retrasa la recarga automática
   if (t0 === 'drill' || t0 === 'furyDrop') { setCd(p, slot, t0 === 'drill' ? FURY.drill.cd : FURY.grab.cd); return; } // habilidades de furia: recarga propia
   // [RETIRADO] setCd(p, slot, slot === 'pri' ? p.ch.priCd : (t0 === 'shieldThrow' ? AB.shieldThrow.cd : p.ch.secCd));
@@ -4739,13 +4876,15 @@ function castTurret(p) {
   if (isSolid(Math.floor(x / T), Math.floor(y / T), false)) { x = p.x; y = p.y; }
   if (p.turretHp == null) p.turretHp = AB.turret.hp;
   turrets.push({ x, y, owner: p, life: AB.turret.time, hp: Math.max(1, p.turretHp), cd: 0.3, inv: 0, ang: Math.atan2(p.ay, p.ax), color: p.color, slot: p.slotColor });
-  floatText(x, y - 40, 'Torreta', p.slotColor);
+  // [RETIRADO 2026-11-08] floatText(x, y - 40, 'Torreta', p.slotColor);
+  floatText(x, y - 40, 'Torreta', p.slotColor); playSnd('turret', 0.2);
 }
 function recallTurret(p) {
   const t = myTurret(p);
   if (!t) return;
   t.gone = true; p.turretHp = t.hp; turrets = turrets.filter(q => !q.gone);
-  burst(t.x, t.y - 20, p.color, 10); floatText(t.x, t.y - 40, 'Guardada', p.slotColor);
+  // [RETIRADO 2026-11-08] burst(t.x, t.y - 20, p.color, 10); floatText(t.x, t.y - 40, 'Guardada', p.slotColor);
+  burst(t.x, t.y - 20, p.color, 10); floatText(t.x, t.y - 40, 'Guardada', p.slotColor); playSnd('recall', 0.2);
 }
 // Llevar la torreta a la espalda: cualquier jugador puede cargarla (Fijar a su lado) y soltarla (mantener Fijar).
 // A cuestas sigue disparando, curando con Sobrecarga y gastando su tiempo, pero no recibe daño ni para balas
@@ -4765,7 +4904,8 @@ function pickTurret(p, t) {
   burst(t.x, t.y - 20, t.color, 8); floatText(p.x, p.y - 46 * p.ch.size, 'Torreta a cuestas', p.slotColor); SFX.hit(false);
 }
 function dropTurret(p, quiet) {
-  const t = carriedBy(p); if (!t) return;
+  // [RETIRADO 2026-11-08] const t = carriedBy(p); if (!t) return;
+  const t = carriedBy(p); if (!t) return; if (!quiet) playSnd('thud', 0.1);
   let x = p.x + p.ax * 34, y = p.y + p.ay * 34;
   if (isSolid(Math.floor(x / T), Math.floor(y / T), false)) { x = p.x; y = p.y; }
   t.carrier = null; t.z = 0; t.x = x; t.y = y;
@@ -4783,6 +4923,7 @@ function hurtTurret(t, dmg) {
 }
 // Al desaparecer (por tiempo o destruida) deja un corazón, salvo si estaba sobrecargada
 function endTurret(t, destroyed) {
+  if (destroyed) playSnd('turretBreak', 0.2);
   const p = t.owner, slot = p.ch.priType === 'turret' ? 'pri' : 'sec';
   t.gone = true;
   if (!(p.overchargeT > 0)) pickups.push({ x: t.x, y: t.y, t: 0 });
@@ -4826,6 +4967,7 @@ function updateTurrets(dt) {
     if (!best) { t.cd = 0.15; continue; }
     t.cd = AB.turret.rate * (air ? 1 : 2) * (t.owner.overchargeT > 0 ? AB.overcharge.mul : 1);
     t.ang = Math.atan2(best.y - t.y, best.x - t.x);
+    playSnd('tshot', 0.05);
     effects.push({ type: 'zap', x1: t.x, y1: upY(t.y, 20 + (t.z || 0)), x2: best.x, y2: upY(best.y, 12 + best.z), t: 0, dur: 0.15, color: t.color });
     shotHit(t.owner, best, AB.turret.dmg, 40, t.x, t.y);
   }
@@ -4872,6 +5014,7 @@ function reaperStrike(p, main) {
 function applyBurn(e, p) {
   if (e.dead) return;
   if (!(e.burnT > 0)) e.burnTick = BURN.tick;
+  if (!(e.burnT > 0)) playSnd('ignite', 0.3);
   e.burnT = BURN.time; e.burnBy = p; // reinicia el tiempo si ya ardía
 }
 // Golpe de fuego. o.sta: multiplicador de daño a estamina; o.fx: 'heavy' o 'light' usa el mismo impacto que el cuerpo a cuerpo
@@ -5260,6 +5403,7 @@ function freezeEnemy(e, fromBurst, time) {
   if (scorchN(e) >= 1 && thermalShock(e)) return; // chamuscado: en vez de congelarse, el hielo revienta
   if (e.type === 'boss' && e.freezeImmuneT > 0) return; // el guardián no se puede volver a congelar enseguida
   const was = e.frozenT > 0, t = e.type === 'boss' ? 1 : (time || AB.frostburst.time);
+  if (!was) playSnd('freeze', 0.1);
   if (was) { e.frozenT = Math.max(e.frozenT, t); e.frozenBurst = e.frozenBurst || !!fromBurst; return; } // ya congelado: solo amplía el tiempo
   if (e.flying && !e.airborne) { e.airborne = true; e.vz = 0; } // un volador congelado en pleno vuelo cae como cualquier aéreo
   e.frozenT = t; e.frozenBurst = !!fromBurst; e.frozenAir = !!e.airborne; e.kbx = e.kby = 0;
@@ -6259,7 +6403,8 @@ function healPlayer(p, amt) {
   if (p.down) return 0;
   const got = Math.min(p.maxHp - p.hp, amt);
   if (got <= 0) return 0;
-  p.hp += got; p.healFx = 0.6;
+  // [RETIRADO 2026-11-08] p.hp += got; p.healFx = 0.6;
+  p.hp += got; p.healFx = 0.6; playSnd('heal', 0.15);
   floatText(p.x, p.y - 56 * p.ch.size, '+' + Math.round(got) + ' \u2665', '#ff7a93');
   return got;
 }
@@ -6278,7 +6423,8 @@ function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   const kbm = (WEIGHT[p.ch.weight] || WEIGHT.medium).kbMul; // los pesados apenas se mueven al recibir golpes
   p.kbx = dx / d * HURT.kb * kbm * (heavyHit ? 1.3 : 1); p.kby = dy / d * HURT.kb * kbm * (heavyHit ? 1.3 : 1);
   shake = Math.max(shake, 6); burst(p.x, p.y - 12, p.color, 10);
-  if (p.hp <= 0) { p.hp = 0; p.down = true; p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
+  // [RETIRADO 2026-11-08] if (p.hp <= 0) { p.hp = 0; p.down = true; p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
+  if (p.hp <= 0) { p.hp = 0; p.down = true; playSnd('down', 0.3); p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
   return true;
 }
 
@@ -6512,6 +6658,7 @@ function breakFrozen(e, sx, sy, kb) {
 }
 function frozenTier(e) { return e.type === 'boss' ? 4 : Math.min(4, e.tier || 1); }
 function iceBreakFx(e) { // el hielo se rompe sin matar: esquirlas, anillo y chasquido
+  playSnd('ice', 0.1);
   const y = upY(e.y, 12 + (e.z || 0));
   for (let i = 0; i < 12; i++) { const a = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 160; particles.push({ x: e.x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.8, life: 0.4, max: 0.4, color: '#bfeaf5', s: 3, flake: Math.random() < 0.5, seed: Math.random() * 6 }); }
   effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 18, t: 0, dur: 0.25, color: '#bfeaf5' });
@@ -6523,9 +6670,11 @@ function killEnemy(e, executed) {
   const y = upY(e.y, 12 + e.z);
   burst(e.x, y, e.color, e.tier >= 3 ? 40 : 18);
   if (executed) burst(e.x, y, '#ffffff', 26);
+  if (!executed) playSnd(e.type === 'boss' ? 'dieBoss' : e.tier >= 3 ? 'die3' : e.tier === 2 ? 'die2' : 'die1', 0.04);
   shake = Math.max(shake, e.tier === 4 ? 14 : (e.tier === 3 ? 8 : 4));
   if (e.type === 'splitter' && !executed) { // se subdivide si no lo ejecutas
-    floatText(e.x, y - 30, 'Se divide', '#ff8f8f');
+    // [RETIRADO 2026-11-08] floatText(e.x, y - 30, 'Se divide', '#ff8f8f');
+    floatText(e.x, y - 30, 'Se divide', '#ff8f8f'); playSnd('split', 0.1);
     for (let i = 0; i < 3; i++) {
       const a = i / 3 * Math.PI * 2, m = makeEnemy('mite', e.x + Math.cos(a) * 22, e.y + Math.sin(a) * 22, false);
       m.spawnT = 0.25; enemies.push(m);
@@ -6541,9 +6690,11 @@ function nearestPlayer(e) {
   for (const p of players) if (!p.down) { const d = Math.hypot(p.x - e.x, p.y - e.y); if (d < bd) { bd = d; best = p; } }
   return [best, bd];
 }
-function fire(x, y, ang, spd, dmg) { bullets.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r: 5, life: 4, dmg: dmg || 16 }); }
+// [RETIRADO 2026-11-08] function fire(x, y, ang, spd, dmg) { bullets.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r: 5, life: 4, dmg: dmg || 16 }); }
+function fire(x, y, ang, spd, dmg) { playSnd('eshot', 0.06); bullets.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r: 5, life: 4, dmg: dmg || 16 }); }
 const SONIC = { spd: 190, life: 2.6, r: 9 }; // onda de sonido del murciélago
-function fireSonic(x, y, ang, dmg) { bullets.push({ x, y, vx: Math.cos(ang) * SONIC.spd, vy: Math.sin(ang) * SONIC.spd, r: SONIC.r, life: SONIC.life, dmg, sonic: true }); }
+// [RETIRADO 2026-11-08] function fireSonic(x, y, ang, dmg) { bullets.push({ x, y, vx: Math.cos(ang) * SONIC.spd, vy: Math.sin(ang) * SONIC.spd, r: SONIC.r, life: SONIC.life, dmg, sonic: true }); }
+function fireSonic(x, y, ang, dmg) { playSnd('sonic', 0.2); bullets.push({ x, y, vx: Math.cos(ang) * SONIC.spd, vy: Math.sin(ang) * SONIC.spd, r: SONIC.r, life: SONIC.life, dmg, sonic: true }); }
 function randomFloorNear(px, py, minD, maxD) {
   for (let i = 0; i < 30; i++) {
     const a = Math.random() * Math.PI * 2, d = minD + Math.random() * (maxD - minD);
@@ -6960,7 +7111,8 @@ const BOSS_AI_BY_KIND = {
 // ---------- Dragón (guardián final) ----------
 // Efectos visuales del Dragón: rayos que caen y explosiones de las bombas (se programan con el mismo retraso que su aviso)
 let bossFx = [];
-function bossFxAt(type, x, y, delay, extra) { bossFx.push(Object.assign({ type, x, y, t: -delay }, extra || {})); }
+// [RETIRADO 2026-11-08] function bossFxAt(type, x, y, delay, extra) { bossFx.push(Object.assign({ type, x, y, t: -delay }, extra || {})); }
+function bossFxAt(type, x, y, delay, extra) { if (BOSS_FX_SND[type]) playSnd(BOSS_FX_SND[type], 0.05, Math.max(0, delay || 0)); bossFx.push(Object.assign({ type, x, y, t: -delay }, extra || {})); }
 function updateBossFx(dt) {
   for (const f of bossFx) {
     const was = f.t; f.t += dt;
@@ -7129,6 +7281,7 @@ function isHot(e) {
 
 function updateEnemy(e, dt) {
   if (e.sky) { dragonSky(e, dt); return; } // Dragón volando: fuera de la sala, no se le puede golpear
+  enemyCue(e);
   if (e.spawnT > 0) { e.spawnT -= dt; return; }
   e.squash = Math.max(0, (e.squash || 0) - dt * 7);
   if (e.hitstun > 0) e.hitstun -= dt;
@@ -7205,6 +7358,7 @@ function updateHazards(dt) {
       hurtPlayer(p, h.x, h.y, null, h.dmg || (h.owner ? contactDmg(h.owner) : DMG_FALLBACK));
     }
     for (const t of turrets) if (Math.hypot(t.x - h.x, t.y - h.y) <= h.r + 10) hurtTurret(t, 2);
+    boomSnd(h.r);
     effects.push({ type: 'ring', x: h.x, y: h.y, r: h.r, t: 0, dur: 0.3, color: '#ff6b6b' });
     shake = Math.max(shake, h.r > 70 ? 6 : 3);
   }
@@ -7441,8 +7595,10 @@ function update(dt) {
   updateCamera(dt);
   if (humans().length && players.every(p => p.down) && state === 'play') { // se pierde cuando no queda nadie en pie que pueda levantar a los demás
     if (SIEGE.on) SIEGE.result = { win: false, title: 'El grupo ha caído', sub: 'Nadie queda en pie para defender la fortaleza.' };
-    state = 'over'; overT = 0; overSel = 0;
-    for (const dev of DEVICES) menuInput(dev);
+    // [RETIRADO 2026-11-08] state = 'over'; overT = 0; overSel = 0;
+    // [RETIRADO 2026-11-08] for (const dev of DEVICES) menuInput(dev);
+    state = 'over'; overT = 0; overSel = 0; playSnd('lose', 0.5);
+    for (const dev of DEVICES) menuInput(dev, true);
   }
 }
 
@@ -9722,7 +9878,8 @@ function chooseOver(i) {
     slots = humans().map(p => ({ dev: p.dev, cur: CHARS.indexOf(p.ch), locked: false }));
     lastCur = slots.length ? slots[0].cur : 0; hoverCard = -1; startT = -1;
     players = []; state = 'select';
-    for (const dev of DEVICES) menuInput(dev);
+    // [RETIRADO 2026-11-08] for (const dev of DEVICES) menuInput(dev);
+    for (const dev of DEVICES) menuInput(dev, true);
   } else backToMain();
 }
 function drawOver() {
@@ -10030,10 +10187,13 @@ const PAUSE_OPTS = () => ['Continuar', showGuide ? 'Ocultar guía de controles' 
 let pauseQuit = false; // salir de la partida pide una segunda confirmación (se pierde la run)
 function pauseRect(i) { return [W / 2 - 150, H / 2 - 83 + i * 48, 300, 40]; }
 function enterPause() {
+  playSnd('pause', 0.2);
   state = 'pause'; pauseSel = 0; shake = 0; pauseQuit = false;
-  for (const dev of DEVICES) menuInput(dev); // evita que el botón que ya estaba pulsado elija una opción
+  // [RETIRADO 2026-11-08] for (const dev of DEVICES) menuInput(dev); // evita que el botón que ya estaba pulsado elija una opción
+  for (const dev of DEVICES) menuInput(dev, true); // evita que el botón que ya estaba pulsado elija una opción
 }
 function resume() {
+  playSnd('resume', 0.2);
   state = 'play';
   for (const p of players) { for (const kk in p.prev) p.prev[kk] = true; p.shotHold = true; }
 }
@@ -10224,7 +10384,8 @@ function activateOptRow(px) {
 function updateOptions() {
   const pauseHit = pausePressed(); // consume las pulsaciones de pausa; Esc y Start sirven para volver
   if (OPT.cap) { // esperando la tecla o botón nuevo
-    for (const dev of DEVICES) menuInput(dev); // mantiene al día los flancos de los menús
+    // [RETIRADO 2026-11-08] for (const dev of DEVICES) menuInput(dev); // mantiene al día los flancos de los menús
+    for (const dev of DEVICES) menuInput(dev, true); // mantiene al día los flancos de los menús
     let done = false;
     if (OPT.key) {
       const c = OPT.key; OPT.key = null;
@@ -10573,6 +10734,7 @@ function sgReadyUpdate() {
   if (m > 0 && n >= m) sgTravel(players.find(q => q.sgReady === st), st);
 }
 function sgTravel(p, stone) {
+  playSnd('portal', 0.3);
   const S = SIEGE; if (S.tp) return;
   const to = sgZone(stone.to), back = to.stones.find(s => s.to === stone.zone.id) || to.stones[0];
   S.tp = { to, at: back, t: 0.45 }; fade = 0.45;
@@ -10590,6 +10752,7 @@ function sgWaveComp(w, np, k) { // composición de la incursión k de la oleada 
   return out;
 }
 function sgStartWave(w) {
+  playSnd('wave', 0.5);
   const S = SIEGE, np = Math.max(1, humans().length);
   S.wave = w; S.phase = 'wave'; S.waveT = 0; S.spawnClock = 0; S.held = false; S.spawnQ = []; S.events = [];
   (SG_PLAN[w] || SG_PLAN[5]).forEach(([zid, t0], k) => {
@@ -10616,6 +10779,7 @@ function sgSpawn(q) {
 function sgCap() { return SG.maxAlive + SG.maxAliveP * Math.max(0, humans().length - 1); }
 function sgCapT3() { return Math.floor(SG.maxT3 + SG.maxT3P * Math.max(0, humans().length - 1)); }
 function sgEndWave() {
+  playSnd('clear', 0.5);
   const S = SIEGE;
   sgGold(SG.goldWave); S.stab = Math.min(100, S.stab + SG.stabWave);
   musicFanfare('room');
@@ -10625,12 +10789,15 @@ function sgEndWave() {
   S.upOpts = []; while (S.upOpts.length < 3 && pool.length) S.upOpts.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
   S.upSel = 0; S.phase = 'prep'; S.phaseT = SG.prep;
   state = 'siegeUp';
-  for (const dev of DEVICES) menuInput(dev);
+  // [RETIRADO 2026-11-08] for (const dev of DEVICES) menuInput(dev);
+  for (const dev of DEVICES) menuInput(dev, true);
 }
 function sgFinish(win, title, sub) {
   SIEGE.result = { win, title, sub };
+  playSnd(win ? 'win' : 'lose', 0.5);
   state = 'over'; overT = 0; overSel = 0;
-  for (const dev of DEVICES) menuInput(dev);
+  // [RETIRADO 2026-11-08] for (const dev of DEVICES) menuInput(dev);
+  for (const dev of DEVICES) menuInput(dev, true);
 }
 
 // ---------- Cerebro de los enemigos del asedio ----------
@@ -10732,7 +10899,8 @@ function sgAdopt(e, z) { // enemigos que aparecen sin plan (los que suelta el sp
 function sgObjHit(o, e) {
   const S = SIEGE, dmg = SG.objDmg[e.tier] * (e.elite ? ELITE.dmg : 1);
   if (o.destroyed) return;
-  o.hp -= dmg; o.hitT = S.time; o.flash = 0.15;
+  // [RETIRADO 2026-11-08] o.hp -= dmg; o.hitT = S.time; o.flash = 0.15;
+  o.hp -= dmg; o.hitT = S.time; o.flash = 0.15; playSnd('objHit', 0.06);
   const ranged = e.type === 'shooter' || e.type === 'bat' || e.type === 'splitter';
   if (ranged) effects.push({ type: 'execShot', x1: e.x, y1: e.y - 14, x2: o.x, y2: o.y - 20, t: 0, dur: 0.25, color: e.color });
   burst(o.x + (e.x - o.x) * 0.3, o.y - 20, '#d8cfe6', 6);
@@ -10743,7 +10911,8 @@ function sgObjHit(o, e) {
 }
 function sgDestroy(o) {
   const S = SIEGE;
-  o.hp = 0; o.destroyed = true; o.burn = false;
+  // [RETIRADO 2026-11-08] o.hp = 0; o.destroyed = true; o.burn = false;
+  o.hp = 0; o.destroyed = true; o.burn = false; playSnd('objBreak', 0.2);
   if (o.kind === 'gate') { sgFinish(false, 'La puerta ha caído', 'Los enemigos entran en la fortaleza (en el juego completo, empezaría la fase 2).'); return; }
   S.stab = Math.max(0, S.stab - SG.stabObj);
   showBanner('Ha caído: ' + o.name + ' (−' + SG.stabObj + ' estabilidad)');
@@ -10775,7 +10944,8 @@ function sgCheckInc(inc) {
 function sgAlert(key, text) { // avisos de lo que pasa fuera de la vista, sin repetirse cada golpe
   const S = SIEGE;
   if ((S.alertT[key] || -99) > S.time - 8) return;
-  S.alertT[key] = S.time;
+  // [RETIRADO 2026-11-08] S.alertT[key] = S.time;
+  S.alertT[key] = S.time; playSnd('alert', 0.5);
   S.log.unshift({ text, t: S.time }); if (S.log.length > 3) S.log.length = 3;
 }
 // Daño de trampas, torres y eventos: en la zona activa es un golpe normal (sin sacudir la pantalla ni provocar al enemigo);
@@ -10886,6 +11056,7 @@ function sgNearest(L, x, y, R, ground) {
 }
 function sgBoltMul() { return SIEGE.mods.bolt * (sgObjs().some(o => o.kind === 'powder' && !o.destroyed) ? SG.powderMul : 1); }
 function sgShoot(z, x, y, e, dmg, color) {
+  playSnd('ballista', 0.06);
   SIEGE.bolts.push({ z, x, y, e, dmg, color, life: 1.2 });
 }
 function sgDefenses(z, dt) {
@@ -10921,7 +11092,8 @@ function sgBolts(dt) {
     if (b.e.dead || b.e.sgLeft) { b.life = 0; continue; }
     const tx = b.e.x, ty = b.e.y - 12 - (b.e.z || 0) * 0.5, dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy), s = 620 * dt;
     b.ang = Math.atan2(dy, dx);
-    if (d <= s + 8) { sgDmg(b.e, b.z, b.dmg, b.x, b.y, 70); b.life = 0; burst(tx, ty, b.color, 4); }
+    // [RETIRADO 2026-11-08] if (d <= s + 8) { sgDmg(b.e, b.z, b.dmg, b.x, b.y, 70); b.life = 0; burst(tx, ty, b.color, 4); }
+    if (d <= s + 8) { sgDmg(b.e, b.z, b.dmg, b.x, b.y, 70); b.life = 0; burst(tx, ty, b.color, 4); playSnd('thud', 0.06); }
     else { b.x += dx / d * s; b.y += dy / d * s; }
   }
   S.bolts = S.bolts.filter(b => b.life > 0);
@@ -10999,6 +11171,7 @@ function sgTasks(dt) {
 
 // ---------- Eventos semialeatorios ----------
 function sgEvent(kind) {
+  playSnd('alert', 0.5);
   const S = SIEGE;
   if (kind === 'rain') { // lluvia de fuego en la zona donde está el grupo: hay que ponerse a cubierto
     S.warn = { kind, z: S.cur, t: SG.rain.warn };
@@ -11065,6 +11238,7 @@ function sgUpRectU(i) { const Wu = W / hudS, Hu = H / hudS, w = Math.min(230, (W
 function sgUpRect(i) { return sgUpRectU(i).map(v => v * hudS); } // en unidades del lienzo (para el ratón y el toque)
 function sgUpChoose(i) {
   const S = SIEGE, u = S.upOpts[i]; if (!u) return;
+  playSnd('pick', 0.2);
   u.apply(S); S.upOpts = null; state = 'play';
   for (const p of players) { for (const kk in p.prev) p.prev[kk] = true; p.shotHold = true; }
   showBanner(u.name + '. Preparación: ' + SG.prep + ' s');
@@ -11345,7 +11519,8 @@ function frame(now) {
 resize();
 requestAnimationFrame(frame);
 // Gancho de depuración para pruebas automáticas: solo existe si la URL lleva ?debug
-if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
+// [RETIRADO 2026-11-08] if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
+if (/[?&]debug\b/.test(location.search)) window.MZ = { sfx: { SND, playSnd, initAudio, lastSfx }, get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
   // menús (pruebas del recorrido): rectángulos en coordenadas lógicas del lienzo y estado de la navegación
   ui: { backBtnRect, modeSeg, actRect, countBox, devRow, levelRect, pauseRect, optRowRect, optTabRect, cardRect, startRect, overRect, get LW() { return LW; }, get LH() { return LH; }, get W() { return W; }, get H() { return H; }, menuOff, get nav() { return { mmRow, mmAct, countSel, siegeMode, devSel, levelSel, devStartDepth, pauseSel, pauseQuit, opt: { tab: OPT.tab, row: OPT.row, from: OPT.from }, testMode, slots: slots.length }; } } };
 })();
