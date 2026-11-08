@@ -5995,8 +5995,8 @@ function interruptHit(e, heavy) {
   if (!interruptible(e)) return;
   if (e.type === 'boss') {
     if (attackWarn(e)) floatText(e.x, upY(e.y, 60), 'Interrumpido', '#6ee7ff');
-    if (e.cd < 0.55) e.cd = e.hp < e.maxHp / 2 ? 1.4 : 2;
-    if (e.cd2 < 0.4) e.cd2 = 1;
+    // [RETIRADO 2026-11-08] con los temporizadores antiguos: // if (e.cd < 0.55) e.cd = e.hp < e.maxHp / 2 ? 1.4 : 2; // if (e.cd2 < 0.4) e.cd2 = 1;
+    if (e.state === 'ringWind' || e.state === 'fanWind') { e.state = 'walk'; e.ringAngles = null; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2; }
     return;
   }
   if (attackWarn(e)) floatText(e.x, upY(e.y, 40 + (e.z || 0)), 'Interrumpido', '#ffffff');
@@ -6325,18 +6325,77 @@ const ENEMY_AI = {
     e.t -= dt; if (e.t <= 0) e.state = 'walk';
     return [0, 0];
   },
+  // [RETIRADO 2026-11-08] guardián original: anillo y abanico con temporizadores propios, sin pausa, desde el centro y sin preparación
+  // boss(e, p, d, nx, ny, dt) {
+  //   const rage = e.hp < e.maxHp / 2;
+  //   e.cd -= dt; e.cd2 -= dt;
+  //   if (e.cd <= 0) {
+  //     const n = 12 + floor.depth * 2;
+  //     for (let i = 0; i < n; i++) fire(e.x, e.y, i / n * Math.PI * 2 + e.rot, 130, edmg(e, 'shot'));
+  //     e.rot += 0.3; e.cd = rage ? 1.8 : 2.6;
+  //   }
+  //   if (e.cd2 <= 0) { for (const o of [-0.25, 0, 0.25]) fire(e.x, e.y, e.face + o, 190, edmg(e, 'shot')); e.cd2 = rage ? 1.0 : 1.5; }
+  //   return [nx * e.spd * (rage ? 1.3 : 1), ny * e.spd * (rage ? 1.3 : 1)];
+  // }
+  // Guardián (2026-11-08): un ataque cada vez → andar, preparar (con aviso en el suelo), disparar y quedarse quieto (ventana para pegarle)
   boss(e, p, d, nx, ny, dt) {
-    const rage = e.hp < e.maxHp / 2;
-    e.cd -= dt; e.cd2 -= dt;
-    if (e.cd <= 0) {
-      const n = 12 + floor.depth * 2;
-      for (let i = 0; i < n; i++) fire(e.x, e.y, i / n * Math.PI * 2 + e.rot, 130, edmg(e, 'shot'));
-      e.rot += 0.3; e.cd = rage ? 1.8 : 2.6;
+    const B = BOSS_AI, rage = e.hp < e.maxHp / 2, sp = e.spd * (rage ? 1.3 : 1);
+    e.t -= dt;
+    if (e.state === 'ringWind') { // se carga: los radios del anillo y sus huecos se ven en el suelo
+      if (e.t <= 0) {
+        const R = B.ring;
+        for (const a of e.ringAngles) bossShot(e, a, R.spd0, R.spd, R.accel);
+        e.ringAngles = null; e.state = 'recover'; e.t = rage ? B.recoverRage : B.recover; shake = Math.max(shake, 4);
+      }
+      return [0, 0];
     }
-    if (e.cd2 <= 0) { for (const o of [-0.25, 0, 0.25]) fire(e.x, e.y, e.face + o, 190, edmg(e, 'shot')); e.cd2 = rage ? 1.0 : 1.5; }
-    return [nx * e.spd * (rage ? 1.3 : 1), ny * e.spd * (rage ? 1.3 : 1)];
+    if (e.state === 'fanWind') { // apunta siguiendo al objetivo y fija la dirección poco antes de disparar
+      const F = B.fan;
+      if (e.t > F.lock) e.aim = e.face;
+      if (e.t <= 0) {
+        const n = rage ? F.nRage : F.n;
+        for (let i = 0; i < n; i++) bossShot(e, e.aim + (i - (n - 1) / 2) * F.spread, F.spd, F.spd, 0);
+        e.state = 'recover'; e.t = rage ? B.recoverRage : B.recover;
+      }
+      return [0, 0];
+    }
+    if (e.state === 'recover') { if (e.t <= 0) { e.state = 'walk'; e.t = bossWalkT(rage); } return [0, 0]; }
+    // andando: se acerca y, pasado su tiempo, elige ataque (abanico si estás lejos; anillo si estás cerca o tras dos abanicos)
+    if (e.t <= 0) {
+      if (d >= B.fan.minD && (e.fans || 0) < 2) {
+        e.state = 'fanWind'; e.windDur = e.t = rage ? B.fan.windRage : B.fan.wind; e.aim = e.face; e.fans = (e.fans || 0) + 1;
+      } else {
+        e.state = 'ringWind'; e.windDur = e.t = rage ? B.ring.windRage : B.ring.wind; e.ringAngles = bossRingAngles(e); e.fans = 0;
+      }
+      return [0, 0];
+    }
+    return [nx * sp, ny * sp];
   }
 };
+// Guardián: constantes de ritmo y de sus dos ataques
+const BOSS_AI = {
+  walk: [1.6, 2.4], walkRage: [1.0, 1.6], // segundos andando entre ataques
+  recover: 1.1, recoverRage: 0.8,          // quieto tras atacar: ventana para pegarle
+  // anillo: radios con huecos (gaps × gapW radios vacíos), salen del borde despacio y aceleran
+  ring: { wind: 1.3, windRage: 1.05, spokes: 16, perDepth: 2, gaps: 3, gapW: 2, spd0: 55, spd: 140, accel: 0.8, out: 8 },
+  // abanico apuntado: solo si estás a minD o más; fija la puntería «lock» segundos antes de disparar
+  fan: { wind: 0.9, windRage: 0.75, lock: 0.35, n: 3, nRage: 5, spread: 0.22, spd: 175, minD: 150 }
+};
+function bossWalkT(rage) { const [a, b] = rage ? BOSS_AI.walkRage : BOSS_AI.walk; return a + Math.random() * (b - a); }
+function bossRingAngles(e) { // radios del anillo con huecos repartidos (y un giro aleatorio para que no se repita)
+  const R = BOSS_AI.ring, n = R.spokes + R.perDepth * (floor.depth || 0), off = Math.random() * Math.PI * 2, out = [];
+  const step = n / R.gaps, g0 = Math.floor(Math.random() * step);
+  for (let i = 0; i < n; i++) {
+    const inGap = ((i - g0 + n) % n) % step < R.gapW;
+    if (!inGap) out.push(off + i / n * Math.PI * 2);
+  }
+  return out;
+}
+// Bala del guardián: sale del borde de su cuerpo (no del centro) y puede acelerar desde spd0 hasta spd1
+function bossShot(e, a, spd0, spd1, ramp) {
+  const ux = Math.cos(a), uy = Math.sin(a), o = e.r + BOSS_AI.ring.out;
+  bullets.push({ x: e.x + ux * o, y: e.y + uy * o, vx: ux * spd0, vy: uy * spd0, r: 6, life: 5, dmg: edmg(e, 'shot'), ux, uy, spd0, spd1, ramp, age: 0 });
+}
 
 // Solo hacen daño de contacto durante la embestida que avisan (el guardián conserva el suyo: CONTACT_ATTACK)
 function isHot(e) {
@@ -6578,6 +6637,7 @@ function update(dt) {
 
   for (const b of bullets) {
     const ox = b.x, oy = b.y;
+    if (b.ramp > 0) { b.age += dt; const s = b.spd0 + (b.spd1 - b.spd0) * Math.min(1, b.age / b.ramp); b.vx = b.ux * s; b.vy = b.uy * s; } // balas del guardián que aceleran
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
     if (outsideRoom(b.x, b.y) || segSolid(ox, oy, b.x, b.y)) { b.life = 0; burst(b.x, b.y - 12, '#ff6b8a', 4); continue; } // tramo completo: una bala rápida no atraviesa muros
     if (players.some(q => q.shieldT > 0 && !q.down && Math.hypot(q.x - b.x, q.y - b.y) < AB.shield.r)) { b.life = 0; burst(b.x, b.y - 12, '#d8cfe6', 3); continue; } // Bastión
@@ -8059,7 +8119,7 @@ function drawWindIcon(x, y, s, col) {
 function windK(e) {
   if (e.airborne || e.stunT > 0) return 0;
   const clamp = (v) => Math.min(1, Math.max(0, v));
-  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind' || e.state === 'sgWind') return clamp(1 - e.t / e.windDur);
+  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind' || e.state === 'sgWind' || e.state === 'ringWind' || e.state === 'fanWind') return clamp(1 - e.t / e.windDur);
   if (e.type === 'shooter' && e.cd < 0.6) return clamp(1 - e.cd / 0.6);
   if (e.type === 'splitter' && e.bombCd < 0.6) return clamp(1 - e.bombCd / 0.6);
   return 0;
@@ -8075,7 +8135,8 @@ function attackWarn(e) {
     case 'shooter': return e.cd < 0.6;
     case 'golem': return e.state === 'leapWind' || e.state === 'slamWind';
     case 'splitter': return e.bombCd < 0.5;
-    case 'boss': return e.cd < 0.55 || e.cd2 < 0.4;
+    // case 'boss': return e.cd < 0.55 || e.cd2 < 0.4; // [RETIRADO 2026-11-08] temporizadores antiguos
+    case 'boss': return e.state === 'ringWind' || e.state === 'fanWind';
     default: return false;
   }
 }
@@ -8206,6 +8267,31 @@ function drawHazards() {
   }
 }
 
+// Avisos del guardián en el suelo: radios del anillo (los huecos son los sitios seguros) y líneas del abanico
+function drawBossTells() {
+  for (const e of enemies) {
+    if (e.type !== 'boss' || e.dead || e.airborne || e.stunT > 0) continue;
+    const k = windK(e); if (k <= 0) continue;
+    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#ff4d5e';
+    const r0 = e.r + BOSS_AI.ring.out;
+    if (e.state === 'ringWind' && e.ringAngles) {
+      const len = 40 + 110 * k; ctx.lineWidth = 3 + 3 * k; ctx.globalAlpha = 0.35 + 0.5 * k;
+      ctx.beginPath();
+      for (const a of e.ringAngles) { ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
+      ctx.stroke();
+      ctx.globalAlpha = 0.2 + 0.3 * k; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, r0 + len, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (e.state === 'fanWind') {
+      const F = BOSS_AI.fan, n = e.hp < e.maxHp / 2 ? F.nRage : F.n, locked = e.t <= F.lock, len = 120 + 160 * k;
+      ctx.lineWidth = locked ? 4 : 2; ctx.globalAlpha = locked ? 0.9 : 0.3 + 0.4 * k;
+      if (!locked) ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) { const a = e.aim + (i - (n - 1) / 2) * F.spread; ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
 function drawBullet(b) {
   if (b.sonic) { // onda de sonido: arcos concéntricos que siguen la dirección del disparo
     const a = Math.atan2(b.vy, b.vx), fade = Math.min(1, b.life);
@@ -8500,7 +8586,7 @@ function drawGame() {
   if (SIEGE.on) siegeDrawFloor();
   // Capa del suelo: zonas, avisos y previsualizaciones se dibujan en el plano aplastado (círculos → elipses)
   ctx.save(); ctx.scale(1, K);
-  drawHazards(); drawFriendlyZones(); drawVines(); drawArcOrbs('floor'); drawTargets(); drawShieldZones(); drawPreviews(); drawComboHints(); drawChargeHints();
+  drawHazards(); drawBossTells(); drawFriendlyZones(); drawVines(); drawArcOrbs('floor'); drawTargets(); drawShieldZones(); drawPreviews(); drawComboHints(); drawChargeHints();
   ctx.restore();
   const list = [];
   const [x0, x1, y0, y1] = viewTiles();
