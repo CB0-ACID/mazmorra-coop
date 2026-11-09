@@ -113,14 +113,21 @@ td.sep { width: 10px; padding: 0; border-bottom: 0; }
 .src { font-size: 13px; color: var(--muted); }
 .src a { color: var(--accent); }
 .phase { font: 600 12px/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
+.abl { font-size: 13px; line-height: 1.3; white-space: normal; min-width: 110px; }
+.abl b { font-family: var(--display); font-size: 15px; }
+.abl.big { color: var(--good); } .abl.mid { color: var(--warn); } .abl.none { color: var(--bad); } .abl.na { color: var(--muted); }
+td small { color: var(--muted); }
+.applied { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; }
+.applied div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; font-size: 14px; display: grid; gap: 4px; }
+.applied b { font-family: var(--display); }
 </style>
 <div class="wrap">
 
 <header class="head">
-  <span class="eyebrow">Mazmorra Coop · simulación de equilibrio · 8 de noviembre de 2026</span>
+  <span class="eyebrow">Mazmorra Coop · simulación de equilibrio · 9 de noviembre de 2026</span>
   <h1>Balance de personajes</h1>
-  <p class="lede">Simulé partidas reales con el código del juego (rama main), con un bot que juega cada personaje en solitario. Medido contra franjas objetivo de éxito, el juego es demasiado fácil con cinco personajes (Brasa, Ámbar, Coral, Marea y Ciruela ganan a todos los guardianes y casi todas las partidas) y demasiado difícil con tres (Ceniza, Musgo y Escarcha no completan ninguna). Primero hay que igualar a los personajes y después ajustar la dificultad con el contenido.</p>
-  <div class="facts"><span><b>{{NSIM}}</b> combates y partidas</span><span><b>8</b> personajes</span><span><b>2</b> niveles de bot (experto y medio)</span><span><b>15</b> semillas por escenario</span><span>Escenarios: muñeco, 4 encuentros de prueba, 4 guardianes y partida completa de 4 pisos</span></div>
+  <p class="lede">Estado tras los rediseños de Coral, Ámbar, Ceniza, Musgo y Escarcha y la subida de vida de los tanques, en solitario y en cooperativo. En solitario la distancia entre personajes se ha cerrado mucho en las salas y los guardianes; las partidas completas siguen separadas. En cooperativo el juego es demasiado fácil: casi todos los grupos ganan siempre, así que el siguiente paso es el escalado de los enemigos con el número de jugadores.</p>
+  <div class="facts"><span><b>{{NSIM}}</b> combates y partidas</span><span><b>8</b> personajes</span><span><b>2</b> niveles de bot (experto y medio)</span><span><b>15</b> semillas por escenario en solitario</span><span><b>9</b> grupos cooperativos de 2, 3 y 4 jugadores (8 semillas)</span><span>Escenarios: muñeco, 4 encuentros de prueba, 4 guardianes y partida completa de 4 pisos</span></div>
 </header>
 
 <section>
@@ -191,45 +198,66 @@ td.sep { width: 10px; padding: 0; border-bottom: 0; }
 </section>
 
 <section>
-  <span class="eyebrow">Soluciones</span>
-  <h2>Qué propongo, en dos fases</h2>
-  <p>Primero se iguala a los personajes, porque mientras haya 90 puntos de distancia entre ellos no se puede elegir una dificultad buena para todos. Después se ajusta la dificultad con el contenido (enemigos y guardianes) hasta que todos entren en las franjas.</p>
-  <div class="phase">Fase 1 · Igualar a los personajes</div>
+  <span class="eyebrow">Ablación</span>
+  <h2>Cuánto pesa cada habilidad</h2>
+  <p>Cada personaje jugado sin su habilidad 1, sin la 2 y sin ninguna (bot experto, sala real y los cuatro guardianes, 8 semillas). Verde: la habilidad pesa mucho (tiempo, victorias o daño recibido); ámbar: algo; rojo: casi nada. Con 8 semillas, diferencias pequeñas son ruido.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Personaje</th><th>Habilidades</th><th>Sin la 1</th><th>Sin la 2</th><th>Sin ninguna</th></tr></thead>
+    <tbody>{{ABL}}</tbody>
+  </table></div>
+  <ul class="plain">
+    <li>Tras los rediseños, todas las mecánicas estrella cuentan: el Detonador de Coral (sin él recibe 5 veces más daño), el disparo rebotante de Marea, la torreta de Ciruela, la Garra taladro de Ámbar (sobre todo para no recibir daño) y el Estallido helado de Escarcha.</li>
+    <li>Quedan tres piezas con poco peso medido en solitario: las Enredaderas de Musgo, el Puño ejecutor de Brasa y la Granada de Marea. Las tres son de apoyo y su sitio natural es el cooperativo.</li>
+    <li>La Burbuja de hielo sale ambigua con 8 semillas (en la prueba anterior, sin ella Escarcha recibía tres veces más daño). Conviene confirmarla con tus partidas.</li>
+  </ul>
+</section>
+
+<section>
+  <span class="eyebrow">Cooperativo</span>
+  <h2>Grupos de 2, 3 y 4 jugadores</h2>
+  <p>Composiciones elegidas por papel para cubrir a los ocho sin probar todas las combinaciones. Cada celda de guardián muestra victorias y tiempo medio. El bot levanta a los compañeros caídos.</p>
+  <div class="scroll"><table>
+    <thead><tr><th class="num">Jug.</th><th>Grupo</th><th>Bot</th><th class="num">Cañonero</th><th class="num">Ariete</th><th class="num">Coloso</th><th class="num">Dragón</th><th class="num">Sala real</th><th class="num">Completa partida</th><th class="num">Piso medio</th></tr></thead>
+    <tbody>{{COOP}}</tbody>
+  </table></div>
+  <h3>Quién hace qué contra los guardianes</h3>
+  <p>Parte de la estamina quitada, del daño, de las ejecuciones y del daño recibido que corresponde a cada jugador del grupo (bot experto).</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Grupo</th><th>Personaje</th><th class="num">Estamina</th><th class="num">Daño</th><th class="num">Ejecuciones</th><th class="num">Daño recibido</th></tr></thead>
+    <tbody>{{COOPROLES}}</tbody>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">Conclusiones</span>
+  <h2>Dónde estamos y qué haría ahora</h2>
   <div class="findings">
-    <div class="finding"><h3>Ejecución al guardián: del 25 % al 12-15 %<span class="sev alta">Alta</span></h3>
-      <p>Es entre el 39 % y el 66 % del daño de los cinco personajes de arriba, y es lo que les deja vencer a los guardianes en 10-25 s sin riesgo. Bajarla reduce lo que depende de aturdir rápido, que es justo lo que separa a los dos grupos.</p>
-      <p class="fix"><b>Probado al 12 %:</b> los combates pasan a 15-45 s y el orden se mantiene (Brasa y Ámbar 14-41 s, Marea y Ciruela 30-45 s, Coral 12-21 s).</p></div>
-    <div class="finding"><h3>Tanques: −25 % de daño recibido y ×1,5 de estamina en sus golpes<span class="sev alta">Alta</span></h3>
-      <p>Ceniza y Musgo están por debajo en todas las partidas (0 % con los dos bots): reciben 127-147 PV por minuto de los guardianes y quitan poca estamina (3-4 por segundo frente a 7-11 del resto), así que casi no ejecutan.</p>
-      <p class="fix"><b>Probado −30 % de daño:</b> Musgo pasa del 53 % al 90 % contra el Dragón. La estamina extra los mete en el ciclo de aturdir y ejecutar. Conviene probar a mano el escudo alzado y la Provocación de Ceniza, que el bot no usa.</p></div>
-    <div class="finding"><h3>Escarcha: 80 PV y disparo ×1,6<span class="sev alta">Alta</span></h3>
-      <p>Por debajo de la franja con los guardianes (62 % y 48 %) y en las partidas (0 %).</p>
-      <p class="fix"><b>Probado:</b> salas reales del 67 % al 90 %, Cañonero del 60 % al 100 % y Dragón del 33 % al 50 %.</p></div>
-    <div class="finding"><h3>Coral: sus explosiones, con la mitad de estamina al guardián<span class="sev media">Media</span></h3>
-      <p>Hoy sus explosiones se saltan la reducción de estamina del guardián (<code>shotStaMul</code>) y lo aturde 15-18 veces por minuto. Su distancia entre bots (73 % frente a 0 % de partidas) es demasiado grande: castiga mucho a quien empieza. Con 60 PV, una opción es darle algo de margen en las salas a cambio de quitarle el aturdimiento fácil al guardián.</p></div>
-    <div class="finding"><h3>Que jugar bien se note con Brasa, Ámbar y Ciruela<span class="sev media">Media</span></h3>
-      <p>Con estos tres el bot medio rinde igual que el experto: la habilidad no cambia el resultado. En los brawlers es la invulnerabilidad durante la Embestida, la Garra taladro, la carrera del dragón y el golpe del segador; en Ciruela, la distancia y la torreta.</p>
-      <p class="fix"><b>Propuesta:</b> quitar la invulnerabilidad a esas cuatro embestidas a ras de suelo (mantenerla en los saltos y la Caída Izuna). Con Ciruela, esperar a la fase 2, porque subir la presión de los enemigos ya debería separar a quien esquiva bien.</p></div>
-  </div>
-  <div class="phase">Fase 2 · Ajustar la dificultad con el contenido</div>
-  <div class="findings">
-    <div class="finding"><h3>Subir la presión de enemigos y guardianes hasta entrar en las franjas<span class="sev alta">Alta</span></h3>
-      <p>Con los personajes ya juntos, el juego seguirá siendo demasiado fácil para la mayoría: hoy cinco de ocho completan el 73-100 % de las partidas, frente al 30-60 % objetivo. Se ajusta con el escalado por piso (<code>SC</code>): daño y vida de los enemigos, ritmo de ataque y refuerzos del guardián. Se repite la simulación hasta que la partida completa quede en 30-60 % (experto) y 5-25 % (medio) con todos.</p></div>
+    <div class="finding"><h3>En cooperativo el juego es demasiado fácil<span class="sev alta">Alta</span></h3>
+      <p>Los nueve grupos ganan a los cuatro guardianes el 100 % de las veces y seis de nueve completan todas sus partidas (el resto, el 88 %). La franja objetivo es 75-90 % de victorias con los guardianes y 30-60 % de partidas completadas. Además, los guardianes duran lo mismo o menos con más jugadores: entre 11 y 34 s con 2 jugadores y entre 10 y 15 s con 4. El escalado actual no compensa a cada jugador extra.</p>
+      <p class="fix"><b>Propuesta:</b> ajustar el escalado por número de jugadores (vida y estamina del guardián, número y ritmo de sus ataques, enemigos por oleada) hasta que el tiempo por guardián crezca con el grupo y las victorias bajen a la franja. Es el cambio de más impacto que queda.</p></div>
+    <div class="finding"><h3>El reparto de papeles funciona como se pensó<span class="sev media">Bien</span></h3>
+      <p>En todos los grupos, los tiradores quitan la mayor parte de la estamina (Marea 50-75 %, Ciruela 66-81 %) y casi no ejecutan; los cuerpo a cuerpo y los tanques hacen las ejecuciones. En los grupos con Ceniza, ella hace un tercio o más de las ejecuciones y recibe el daño que no llega a los demás.</p></div>
+    <div class="finding"><h3>Coral se pierde en grupo<span class="sev media">Media</span></h3>
+      <p>En los grupos de 3 y 4 (con Ciruela, o con Escarcha y Brasa) quita solo el 4-12 % de la estamina y casi no ejecuta; en pareja con Musgo sí aporta (40 %). Preparar y detonar cargas lleva tiempo y en grupo los enemigos caen antes. No es urgente, pero conviene vigilarlo en tus partidas.</p></div>
+    <div class="finding"><h3>En solitario las partidas completas siguen separadas<span class="sev alta">Alta</span></h3>
+      <p>Salas y guardianes ya están dentro o cerca de la franja para los ocho. Pero Marea, Ciruela y Brasa completan el 93-100 % de las partidas, mientras Ceniza y Musgo completan el 0 %, Escarcha el 20 %, Ámbar el 27 % y Coral el 40 %. La diferencia es el desgaste: los tanques reciben 40-45 PV por sala, Marea 5.</p>
+      <p class="fix"><b>Propuesta:</b> resolver primero el cooperativo (subir la presión de los enemigos con el número de jugadores) y luego ajustar la dificultad de solitario con los enemigos, no con los personajes: endurecer las salas para que Marea, Ciruela y Brasa bajen a la franja y, si los tanques siguen muy por debajo, darles una forma de mitigar los proyectiles.</p></div>
     <div class="finding"><h3>Calibrar con tus partidas reales<span class="sev media">Datos</span></h3>
-      <p>El registro de partidas ya está en el juego. Con unas cuantas partidas reales por personaje veremos qué nivel de bot se parece más a un jugador y corregiremos las franjas si hace falta.</p></div>
-    <div class="finding"><h3>Más adelante: ayuda para quien falla, y notas de diseño reales<span class="sev media">Opcional</span></h3>
-      <p>Un modo de ayuda opcional al estilo Hades (resistencia que crece con cada derrota) cubre a quien lo necesite sin tocar el equilibrio base. Al cerrar los cambios, actualizar <code>RATINGS</code> con lo medido.</p></div>
+      <p>El bot esquiva mejor que una persona y levanta a los compañeros sin dudar. El registro de partidas reales del juego dirá cuánto se parece y en qué nivel de bot nos tenemos que fijar.</p></div>
   </div>
 </section>
 
 <section>
-  <span class="eyebrow">Pruebas de cambios</span>
-  <h2>Qué pasa si se aplican las propuestas</h2>
-  <p>Cada cambio se aplicó solo dentro de la simulación (el juego no se ha tocado). Bot experto, 10 semillas. Formato: tiempo actual → tiempo con el cambio; ✕ indica menos de la mitad de victorias.</p>
-  <div class="scroll"><table>
-    <thead><tr><th>Personaje</th><th>Cambio</th><th class="num">Sala real</th><th class="num">Cañonero</th><th class="num">Dragón</th></tr></thead>
-    <tbody>{{WHATIF}}</tbody>
-  </table></div>
+  <span class="eyebrow">Cambios aplicados</span>
+  <h2>Qué ha cambiado desde el primer informe</h2>
+  <div class="applied">
+    <div><b>Coral</b>Granadas normales con poca estamina; las cargas pegajosas detonadas la rompen (3 aturden). Textos y tutorial al día.</div>
+    <div><b>Ámbar</b>Golpe base 4 → 3,2 y furia ×1,6; la furia cuesta más de llenar y se pierde antes; la Garra taladro succiona.</div>
+    <div><b>Ceniza</b>Bloqueo perfecto más potente (60 % de estamina, 30 % al guardián, también contra zonas) y Escudo reparador (lo bloqueado cura, con reserva).</div>
+    <div><b>Escarcha</b>El rayo enfría hasta congelar; el picado solo sobre congelados y los detona; Burbuja de hielo en lugar de la Bola de nieve; 80 PV.</div>
+    <div><b>Tanques</b>160 → 200 PV; el remate del combo ya no lanza.</div>
+    <div><b>Cuerpo a cuerpo</b>Sin golpe al avanzar; golpe al retroceder deliberado y con aviso de área.</div>
+  </div>
 </section>
 
 <section>
