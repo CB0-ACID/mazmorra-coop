@@ -125,6 +125,13 @@
     b.t += STEP;
     for (const k in b.hold) { if (b.hold[k] > 0) { out[k] = true; b.hold[k] -= STEP; } else delete b.hold[k]; }
     if (b.seen.size > 4000) b.seen.clear();
+    // coop: levantar a un aliado caído (se acerca y mantiene atacar a su lado), salvo amenaza inminente
+    const fallen = players.find(q => q !== p && q.down);
+    if (fallen && !SK.noRevive) {
+      const d = Math.hypot(fallen.x - p.x, fallen.y - p.y);
+      if (d < REVIVE.r - 8 && threatAt(b, p, p.x, p.y, now) < 3) { out.a = true; return out; }
+      if (d < 700) b.goRevive = fallen; else b.goRevive = null;
+    } else b.goRevive = null;
     const tg = pickTarget(p);
     // posición deseada
     let gx = p.x, gy = p.y;
@@ -148,6 +155,7 @@
       // sin enemigos (refuerzos por llegar): al centro
       gx = (MID_X + 0.5) * T; gy = (MID_Y + 0.5) * T;
     }
+    if (b.goRevive) { gx = b.goRevive.x; gy = b.goRevive.y; } // ir a levantar al caído
     // muros por medio (o sin línea de tiro): rodearlos por casillas
     if (tg && (segSolid(p.x, p.y, gx, gy) || (c.canShoot && segSolid(p.x, p.y, tg.x, tg.y)))) {
       b.pathT = (b.pathT || 0) - STEP;
