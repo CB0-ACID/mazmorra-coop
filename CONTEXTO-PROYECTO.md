@@ -119,6 +119,45 @@ Vara de medir para todas las decisiones de balance del proyecto. Se mide con el 
 - **Para facilitar, ayudar a quien falla** (estilo Modo Dios de Hades, ayuda creciente tras cada derrota) antes que subir a todos los personajes.
 - Nada de dos juegos de estadísticas (solo y coop) por personaje: el número de jugadores se compensa con el escalado de los enemigos.
 
+## Filosofía de equilibrio (desde el 2026-11-10)
+Cómo se diseña y se ajusta todo lo nuevo: enemigos, personajes y el futuro sistema de mejoras. Los «Criterios de equilibrio» dicen **cuánto**; esta filosofía dice **cómo**. Cualquier propuesta debe poder justificarse con estos principios.
+
+**1. El bucle central manda: presión → estamina rota → aturdido → ejecución.** Todo se mide por cómo alimenta ese bucle. Un cambio que permita saltárselo (matar sin aturdir, aturdir sin riesgo, ejecutar sin acercarse) se rechaza aunque los números cuadren.
+
+**2. Primero la esencia, después los números.** Cada personaje tiene una fantasía jugable (Ceniza bloquea y protege, Musgo levanta, Escarcha acumula frío y lo detona, Coral se calienta, Brasa arriesga cuerpo a cuerpo, Ámbar succiona y se enfurece, Marea y Ciruela controlan a distancia). Si un personaje queda fuera de su franja, se revisa antes si alguna habilidad contradice su esencia; solo después se tocan cifras.
+
+**3. Riesgo = recompensa, y tiene que verse en los datos.** Más daño exige más exposición (daño recibido, distancia, ventanas de castigo). Las herramientas sin coste (spam de una habilidad, inmunidad gratis) se limitan con condiciones de uso (p. ej. el salto de Escarcha solo con congelados) o enfriamientos internos (curación del escudo de Ceniza).
+
+**4. Todo ataque enemigo se avisa y se puede contestar.** La dificultad sube con densidad, combinación y ritmo, nunca quitando el aviso. Un enemigo nuevo necesita: aviso legible, una respuesta clara (esquivar, bloquear, interrumpir) y un papel en el bucle (cuánta estamina tiene, si se puede levantar, si castiga quedarse quieto).
+
+**5. Escalado por jugadores: misma presión por cabeza, más tiempo en grupo.** No hay dos juegos de estadísticas; el número de jugadores lo compensan los enemigos. Objetivo: con N jugadores, cada uno recibe una presión parecida a la de jugar solo, y el guardián dura igual o más que en solitario (nunca menos). En grupo se rompe la estamina mucho más rápido y se reanima a los caídos, así que se escala sobre todo lo que el grupo abarata (estamina, valor de cada ejecución, refuerzos), no solo la vida. Valores vigentes (`ENEMY_SCALE`, `BOSS_ADD_COUNT`; n = jugadores humanos, «1 + IA» cuenta como uno):
+
+  | Palanca | Solo | Por cada jugador extra |
+  |---|---|---|
+  | Vida (todos) | base | +50 % (`multiHp`) |
+  | Estamina tiers 2-3 | base | +50 % (`multiSta`) |
+  | Guardián: vida / estamina fija | base | +66 vida, +12 estamina (`hpPerPlayer`, `staPerPlayer`) |
+  | Guardián: estamina | base | +80 % (`guardian.multiSta`) |
+  | Guardián: vida por ejecución | 25 % | 25 % / (1 + 0,8 × (n − 1)): 14 %, 10 %, 8 % (`execDecay`) |
+  | Guardián: recupera estamina aunque le golpeen | no | 4 % de su estamina por segundo y jugador extra (`regenPerPlayer`) |
+  | Refuerzos del guardián por oleada | 2 | 3 / 4 / 5 con 2 / 3 / 4 jugadores |
+  | Enemigos por sala | presupuesto `ENC` | crece con `np` en cada tier |
+
+  Resultado con el bot experto (2026-11-10): el guardián del piso 4 pasó de 13–19 s a 24–57 s en grupo (antes duraba menos que en solitario), y el tiempo crece con el tamaño del grupo. El grupo sigue ganando casi siempre con el bot porque reanima; la tasa real se calibra con el registro de partidas.
+
+**6. Roles que se necesitan, no que se suman.** En coop los tiradores rompen estamina, los melee rematan y hacen el daño, los tanques sostienen y protegen. Una habilidad que hace bien el trabajo de otro rol sin coste se recorta; una que potencia al compañero (cubrir con el escudo, levantar para rematar en el aire, detonar el frío de otro) se premia.
+
+**7. Mejoras (sistema futuro): más formas de jugar, no solo más números.**
+- Preferir mejoras **horizontales** (cambian cómo funciona una habilidad, añaden sinergias con el bucle o con el compañero) a las **verticales** (+X % de daño). Las verticales, pequeñas y con techo.
+- Cada mejora refuerza la esencia del personaje o abre una variante de ella; ninguna la contradice (un tirador no se vuelve tanque).
+- Ninguna mejora obligatoria: si una se coge casi siempre o un personaje no gana sin ella, se recorta o se integra en la base.
+- Las mejoras no pueden saltarse el bucle central (p. ej. no aturdir sin vaciar la estamina) ni quitar avisos.
+- El gap entre personajes también se mide **con mejoras**: la franja de 15–20 puntos se aplica a la partida completa con mejoras elegidas al azar y con las mejores.
+- Las mejoras de grupo (que afectan a aliados) escalan con el número de jugadores igual que los enemigos, para que el coop no se rompa.
+- La ayuda a quien falla (estilo Modo Dios) es aparte de las mejoras y es opcional.
+
+**8. Proceso para cualquier cambio.** Hipótesis ligada a un principio → simulación (solo con ambos niveles de bot; coop con un conjunto pequeño de composiciones) → ablación si se toca una habilidad → aplicar dejando lo anterior comentado con `[RETIRADO fecha]` → actualizar textos y tutoriales → calibrar con el registro de partidas reales. Comprobar siempre que en solitario (n = 1) no cambia nada si el cambio era solo de grupo.
+
 ## Registro de partidas (desde el 2026-11-08)
 - Al confirmar los personajes se elige **Partida real** (se registra) o **Partida de prueba** (no se registra). «Reintentar» mantiene la elección; «Cambiar de personaje» vuelve a preguntar.
 - Solo cuentan partidas reales que empiezan en el piso 1 sin herramientas de Dev (piso inicial distinto, autosalto, `?debug`) y que terminan en **derrota** (cae el grupo) o **victoria** (cae el Dragón, fin del ciclo). Las abandonadas no se guardan. Asedio no se registra.

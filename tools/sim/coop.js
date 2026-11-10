@@ -41,7 +41,8 @@ for (const [sid, depth, kind] of SC) {
     L.push({ res: r.res, t: r.t, execs: G.__M.execs, P: JSON.parse(sim.ev('JSON.stringify(__PM)')) });
   }
 }
-for (let s = 0; s < NS; s++) {
+const NR = process.env.COOP_RUNS != null ? +process.env.COOP_RUNS : NS; // partidas completas (0 = solo encuentros)
+for (let s = 0; s < NR; s++) {
   G.__simStart(comp, comp.length, 1); sim.ev('__PM = {}');
   const run = { seed: 5000 + s, rooms: 0, floor: 1, t: 0, cleared: false };
   let alive = true;

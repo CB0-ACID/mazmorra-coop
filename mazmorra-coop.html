@@ -215,11 +215,24 @@ const ENEMY = {
 //   tiers 1-3: vida = (hp + hpPerDepth × tier × d) × (1 + multiHp × (n − 1)) · estamina = sta + staPerDepth × tier × d
 //   guardián:  vida = (hp + hpPerDepth × d + hpPerPlayer × (n − 1)) × (1 + multiHp × (n − 1)) · estamina = sta + staPerDepth × d + staPerPlayer × (n − 1)
 //   velocidad: spd × (1 + spdPerDepth × d)
+// Desde el 2026-11-10 (escalado por jugadores, ver «Filosofía de equilibrio» en CONTEXTO-PROYECTO.md):
+//   estamina × (1 + multiSta × (n − 1)) en tiers 2-3 y × (1 + guardian.multiSta × (n − 1)) en el guardián
+//   ejecución del guardián: quita 25 % / (1 + guardian.execDecay × (n − 1)) de su vida máxima (solo: 25 %)
+//   en grupo el guardián recupera estamina aunque le golpeen: maxSta × guardian.regenPerPlayer × (n − 1) por segundo
+//   refuerzos del guardián por oleada: BOSS_ADD_COUNT[n]
+// [RETIRADO 2026-11-10] const ENEMY_SCALE = {
+//   hpPerDepth: 2.2, staPerDepth: 1, spdPerDepth: 0.08,
+//   multiHp: 0.5,
+//   guardian: { hpPerDepth: 44, hpPerPlayer: 66, staPerDepth: 8, staPerPlayer: 12 }
+// };
 const ENEMY_SCALE = {
   hpPerDepth: 2.2, staPerDepth: 1, spdPerDepth: 0.08,
   multiHp: 0.5, // cada jugador humano extra suma un 50 % de vida (premia combinar: lanzar, rematar en el aire, ejecutar); «1 + IA» cuenta como uno
-  guardian: { hpPerDepth: 44, hpPerPlayer: 66, staPerDepth: 8, staPerPlayer: 12 }
+  multiSta: 0.5, // cada jugador extra suma un 50 % de estamina: en grupo se vacía mucho más rápido (varios golpeando a la vez)
+  guardian: { hpPerDepth: 44, hpPerPlayer: 66, staPerDepth: 8, staPerPlayer: 12,
+              multiSta: 0.8, execDecay: 0.8, regenPerPlayer: 0.04 }
 };
+function scaleN() { return Math.max(1, humans().length); } // jugadores que cuentan para el escalado
 // Élite: versión reforzada de un tier 2 (probabilidad chance0 + chancePerDepth × piso por sala)
 const ELITE = { hp: 2.5, sta: 1.5, r: 1.35, dmg: 1.3, kb: 0.6, chance0: 0.12, chancePerDepth: 0.06 };
 // [RETIRADO 2026-11-08] multiplicadores sueltos, integrados en ENEMY, ENEMY_SCALE y ELITE:
@@ -2418,7 +2431,9 @@ function enterRoom(r, dir) {
 // const BOSS_ADDS = { first: 12, every: 20, everyRage: 16, cap: 2, t2Chance: 0.5, // [RETIRADO 2026-11-08] tiempos anteriores, más seguidos
 const BOSS_ADDS = { first: 15, every: 28, everyRage: 22, cap: 2, maxMulti: 6, t2Chance: 0.5,
                     t1: ['slime', 'mite'], t2: ['charger', 'shooter'], minPlayerD: 170, minBossD: 130, near: 560 };
-function bossAddCount() { return Math.max(1, humans().length) <= 2 ? 2 : 4; }
+// [RETIRADO 2026-11-10] function bossAddCount() { return Math.max(1, humans().length) <= 2 ? 2 : 4; }
+const BOSS_ADD_COUNT = [0, 2, 3, 4, 5]; // refuerzos por oleada según jugadores (1-4)
+function bossAddCount() { return BOSS_ADD_COUNT[Math.min(4, scaleN())]; }
 function spawnBossAdds() {
   const n = bossAddCount(), alive = enemies.filter(e => e.bossAdd && !e.dead).length;
   // const k = Math.min(n, n * BOSS_ADDS.cap - alive); if (k <= 0) return false; // [RETIRADO 2026-11-08] hasta dos grupos vivos a la vez
@@ -2501,6 +2516,7 @@ function makeEnemy(type, x, y, elite) {
   hp *= 1 + SC.multiHp * (np - 1);
   const bk = type === 'boss' ? bossKindFor(floor.depth) : null, bc = bk ? BOSS[bk] : null; // guardián del bioma
   if (elite) { hp = Math.ceil(snap(hp * ELITE.hp)); sta = Math.ceil(snap(sta * ELITE.sta)); }
+  if (sta > 0 && np > 1) sta = snap(sta * (1 + (type === 'boss' ? G.multiSta : SC.multiSta) * (np - 1)));
   return {
     type, tier: b.tier, x, y, r: (bc ? bc.r : b.r) * (elite ? ELITE.r : 1), hp, maxHp: hp, sta, maxSta: sta,
     spd: b.spd * (1 + SC.spdPerDepth * dp), color: bc ? bc.color : b.color, elite, kind: bk, dir: Math.PI / 2, lastAtk: null,
@@ -6858,8 +6874,10 @@ function executeEnemy(e, p, how) {
   hitstop = 0.12; flashT = 0.25; SFX.exec(); shake = Math.max(shake, 10);
   igniteExec(e); // chamuscado: Remate ígneo
   if (e.type === 'boss') {
-    e.hp -= e.maxHp * 0.25; e.stunT = 0; e.sta = e.maxSta; e.flash = 0.2;
-    floatText(e.x, ey - 34, '¡Ejecución! −25 %', '#ffd54a');
+    // [RETIRADO 2026-11-10] e.hp -= e.maxHp * 0.25; … floatText(e.x, ey - 34, '¡Ejecución! −25 %', '#ffd54a');
+    const exK = 0.25 / (1 + ENEMY_SCALE.guardian.execDecay * (scaleN() - 1)); // solo 25 %; en grupo menos por ejecución
+    e.hp -= e.maxHp * exK; e.stunT = 0; e.sta = e.maxSta; e.flash = 0.2;
+    floatText(e.x, ey - 34, '¡Ejecución! −' + Math.round(exK * 100) + ' %', '#ffd54a');
     if (e.hp <= 0) killEnemy(e, true);
   } else {
     floatText(e.x, ey - 30, '¡Ejecución!', '#ffd54a');
@@ -7558,6 +7576,7 @@ function updateEnemy(e, dt) {
     return;
   }
   if (e.maxSta > 0 && e.calm > 2) e.sta = Math.min(e.maxSta, e.sta + e.maxSta * 0.2 * dt); // recupera estamina si no le golpean
+  else if (e.type === 'boss' && e.maxSta > 0 && scaleN() > 1) e.sta = Math.min(e.maxSta, e.sta + e.maxSta * ENEMY_SCALE.guardian.regenPerPlayer * (scaleN() - 1) * dt); // en grupo se recupera aunque le golpeen
   const [p, d] = nearestPlayer(e);
   let mv = [0, 0];
   const sgMv = SIEGE.on && e.sg ? siegeSteer(e, p, d, dt) : null; // asedio: van a por los objetivos salvo que un jugador los distraiga
