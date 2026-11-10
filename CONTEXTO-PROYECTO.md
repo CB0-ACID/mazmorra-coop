@@ -156,7 +156,7 @@ Cómo se diseña y se ajusta todo lo nuevo: enemigos, personajes y el futuro sis
 - Las mejoras de grupo (que afectan a aliados) escalan con el número de jugadores igual que los enemigos, para que el coop no se rompa.
 - La ayuda a quien falla (estilo Modo Dios) es aparte de las mejoras y es opcional.
 
-**8. Proceso para cualquier cambio.** Hipótesis ligada a un principio → simulación (solo con ambos niveles de bot; coop con un conjunto pequeño de composiciones) → ablación si se toca una habilidad → aplicar dejando lo anterior comentado con `[RETIRADO fecha]` → actualizar textos y tutoriales → calibrar con el registro de partidas reales. Comprobar siempre que en solitario (n = 1) no cambia nada si el cambio era solo de grupo.
+**8. Proceso para cualquier cambio.** Hipótesis ligada a un principio → **ofrecer** la simulación (solo con ambos niveles de bot; coop con un conjunto pequeño de composiciones; ablación si se toca una habilidad) y ejecutarla solo si el usuario lo pide: el testeo de cambios lo decide él, no se lanza por sistema → aplicar dejando lo anterior comentado con `[RETIRADO fecha]` → actualizar textos y tutoriales → calibrar con el registro de partidas reales. Si se testea, comprobar que en solitario (n = 1) no cambia nada cuando el cambio era solo de grupo.
 
 ## Registro de partidas (desde el 2026-11-08)
 - Al confirmar los personajes se elige **Partida real** (se registra) o **Partida de prueba** (no se registra). «Reintentar» mantiene la elección; «Cambiar de personaje» vuelve a preguntar.
