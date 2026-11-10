@@ -15,8 +15,9 @@ Videojuego de navegador en HTML: acción cooperativa con vista semicenital (tres
 1. **mazmorra-coop.html**: el prototipo jugable (≈257 kB).
    - 8 personajes en 4 roles: Ceniza (tanque defensor), Musgo (tanque mago), Escarcha (ágil, escarcha), Coral (ágil, demoledora: lanzagranadas), Brasa (brawler ejecutor), Ámbar (brawler ninja), Marea (tirador, rebote), Ciruela (tirador, torreta).
    - Enemigos por tiers: ácaro, limo y murciélago (T1), embestidor y artillero (T2), gólem y divisor (T3), guardián del piso (T4). En el código: `mite`, `slime`, `bat`, `charger`, `shooter`, `golem`, `splitter` y `boss` (ver el glosario). El murciélago está desactivado de momento (sin enemigos voladores): su código sigue, pero no aparece en mazmorra ni en asedio.
-   - **Guardianes** (`BOSS`, `BOSS_AI_BY_KIND`, `e.kind`): uno por bioma en un ciclo de cuatro pisos: piso 1 **Guardián Cañonero** (`cannon`), piso 2 **Ariete del Bosque** (`ram`), piso 3 **Coloso de la Gruta** (`colossus`) y piso 4 **Dragón de la Catedral** (`dragon`, guardián final del ciclo); luego se repite. Reglas comunes: tienen frente y espalda (cara y arma hacia `e.dir`, que gira con velocidad limitada, así que rodearlos sirve); sus ataques salen por delante desde un punto visible (boca del cañón, cuernos, puños); todo se prepara con aviso en el suelo y la dirección se fija poco antes de golpear; tras cada ataque quedan quietos (ventana para castigar); y tienen un ataque en área alrededor, muy telegrafiado, cuyo peso sube cuanto más los rodeáis o más pegados estáis (`bossFlank`, `bossAreaWeight`). Cañonero: abanico apuntado, barrido de lado a lado y Estallido (anillo con huecos). Ariete: embestida en línea hasta el muro (si choca queda atontado 1,8 s; con rabia encadena dos), cornada en abanico y pisotón. Coloso: martillazo en cono, grieta que avanza en línea y terremoto alrededor. Con rabia (<50 % de vida) contorno rojo, más rápidos y combos.
-   - **Dragón de la Catedral** (guardián final, `BOSS.dragon`, `dragonSky`, `drawBossAir`): **Rayo de energía** (una esfera crece en la boca sobre la línea del disparo y el área se marca en el suelo hasta el muro; la dirección se fija 0,6 s antes; con rabia arrastra el rayo hacia ti), **Rayos del cielo** (2 o 3 áreas juntas sobre un jugador que caen una tras otra; con rabia, sobre dos jugadores) **Pisotón** (si alguien está muy cerca: área marcada alrededor con ondas de aviso; al soltarlo, una onda se expande desde el cuerpo, daña y empuja hacia fuera a quien alcanza) y **Vuelo** (despega y sale de la pantalla; mientras vuela no se le puede golpear, `e.sky` y `spawnT` alto; una sombra con contorno violeta marca su posición; hace 2 pasadas de bombardeo, 3 con rabia, con la línea y las bombas marcadas en el suelo, y cae en picado sobre un jugador con daño en área; al aterrizar se queda 1,8 s quieto). Su música es la pista `final`. Al vencerlo: «¡Ciclo completado!».
+   - **Guardianes** (`BOSS`, `BOSS_AI_BY_KIND`, `e.kind`): uno por acto en un ciclo de cuatro pisos (nombres de *El príncipe Ígor* desde el 2026-11-10; ver «Lore y trama»): piso 1 **Príncipe Galitski** (`cannon`, antes Guardián Cañonero), piso 2 **Kan Kónchak** (`ram`, antes Ariete del Bosque), piso 3 el **dúo Vladímir y Konchakovna** (`colossus` + `maiden`, ver abajo) y piso 4 **Ígor, Dragón del Eclipse** (`dragon`, antes Dragón de la Catedral; guardián final del ciclo); luego se repite. Los ataques de cada uno no cambian con el nombre (Galitski = el antiguo Cañonero, etc.). Reglas comunes: tienen frente y espalda (cara y arma hacia `e.dir`, que gira con velocidad limitada, así que rodearlos sirve); sus ataques salen por delante desde un punto visible (boca del cañón, cuernos, puños); todo se prepara con aviso en el suelo y la dirección se fija poco antes de golpear; tras cada ataque quedan quietos (ventana para castigar); y tienen un ataque en área alrededor, muy telegrafiado, cuyo peso sube cuanto más los rodeáis o más pegados estáis (`bossFlank`, `bossAreaWeight`). Cañonero: abanico apuntado, barrido de lado a lado y Estallido (anillo con huecos). Ariete: embestida en línea hasta el muro (si choca queda atontado 1,8 s; con rabia encadena dos), cornada en abanico y pisotón. Coloso: martillazo en cono, grieta que avanza en línea y terremoto alrededor. Con rabia (<50 % de vida, o en lamento) contorno rojo, más rápidos y combos (`bossRage`).
+   - **Dúo del piso 3** (`DUO`, `isDuoDepth`, `e.duoMate`, `duoLinked`, 2026-11-10): **Vladímir, hijo de Ígor** (el antiguo Coloso, ahora con casco cónico dorado de la Rus) y **Konchakovna, hija del kan** (`BOSS.maiden`, `BOSS_AI_BY_KIND.maiden`) salen juntos; cada uno con una parte de la vida de un guardián normal (`DUO.share`: 62 % y 48 %). **Hilo rojo**: mientras están a menos de `DUO.linkR` (300) el uno del otro, los dos reciben el 45 % del daño de vida y estamina (también en ejecuciones); se ve como un hilo rojo que late entre ellos y, separados, como dos cabos rotos. **Lamento**: si cae uno, el otro entra en rabia hasta el final y se mueve un 20 % más rápido (`e.grief`). Konchakovna es ligera y rápida, mantiene la distancia y vuelve junto a Vladímir si la separan; ataques: **Danza de velos** (abanico ancho delante, aviso en el suelo), **Giro** (carril corto que recorre girando y daña al tocar; con rabia encadena dos) y **Cavatina** (área si la rodeáis: anillo de notas lentas con huecos; con rabia canta dos veces). Daños en `ENEMY_DMG.boss` (`veil`, `note`, `spin`). Abajo salen dos barras con nombres cortos y el estado («hilo rojo» o «lamento») (`drawBossBar`).
+   - **Dragón de la Catedral** (guardián final, `BOSS.dragon`, `dragonSky`, `drawBossAir`): **Rayo de energía** (una esfera crece en la boca sobre la línea del disparo y el área se marca en el suelo hasta el muro; la dirección se fija 0,6 s antes; con rabia arrastra el rayo hacia ti), **Rayos del cielo** (2 o 3 áreas juntas sobre un jugador que caen una tras otra; con rabia, sobre dos jugadores) **Pisotón** (si alguien está muy cerca: área marcada alrededor con ondas de aviso; al soltarlo, una onda se expande desde el cuerpo, daña y empuja hacia fuera a quien alcanza) y **Vuelo** (despega y sale de la pantalla; mientras vuela no se le puede golpear, `e.sky` y `spawnT` alto; una sombra con contorno violeta marca su posición; hace 2 pasadas de bombardeo, 3 con rabia, con la línea y las bombas marcadas en el suelo, y cae en picado sobre un jugador con daño en área; al aterrizar se queda 1,8 s quieto). Su música es la pista `final`. Al vencerlo: «¡El sol ha sido devorado! Cae el telón». Pendiente: la forma humana de Ígor antes del Dragón.
    - **Refuerzos del guardián** (`BOSS_ADDS`, `updateBossAdds`): en la sala del guardián entran enemigos de tier 1 y 2 (mitad y mitad) a los 15 s y luego cada 28 s (22 s con rabia): 2 con 1 o 2 jugadores, 4 con 3 o 4 (el «1 + IA» cuenta como uno). Con un jugador no entra otro grupo hasta acabar con el anterior (el reloj se para mientras quede alguno vivo). Con varios, los grupos pueden solaparse hasta 6 refuerzos vivos (`maxMulti`). Aparecen lejos de los jugadores y del guardián, y al caer el guardián se deshacen.
    - Sistemas: vida y estamina de enemigos, aturdimiento y ejecuciones, levantar enemigos por los aires y mantenerlos arriba (malabar aéreo), bloqueo con bloqueo perfecto, hitstop/hitstun, búfer de entrada, rescate de compañeros caídos (fantasma si se agota el tiempo), aliado IA, habilidades 1 y 2 y ataques cargados.
    - Entradas: Teclado A, Teclado B, táctil y hasta 4 mandos (Gamepad API). Menú de pausa con guía de controles y modo de prueba.
@@ -191,7 +192,8 @@ Cuatro nombres de la ópera para los guardianes existentes, más Ígor como guar
 | 3 | Gruta acuática → orilla del río Kayala de noche | Coloso → **Vladímir, hijo de Ígor** | Príncipe joven con armadura pesada: martillazo, grieta y terremoto. **Konchakovna** a su lado (ver abajo). |
 | 4 | Catedral gótica → catedral y murallas de Putivl bajo el eclipse | Nuevo: **Ígor** (forma humana) → **Dragón** (el Dragón de la Catedral actual pasa a ser su segunda forma) | Al derrotar a Ígor, el eclipse llega a la totalidad, se transforma y empieza la pelea del Dragón con su música `final`. Al caer el Dragón, devora el sol y la función vuelve a empezar. |
 
-- **Pendiente de decidir — Konchakovna.** Hay cuatro nombres para tres guardianes no finales. Propuesta: **dúo en el piso 3**, Vladímir (el Coloso) y Konchakovna (nueva, ligera y rápida, ataques de danza en abanico y una onda de canto, por su cavatina). Son amantes: un hilo rojo visible los une y les da escudo mientras están cerca, así que el grupo tiene que separarlos (mecánica coop). Si cae uno, el otro entra en rabia. Alternativa: ciclo de cinco pisos con Konchakovna como guardiana propia.
+- **Konchakovna — decidido e implementado (2026-11-10): dúo en el piso 3** con Vladímir. Son amantes: el hilo rojo los protege mientras están cerca, así que el grupo tiene que separarlos (mecánica coop); si cae uno, el otro entra en lamento. Detalles en «Archivos > Guardianes».
+- **Nombres en el juego (2026-11-10):** guardianes y pisos ya renombrados en el código (`BOSS.*.name`, `THEMES.*.name` y `THEMES.*.act`); los nombres anteriores quedan comentados. Pisos: **Putivl en fiesta** (Acto I), **Estepa polovtsiana** (Acto II), **Río Kayala** (Acto III) y **Catedral de Putivl** (Acto IV). Al vencer a un guardián: «Fin del Acto N».
 - **Ígor, forma humana (propuesta).** Príncipe con casco cónico dorado, capa roja y escudo almendrado. Duelista que recapitula el ciclo: en cada tramo de vida usa la idea de un guardián anterior (salva de Galitski, embestida de Kónchak, golpe al suelo de Vladímir), siempre con frente, arma visible y aviso como el resto de guardianes. Música: la pista `boss`; la transformación da paso a `final`.
 
 ### Esquema de progresión de la trama y los niveles
@@ -240,11 +242,55 @@ Cuatro nombres de la ópera para los guardianes existentes, más Ígor como guar
 - **Facciones por piso:** piso 1 rus; pisos 2 y 3 polovtsianos; piso 4 mezcla de ambos en sombra.
 - Coherente con el prototipo 3D: siluetas oscuras con un acento de color, formas simples y reconocibles, texturas sencillas pero intensas.
 
+### Menús como teatro (2026-11-10)
+- **Escenario** (`drawStage`, `STAGE`, `drawCurtainCloth`, `drawEclipse`): el menú principal tiene de fondo el **telón echado** (terciopelo rojo con pliegues que se mecen, costura central, foco y el emblema del eclipse bordado en dorado); los ocho personajes quedan delante, sobre la boca del escenario, con las candilejas bajo sus nombres, y los accesos y las ayudas abajo, en el foso. La selección de personaje tiene el **escenario abierto**: bambalina con flecos arriba, telón recogido a los lados con cordones dorados, suelo de tablas y candilejas sobre los paneles de jugador. Al empezar: «¡Arriba el telón!». El resto de pantallas siguen con `drawMenuBg`.
+- `drawEclipse(x, y, R, k)` dibuja el sol con la luna delante (k = parte tapada) y la corona; queda listo para el indicador del eclipse.
+
 ### Pendiente de decidir
-- Konchakovna: dúo con Vladímir en el piso 3 (propuesta) o piso propio.
-- Si los nombres se cambian ya en el código (`BOSS.*.name`, `THEMES.*.name`) y si el piso 1 deja de ser «mazmorra» y pasa a ser Putivl.
+- Forma humana de Ígor antes del Dragón (propuesta arriba).
 - Nombre final de la moneda, de la tienda y de las mejoras (Destellos, Guardarropía, bises).
-- Qué ideas de jugabilidad se prototipan primero.
+- Qué ideas del roadmap se prototipan primero.
+
+## Roadmap de jugabilidad y trama (desde el 2026-11-10)
+Ideas aprobadas como dirección, aún sin implementar salvo que se indique. Están ordenadas en fases por dependencia (cada fase se apoya en la anterior), no por fecha. Al implementar una, se marca aquí y se documenta en «Archivos».
+
+**Fase 0 · Hecho (2026-11-10)**
+- [x] Guardianes y pisos con los nombres de la ópera.
+- [x] Dúo Vladímir y Konchakovna en el piso 3 (hilo rojo y lamento).
+- [x] Menús como teatro: telón echado en el menú principal y escenario abierto en la selección.
+
+**Fase 1 · El eclipse visible**
+- [ ] Indicador del eclipse en el marcador y en el banner de cada piso (25 %, 50 %, 75 %, totalidad), con `drawEclipse`.
+- [ ] Luz de las salas que baja de tono y sombras más largas con cada piso, sin tapar nunca avisos ni barras.
+- [ ] Totalidad en el piso 4: cielo negro y corona.
+- [ ] Forma humana de Ígor (duelista que recapitula a los guardianes) que se transforma en el Dragón.
+- [ ] Epílogo del ciclo: el Dragón devora el sol, cae el telón y empieza la Función n.º + 1.
+
+**Fase 2 · Economía y tienda**
+- [ ] **Destellos**: moneda que sueltan los enemigos (chispas doradas; icono de sol pequeño).
+- [ ] **La Guardarropía**: tienda atendida por **Skula y Yeroshka**; surtido distinto según el piso (rus en Putivl, polovtsiano en la estepa y el río).
+- [ ] **Vestuario** (piezas pasivas para toda la run: máscaras, tocados, cascos, fajines) y **Atrezo** (consumibles de un uso).
+- [ ] **Camerino** en lugar de la sala del tesoro: cofre con Destellos y una pieza de Vestuario o mostrador de la Guardarropía; espejo para cambiar una mejora por otra.
+
+**Fase 3 · Mejoras entre salas y entre pisos**
+- [ ] **Ovación**: al limpiar ciertas salas, elegir 1 de 3 **bises** (mejoras pequeñas). Frecuencia por decidir.
+- [ ] **Entreacto** entre pisos (bambalinas): curación (la de bajar de piso), Guardarropía y **Lamento de Yaroslavna**: bendición de **Viento** (levantar, aéreo, movilidad), **Sol** (daño, quemadura, luz) o **Río** (curación, rescate, vida).
+- [ ] Mejoras de grupo que escalan con el número de jugadores (ver «Filosofía de equilibrio»).
+
+**Fase 4 · Decisiones de trama**
+- [ ] **La oferta de Kónchak** antes del guardián del piso 2: pacto con ventaja fuerte y maldición, o rechazarlo como Ígor.
+- [ ] **Ovlur**: sala secreta o atajo; saltarse una sala o rescatar a un caído a cambio de Destellos.
+
+**Fase 5 · Enemigos y escena**
+- [ ] Cascos y vestuario por tier y facción (ver «Influencias visuales»); el casco se agrieta con poca estamina y salta al quedar levantable.
+- [ ] Refuerzos de Kónchak como bailarines polovtsianos.
+- [ ] **Babas de piedra**: tótems que potencian a los enemigos cercanos hasta que se rompen.
+- [ ] Caer en combate como **sombra a contraluz** (el fantasma actual).
+- [ ] **Los suplentes**: la party inversa del diario de ideas como dobles oscuros de la compañía.
+
+**Fase 6 · Meta-progresión**
+- [ ] **Funciones**: cada ciclo completado sube el número de función (dificultad creciente, al estilo del Calor de Hades) y desbloquea Vestuario como aspecto de los personajes.
+- [ ] Candelabros o antorchas en salas oscuras que se pueden encender a cambio de un pequeño bonus.
 
 ## Glosario
 Término canónico en **negrita**; entre paréntesis, el anglicismo o la palabra que se usaba y el identificador en el código. En la interfaz y en los documentos se usa siempre el término canónico.
@@ -293,7 +339,7 @@ Término canónico en **negrita**; entre paréntesis, el anglicismo o la palabra
 - **Aturdido** («stun», `stunT`): estado al vaciar la estamina; recibe más daño (`DMG.stunned`) y se le puede **ejecutar**.
 - **Ejecutar** («execute», `executeEnemy`): acabar de golpe con un enemigo aturdido en el suelo pulsando el ataque a su lado (o en el aire, enganchado con el salto). El Puño ejecutor de Brasa también ejecuta a los tier 1. Carga recursos de algunos personajes (furia de Ámbar, Poder del dragón de Brasa).
 - **Remate**: palabra reservada para el último golpe de un combo (`finisher`); para acabar con un aturdido se dice **ejecutar**.
-- **Contacto** (`isHot`, `CONTACT_ATTACK`): daño por tocar al enemigo. Solo durante la embestida avisada del ácaro, del embestidor y del Ariete; los demás guardianes no dañan al tocarlos.
+- **Contacto** (`isHot`, `CONTACT_ATTACK`): daño por tocar al enemigo. Solo durante la embestida avisada del ácaro, del embestidor y de Kónchak, y durante el giro de Konchakovna; los demás guardianes no dañan al tocarlos.
 - **Volador** (`fly`, `flying`): el murciélago; vuela a su altura (`flyZ`) y no aterriza al caer. Mientras vuela solo le dañan los ataques a distancia, los golpes de quien salta, los ataques que lanzan por los aires y la Caída Izuna; el golpe normal desde el suelo avisa «Salta o lánzalo».
 - **Quemadura** (`BURN`), **congelado** (`frozenT`), **ralentizado** (`slowT`), **enredado** (`rootT`): estados alterados.
 
@@ -301,7 +347,7 @@ Término canónico en **negrita**; entre paréntesis, el anglicismo o la palabra
 - **Ácaro** → `mite` (tier 1, embestida avisada) · **Limo** → `slime` (tier 1, escupitajo) · **Murciélago** → `bat` (tier 1, volador, onda de sonido)
 - **Embestidor** → `charger` (tier 2, embestida y zarpazo) · **Artillero** → `shooter` (tier 2, disparos)
 - **Gólem** → `golem` (tier 3, salto y pisotón) · **Divisor** → `splitter` (tier 3, se teletransporta, siembra bombas y se divide al morir)
-- **Guardián** → `boss` (tier 4)
+- **Guardián** → `boss` (tier 4); cada uno por `e.kind`: **Príncipe Galitski** → `cannon` · **Kan Kónchak** → `ram` · **Vladímir** → `colossus` · **Konchakovna** → `maiden` · **Ígor, Dragón del Eclipse** → `dragon`. **Dúo**: dos guardianes a la vez (piso 3). **Hilo rojo**: protección del dúo mientras están juntos. **Lamento**: rabia del que queda del dúo.
 
 ### Personajes y roles
 - **Rol** (`role`, visible como «Familia · Especialidad», p. ej. «Tanque · Mago»): Tanque (`tanque`), Ágil (`agil`), Brawler (`brawler`) y Tirador (`tirador`).

@@ -176,13 +176,14 @@ const PALETTES = [
   { f1: '#1e2a31', f2: '#22303a', top: '#3d5563', front: '#29404e', rockTop: '#4e6b7c', rockFront: '#33495a' }, // gruta acuática
   { f1: '#2e2a33', f2: '#332f39', top: '#5c5462', front: '#3f3946', rockTop: '#736a7c', rockFront: '#4a4353' }  // catedral
 ];
-// Temas por piso: el piso 1 es la mazmorra de siempre; después van bosque, gruta y catedral y se repiten.
+// Temas por piso: los cuatro actos de la función (ver «Lore y trama» en CONTEXTO-PROYECTO.md); se repiten en cada ciclo.
 // Solo cambian paleta y motivos decorativos; la estructura de salas, muros y puertas es la misma.
+// [RETIRADO 2026-11-10] nombres anteriores: 'Mazmorra', 'Bosque otoñal', 'Gruta acuática', 'Catedral gótica'
 const THEMES = [
-  { name: 'Mazmorra', pal: PALETTES[0], motif: null },
-  { name: 'Bosque otoñal', pal: PALETTES[1], motif: 'bosque' },
-  { name: 'Gruta acuática', pal: PALETTES[2], motif: 'gruta' },
-  { name: 'Catedral gótica', pal: PALETTES[3], motif: 'catedral' }
+  { name: 'Putivl en fiesta', act: 'Acto I', pal: PALETTES[0], motif: null },
+  { name: 'Estepa polovtsiana', act: 'Acto II', pal: PALETTES[1], motif: 'bosque' },
+  { name: 'Río Kayala', act: 'Acto III', pal: PALETTES[2], motif: 'gruta' },
+  { name: 'Catedral de Putivl', act: 'Acto IV', pal: PALETTES[3], motif: 'catedral' }
 ];
 const themeOf = depth => THEMES[(depth - 1) % THEMES.length];
 // ================= ENEMIGOS =================
@@ -276,7 +277,8 @@ const ENEMY_DMG = {
   golem:    { leap: 32, slam: 36 },     // salto y pisotón
   splitter: { bomb: 22 },               // bombas sembradas
   // boss:     { contact: 30, shot: 18 }   // [RETIRADO 2026-11-08] el guardián dañaba siempre al tocar
-  boss:     { contact: 30, shot: 18, gore: 26, stomp: 26, slam: 32, quake: 22, beam: 34, bolt: 28, bomb: 22, land: 32 } // contact: embestida del Ariete · shot: balas del Cañonero · resto: avisos del suelo
+  // boss:     { contact: 30, shot: 18, gore: 26, stomp: 26, slam: 32, quake: 22, beam: 34, bolt: 28, bomb: 22, land: 32 } // [RETIRADO 2026-11-10] antes del dúo
+  boss:     { contact: 30, shot: 18, gore: 26, stomp: 26, slam: 32, quake: 22, beam: 34, bolt: 28, bomb: 22, land: 32, veil: 24, note: 16, spin: 24 } // contact: embestida de Kónchak · shot: salvas de Galitski · veil/note/spin: Konchakovna (velos, notas, giro) · resto: avisos del suelo
 };
 // Ataque que se aplica al tocar a un jugador (solo mientras isHot(e) lo permite)
 const CONTACT_ATTACK = { mite: 'dash', charger: 'dash', boss: 'contact' };
@@ -290,7 +292,8 @@ function edmg(e, kind) {
   if (v == null) { warnOnce('edmg:' + e.type + ':' + kind, 'Mazmorra: falta ENEMY_DMG.' + e.type + '.' + kind); v = DMG_FALLBACK; }
   return Math.round(v * (e.elite ? ELITE.dmg : 1));
 }
-function contactDmg(e) { return edmg(e, CONTACT_ATTACK[e.type] || 'contact'); }
+// function contactDmg(e) { return edmg(e, CONTACT_ATTACK[e.type] || 'contact'); } // [RETIRADO 2026-11-10] el giro de Konchakovna tiene su daño
+function contactDmg(e) { return edmg(e, e.type === 'boss' && e.state === 'spin' ? 'spin' : (CONTACT_ATTACK[e.type] || 'contact')); }
 
 // ================= VIDA DE LOS PERSONAJES =================
 // En puntos de vida (PV), ya no en corazones: un antiguo corazón equivale a 20 PV. El corazón queda como símbolo de curación.
@@ -1143,7 +1146,7 @@ const SFX_MOVE = { dash: 'dash', stride: 'stride', teleport: 'teleport', roll: '
 // ya suenan dentro de su función (swing/exec/launch) y se apilaban con el sonido de uso.
 const SFX_ABILITY = { area: 'area', rush: 'rush', drop: 'drop', ricochet: 'ricochet', shield: 'shield', pillar: 'pillar', taunt: 'taunt', roots: 'roots', volley: 'volley', overdrive: 'overdrive', overcharge: 'overcharge', reaper: 'reaper', detonator: 'detonator' };
 // Estado del enemigo → sonido al entrar en él (avisos de ataque, ataques, saltos y aturdimientos)
-const SFX_STATE = { wind: 'windup', swipeWind: 'windup', slamWind: 'windup', leapWind: 'windup', chargeWind: 'windup', fanWind: 'windup', ringWind: 'windup', sgWind: 'windup', passWind: 'passWind', spit: 'spit', swipe: 'swipe', sweep: 'swipe', pass: 'swipe', dash: 'charge', charge: 'charge', slam: 'slam', stomp: 'slam', leap: 'leap', blinkOut: 'blinkOut', blinkIn: 'blinkIn', dazed: 'daze', takeoff: 'takeoff', dive: 'dive', beam: 'bolt' };
+const SFX_STATE = { veilWind: 'windup', songWind: 'windup', spinWind: 'windup', spin: 'charge', wind: 'windup', swipeWind: 'windup', slamWind: 'windup', leapWind: 'windup', chargeWind: 'windup', fanWind: 'windup', ringWind: 'windup', sgWind: 'windup', passWind: 'passWind', spit: 'spit', swipe: 'swipe', sweep: 'swipe', pass: 'swipe', dash: 'charge', charge: 'charge', slam: 'slam', stomp: 'slam', leap: 'leap', blinkOut: 'blinkOut', blinkIn: 'blinkIn', dazed: 'daze', takeoff: 'takeoff', dive: 'dive', beam: 'bolt' };
 // Efecto de ataque del guardián (bossFxAt) → sonido, en el momento en que llega
 const BOSS_FX_SND = { blast: 'boomBig', bolt: 'bolt', land: 'slam' };
 // Reproduce un sonido del catálogo. at = retardo en segundos; gap = mínimo entre dos iguales
@@ -2360,7 +2363,10 @@ const ENC = {
 };
 function makeEncounter(r) {
   const rng = mulberry32(r.rng ^ 0x9e3779b9);
-  if (r.type === 'boss') return [[{ type: 'boss', elite: false }]];
+  // if (r.type === 'boss') return [[{ type: 'boss', elite: false }]]; // [RETIRADO 2026-11-10] un solo guardián siempre
+  if (r.type === 'boss') return isDuoDepth(floor.depth)
+    ? [DUO.kinds.map(k => ({ type: 'boss', elite: false, kind: k }))] // piso 3: el dúo sale junto
+    : [[{ type: 'boss', elite: false }]];
   const np = Math.max(1, humans().length), depth = floor.depth, dist = Math.max(1, r.dist || 0);
   const cnt = (C, jitter) => Math.min(C.max, Math.floor(C.base + C.dist * dist + C.depth * (depth - 1) + C.np * (np - 1) + rng() * jitter));
   const n1 = cnt(ENC.t1, 2.5), n2 = cnt(ENC.t2, 1.5);
@@ -2422,7 +2428,7 @@ function enterRoom(r, dir) {
     for (let i = 0; i < c; i++) pickups.push({ x: (MID_X + 0.5) * T + (i - (c - 1) / 2) * 34, y: (MID_Y + 0.5) * T, t: Math.random() * 6 });
     showBanner('Sala del tesoro');
   }
-  if (r.type === 'boss' && !r.cleared) showBanner(BOSS[bossKindFor(floor.depth)].name); // [antes: 'El guardián del piso']
+  if (r.type === 'boss' && !r.cleared) showBanner(bossTitle(floor.depth)); // [antes: 'El guardián del piso'; luego BOSS[…].name]
   fade = 0.35;
   snapCamera();
 }
@@ -2498,16 +2504,20 @@ function spawnWave() {
   const live = players.filter(p => !p.down), gx = live.length ? live.reduce((a, p) => a + p.x, 0) / live.length : room.entryX, gy = live.length ? live.reduce((a, p) => a + p.y, 0) / live.length : room.entryY;
   const near = free.filter(([cx, cy]) => Math.hypot(cx - gx, (cy - gy) / 0.8) < 560);
   if (near.length >= list.length * 2) { free.length = 0; free.push(...near); }
+  const bosses = list.filter(s => s.type === 'boss').length; let bi = 0, made = [];
   for (const s of list) {
     let x = (MID_X + 0.5) * T, y = (MID_Y + 0.5) * T;
     if (s.type !== 'boss' && free.length) { const i = Math.floor(Math.random() * free.length); [x, y] = free.splice(i, 1)[0]; }
-    enemies.push(makeEnemy(s.type, x, y, s.elite));
+    if (s.type === 'boss' && bosses > 1) x += (bi++ - (bosses - 1) / 2) * DUO.gap; // dúo: uno al lado del otro
+    // enemies.push(makeEnemy(s.type, x, y, s.elite)); // [RETIRADO 2026-11-10] sin guardián elegido por la oleada
+    const e = makeEnemy(s.type, x, y, s.elite, s.kind); enemies.push(e); if (s.kind) made.push(e);
   }
+  if (made.length === 2) { made[0].duoMate = made[1]; made[1].duoMate = made[0]; } // el dúo: cada uno conoce al otro
 }
 
 // Redondeo a 6 decimales antes de Math.ceil: evita que el ruido de coma flotante suba un punto entero
 function snap(v) { return Math.round(v * 1e6) / 1e6; }
-function makeEnemy(type, x, y, elite) {
+function makeEnemy(type, x, y, elite, kind) { // kind: guardián concreto (el dúo); si falta, el del piso
   const b = ENEMY[type], dp = floor.depth - 1, np = Math.max(1, humans().length);
   // [RETIRADO 2026-11-08] escalado en unidades abstractas (multiplicadas después por ENEMY_HP_MUL y ENEMY_STA_MUL):
   // let hp = b.hp + dp * b.tier * 0.5, sta = b.sta ? b.sta + dp * b.tier * 0.5 : 0;
@@ -2518,7 +2528,9 @@ function makeEnemy(type, x, y, elite) {
   let hp = b.hp + SC.hpPerDepth * b.tier * dp, sta = b.sta ? b.sta + SC.staPerDepth * b.tier * dp : 0;
   if (type === 'boss') { hp = b.hp + G.hpPerDepth * dp + G.hpPerPlayer * (np - 1); sta = b.sta + G.staPerDepth * dp + G.staPerPlayer * (np - 1); }
   hp *= 1 + SC.multiHp * (np - 1);
-  const bk = type === 'boss' ? bossKindFor(floor.depth) : null, bc = bk ? BOSS[bk] : null; // guardián del bioma
+  // const bk = type === 'boss' ? bossKindFor(floor.depth) : null, bc = bk ? BOSS[bk] : null; // [RETIRADO 2026-11-10] sin dúo
+  const bk = type === 'boss' ? (kind || bossKindFor(floor.depth)) : null, bc = bk ? BOSS[bk] : null; // guardián del acto
+  if (kind && DUO.share[kind]) { hp = snap(hp * DUO.share[kind]); sta = snap(sta * DUO.share[kind]); } // dúo: cada uno, parte de la vida
   if (elite) { hp = Math.ceil(snap(hp * ELITE.hp)); sta = Math.ceil(snap(sta * ELITE.sta)); }
   if (sta > 0 && np > 1) sta = snap(sta * (1 + (type === 'boss' ? G.multiSta : SC.multiSta) * (np - 1)));
   return {
@@ -2537,7 +2549,8 @@ function roomCleared() {
   playSnd(room.type === 'boss' ? 'bossWin' : 'clear', 0.5);
   let revived = false;
   for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
-  if (room.type === 'boss') { room.stairs = true; showBanner(isFinalBoss(floor.depth) ? '¡Ciclo completado! El Dragón ha caído: ve al portal' : 'Guardián derrotado: ve al portal y pulsa Fijar'); }
+  // if (room.type === 'boss') { room.stairs = true; showBanner(isFinalBoss(floor.depth) ? '¡Ciclo completado! El Dragón ha caído: ve al portal' : 'Guardián derrotado: ve al portal y pulsa Fijar'); } // [RETIRADO 2026-11-10]
+  if (room.type === 'boss') { room.stairs = true; showBanner(isFinalBoss(floor.depth) ? '¡El sol ha sido devorado! Cae el telón: ve al portal' : 'Fin del ' + themeOf(floor.depth).act + ': ve al portal y pulsa Fijar'); }
   else {
     showBanner(revived ? 'Sala despejada, compañeros de vuelta' : 'Sala despejada');
     if (Math.random() < 0.3) pickups.push({ x: (MID_X + 0.5) * T, y: (MID_Y + 0.5) * T, t: 0 });
@@ -6698,7 +6711,7 @@ function interruptHit(e, heavy) {
     // if (e.state === 'ringWind' || e.state === 'fanWind') { e.state = 'walk'; e.ringAngles = null; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2; } // [RETIRADO 2026-11-08 · v2]
     if (/Wind$/.test(e.state)) { // cancela el ataque preparado y sus avisos del suelo
       for (const h of hazards) if (h.owner === e) h.cancel = true;
-      e.state = 'walk'; e.novaAngles = null; e.chain = 0; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2;
+      e.state = 'walk'; e.novaAngles = null; e.songAngles = null; e.songAgain = false; e.chain = 0; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2;
     }
     return;
   }
@@ -6715,6 +6728,7 @@ function damageEnemy(e, sx, sy, hpDmg, staDmg, kbBase, ranged) {
   // ranged = el golpe alcanza a un volador: disparo, proyectil, golpe de quien salta, lanzador o Caída Izuna.
   // Volando a su altura, lo demás no le hace nada; si ese mismo golpe lo lanza, tryLaunch aplica el daño guardado.
   if (e.flying && !e.airborne && !ranged) { e.blockedHit = { t: time, sx, sy, hp: hpDmg, sta: staDmg, kb: kbBase }; return; }
+  if (duoLinked(e)) { hpDmg *= DUO.linkHp; staDmg *= DUO.linkSta; if (time - (e.linkTxtT || -9) > 1.2) { e.linkTxtT = time; floatText(e.x, upY(e.y, 74), 'Hilo rojo: separadlos', '#ff6b8a'); } } // dúo juntos: se protegen
   if (e.stunT > 0 && tierRule(e).stunnedDmg) hpDmg *= DMG.stunned; // aturdido: recibe más daño (el guardián no)
   if (e.frozenT > 0) hpDmg *= FREEZE.vuln[frozenTier(e)] || 1; // congelado: quebradizo, todo el equipo le hace más daño
   if (furyBy && furyBy.ch.fury) furyGain(furyBy, Math.min(hpDmg, Math.max(0, e.hp))); // Ámbar: el daño que hace llena la furia
@@ -6890,7 +6904,8 @@ function executeEnemy(e, p, how) {
   igniteExec(e); // chamuscado: Remate ígneo
   if (e.type === 'boss') {
     // [RETIRADO 2026-11-10] e.hp -= e.maxHp * 0.25; … floatText(e.x, ey - 34, '¡Ejecución! −25 %', '#ffd54a');
-    const exK = 0.25 / (1 + ENEMY_SCALE.guardian.execDecay * (scaleN() - 1)); // solo 25 %; en grupo menos por ejecución
+    // const exK = 0.25 / (1 + ENEMY_SCALE.guardian.execDecay * (scaleN() - 1)); // [RETIRADO 2026-11-10] sin el hilo rojo del dúo
+    const exK = 0.25 / (1 + ENEMY_SCALE.guardian.execDecay * (scaleN() - 1)) * (duoLinked(e) ? DUO.linkHp : 1); // solo 25 %; en grupo menos por ejecución; el hilo rojo también protege
     e.hp -= e.maxHp * exK; e.stunT = 0; e.sta = e.maxSta; e.flash = 0.2;
     floatText(e.x, ey - 34, '¡Ejecución! −' + Math.round(exK * 100) + ' %', '#ffd54a');
     if (e.hp <= 0) killEnemy(e, true);
@@ -6937,6 +6952,11 @@ function iceBreakFx(e) { // el hielo se rompe sin matar: esquirlas, anillo y cha
 function killEnemy(e, executed) {
   if (e.dead) return;
   e.dead = true;
+  if (e.duoMate && !e.duoMate.dead) { // dúo: el que queda entra en lamento (rabia hasta el final, más rápido)
+    const m = e.duoMate; m.grief = true; m.spd *= DUO.griefSpd;
+    showBanner(BOSS[e.kind].name.split(',')[0] + ' ha caído: ¡' + BOSS[m.kind].name.split(',')[0] + ' entra en lamento!');
+    effects.push({ type: 'ring', x: m.x, y: m.y, r: m.r + 40, t: 0, dur: 0.5, color: '#ff3b4e' }); shake = Math.max(shake, 8);
+  }
   const y = upY(e.y, 12 + e.z);
   burst(e.x, y, e.color, e.tier >= 3 ? 40 : 18);
   if (executed) burst(e.x, y, '#ffffff', 26);
@@ -7174,7 +7194,8 @@ const ENEMY_AI = {
 // · Un guardián por bioma: piso 1 Cañonero, piso 2 Ariete, piso 3 Coloso (y se repite).
 // const BOSS_KINDS = ['cannon', 'ram', 'colossus']; // [RETIRADO 2026-11-08] ciclo de tres pisos
 // function bossKindFor(depth) { return BOSS_KINDS[((depth || 1) - 1) % BOSS_KINDS.length]; }
-// Ciclo de cuatro pisos: el cuarto (Catedral gótica) cierra el ciclo con el Dragón, el guardián final
+// Ciclo de cuatro pisos (los cuatro actos de la función): Galitski, Kónchak, el dúo Vladímir y Konchakovna, e Ígor convertido en Dragón.
+// En el piso 3 salen dos guardianes a la vez (DUO); bossKindFor da el principal (Vladímir, el antiguo Coloso).
 const BOSS_KINDS = ['cannon', 'ram', 'colossus', 'dragon'];
 function bossKindFor(depth) { return BOSS_KINDS[((depth || 1) - 1) % BOSS_KINDS.length]; }
 const isFinalBoss = depth => bossKindFor(depth) === 'dragon';
@@ -7182,25 +7203,29 @@ const BOSS = {
   walkT: [1.4, 2.2], walkTRage: [0.9, 1.4], // segundos andando entre ataques
   flankOff: 1.25, closeR: 60,               // a más de 1,25 rad de su frente, o a menos de 60 px de su borde, cuenta como «rodeándolo»
   // Cañonero: dispara con el cañón del frente; Estallido en todas direcciones si lo rodeáis
-  cannon: { name: 'Guardián Cañonero', color: '#e5484d', r: 30, spdMul: 1, turn: 2.0, keep: [140, 260], muzzle: 24,
+  // [RETIRADO 2026-11-10] nombre anterior: 'Guardián Cañonero'
+  cannon: { name: 'Príncipe Galitski', color: '#e5484d', r: 30, spdMul: 1, turn: 2.0, keep: [140, 260], muzzle: 24,
     recover: 1.1, recoverRage: 0.8,
     volley: { wind: 1.0, windRage: 0.8, lock: 0.35, turn: 1.2, n: 3, nRage: 5, spread: 0.2, spd: 180 },          // abanico apuntado
     sweep:  { wind: 1.0, windRage: 0.85, lock: 0.45, turn: 1.0, arc: 0.75, shots: 9, dur: 0.9, spd: 210 },     // barrido de lado a lado
     nova:   { wind: 1.6, windRage: 1.3, spokes: 16, gaps: 3, gapW: 2, spd0: 55, spd: 140, accel: 0.8, out: 8 } }, // Estallido: anillo con huecos
   // Ariete: embiste en línea recta hasta chocar; si da contra un muro se queda aturdido un rato
-  ram: { name: 'Ariete del Bosque', color: '#c9772f', r: 32, spdMul: 0.8, turn: 1.3, muzzle: 10,
+  // [RETIRADO 2026-11-10] nombre anterior: 'Ariete del Bosque'
+  ram: { name: 'Kan Kónchak', color: '#c9772f', r: 32, spdMul: 0.8, turn: 1.3, muzzle: 10,
     recover: 1.0, recoverRage: 0.7,
     charge: { wind: 1.1, windRage: 0.8, lock: 0.4, turn: 1.8, spd: 520, max: 720, daze: 1.8, skid: 0.6, chainRage: 2, rewind: 0.6 },
     gore:   { wind: 0.75, windRage: 0.6, r: 100, arc: 0.85, range: 130 },  // cornada en abanico delante
     stomp:  { wind: 1.4, windRage: 1.15, r: 135 } },                        // pisotón alrededor
   // Coloso: golpes al suelo; martillazo delante, grieta que avanza en línea y terremoto alrededor
-  colossus: { name: 'Coloso de la Gruta', color: '#7d8fa3', r: 36, spdMul: 0.75, turn: 1.6, muzzle: 14,
+  // [RETIRADO 2026-11-10] nombre anterior: 'Coloso de la Gruta'
+  colossus: { name: 'Vladímir, hijo de Ígor', color: '#7d8fa3', r: 36, spdMul: 0.75, turn: 1.6, muzzle: 14,
     recover: 1.3, recoverRage: 1.0,
     slam:  { wind: 1.1, windRage: 0.9, r: 145, arc: 0.6, range: 170 },
     quake: { wind: 0.9, windRage: 0.75, n: 7, step: 58, r: 38, gap: 0.12 },
     stomp: { wind: 1.7, windRage: 1.4, r: 165 } },
   // Dragón de la Catedral (guardián final del ciclo, piso 4): rayo de energía, rayos del cielo y vuelo con bombardeo
-  dragon: { name: 'Dragón de la Catedral', color: '#3a3150', energy: '#b48cff', r: 38, spdMul: 0.85, turn: 1.5, muzzle: 30,
+  // [RETIRADO 2026-11-10] nombre anterior: 'Dragón de la Catedral' (pendiente: forma humana de Ígor antes del Dragón)
+  dragon: { name: 'Ígor, Dragón del Eclipse', color: '#3a3150', energy: '#b48cff', r: 38, spdMul: 0.85, turn: 1.5, muzzle: 30,
     recover: 1.2, recoverRage: 0.9,
     // Rayo: la esfera crece en la boca, sobre la línea del disparo; la dirección se fija «lock» s antes; dura «dur» s
     beam: { wind: 1.9, windRage: 1.5, lock: 0.6, turn: 1.0, w: 70, max: 1000, dur: 1.0, sweepRage: 0.35 },
@@ -7212,10 +7237,29 @@ const BOSS = {
     // Vuelo: despega (invulnerable), 2 pasadas de bombardeo (3 con rabia) siguiendo la sombra, y cae con daño en área
     fly: { first: 9, cd: 20, cdRage: 15, takeoff: 0.9, height: 620, passes: 2, passesRage: 3,
            passWind: 0.9, passSpd: 380, bombR: 44, bombStep: 64, bombLead: 0.25,
-           dive: 1.5, diveFall: 0.45, landR: 160, land: 1.8 } }
+           dive: 1.5, diveFall: 0.45, landR: 160, land: 1.8 } },
+  // Konchakovna (dúo con Vladímir, piso 3): ligera y rápida; sigue a Vladímir y ataca bailando.
+  // · Danza de velos: abanico ancho delante (aviso en el suelo) · Giro: carril corto que recorre girando (daña al tocar)
+  // · Cavatina (área si la rodeáis): anillo de notas lentas con huecos
+  maiden: { name: 'Konchakovna, hija del kan', color: '#c2457a', veilCol: '#f4b2cf', r: 26, spdMul: 1.35, turn: 2.6, keep: [130, 230], muzzle: 12,
+    recover: 0.9, recoverRage: 0.65,
+    veil: { wind: 0.9, windRage: 0.7, r: 150, arc: 1.15, range: 160 },
+    spin: { wind: 0.95, windRage: 0.75, lock: 0.35, turn: 2.0, spd: 430, max: 380, chainRage: 2 },
+    song: { wind: 1.4, windRage: 1.15, spokes: 14, gaps: 3, gapW: 2, spd0: 50, spd: 115, accel: 0.7, out: 6 } }
 };
+// Dúo del piso 3 (2026-11-10): Vladímir (colossus) y Konchakovna (maiden) pelean juntos.
+// · Cada uno tiene una parte de la vida de un guardián normal (share).
+// · Hilo rojo: mientras están a menos de linkR el uno del otro, los dos reciben menos daño de vida y de estamina. Hay que separarlos.
+// · Lamento: si cae uno, el otro entra en rabia hasta el final y se mueve más rápido.
+const DUO = { kinds: ['colossus', 'maiden'], share: { colossus: 0.62, maiden: 0.48 }, gap: 150,
+              linkR: 300, linkHp: 0.45, linkSta: 0.45, griefSpd: 1.2,
+              title: 'Vladímir y Konchakovna' };
+const isDuoDepth = depth => bossKindFor(depth) === 'colossus';
+function duoLinked(e) { const m = e.duoMate; return !!(m && !m.dead && !e.dead && !m.sky && Math.hypot(m.x - e.x, m.y - e.y) < DUO.linkR); }
+function bossTitle(depth) { return isDuoDepth(depth) ? DUO.title : BOSS[bossKindFor(depth)].name; }
 const bossCfg = e => BOSS[e.kind || 'cannon'];
-const bossRage = e => e.hp < e.maxHp / 2;
+// const bossRage = e => e.hp < e.maxHp / 2; // [RETIRADO 2026-11-10] sin el lamento del dúo
+const bossRage = e => e.hp < e.maxHp / 2 || !!e.grief;
 function bossAng(a) { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; }
 function bossTurn(e, tx, ty, rate, dt) { // gira e.dir hacia el punto, como mucho rate rad/s
   const want = Math.atan2(ty - e.y, tx - e.x), df = bossAng(want - e.dir), st = rate * dt;
@@ -7377,6 +7421,65 @@ const BOSS_AI_BY_KIND = {
     }
     const sp = e.spd * C.spdMul * (rage ? 1.2 : 1); return [Math.cos(e.dir) * sp, Math.sin(e.dir) * sp];
   }
+};
+// ---------- Konchakovna (dúo del piso 3, con Vladímir) ----------
+function maidenSongAngles() { // anillo de notas con huecos repartidos y un giro aleatorio (los huecos son los sitios seguros)
+  const S = BOSS.maiden.song, n = S.spokes, off = Math.random() * Math.PI * 2, out = [], step = n / S.gaps, g0 = Math.floor(Math.random() * step);
+  for (let i = 0; i < n; i++) if (((i - g0 + n) % n) % step >= S.gapW) out.push(off + i / n * Math.PI * 2);
+  return out;
+}
+function maidenNote(e, a) { // nota de la cavatina: sale del borde y acelera despacio
+  const S = BOSS.maiden.song, o = e.r + S.out, ux = Math.cos(a), uy = Math.sin(a);
+  bullets.push({ x: e.x + ux * o, y: e.y + uy * o, vx: ux * S.spd0, vy: uy * S.spd0, r: 7, life: 6, dmg: edmg(e, 'note'), ux, uy, spd0: S.spd0, spd1: S.spd, ramp: S.accel, age: 0, note: true });
+}
+BOSS_AI_BY_KIND.maiden = function (e, p, d, dt) {
+  const C = BOSS.maiden, rage = bossRage(e); e.t -= dt;
+  if (e.state === 'veilWind') { // danza de velos: el abanico ya está marcado en el suelo; el aviso hace el daño
+    if (e.t <= 0) { burst(e.x + Math.cos(e.dir) * e.r * 2, upY(e.y + Math.sin(e.dir) * e.r * 2, 20), C.veilCol, 14); bossRecover(e); }
+    return [0, 0];
+  }
+  if (e.state === 'songWind') { // cavatina: los radios de las notas se ven en el suelo; con rabia canta dos veces
+    if (e.t <= 0) {
+      for (const a of e.songAngles || []) maidenNote(e, a);
+      e.songAngles = null; shake = Math.max(shake, 3);
+      if (rage && !e.songAgain) { e.songAgain = true; bossWind(e, 'songWind', C.song); e.songAngles = maidenSongAngles(); return [0, 0]; }
+      e.songAgain = false; bossRecover(e);
+    }
+    return [0, 0];
+  }
+  if (e.state === 'spinWind') { // giro: marca un carril corto y lo fija poco antes de salir
+    if (e.t > C.spin.lock) { bossTurn(e, p.x, p.y, C.spin.turn, dt); e.lane = rayLen(e.x, e.y, e.dir, C.spin.max); }
+    if (e.t <= 0) { e.state = 'spin'; e.spinL = 0; }
+    return [0, 0];
+  }
+  if (e.state === 'spin') { // recorre el carril girando; daña al tocar (isHot)
+    const ux = Math.cos(e.dir), uy = Math.sin(e.dir); e.spinL += C.spin.spd * dt; e.rot += dt * 22;
+    if (Math.random() < 0.7) particles.push({ x: e.x, y: e.y - 8, vx: 0, vy: 0, life: 0.25, max: 0.25, color: C.veilCol, s: 5 });
+    if (e.spinL >= (e.lane || 0) - 8 || segSolid(e.x, e.y, e.x + ux * (e.r + 8), e.y + uy * (e.r + 8))) {
+      if (rage && (e.chain || 0) + 1 < C.spin.chainRage) { e.chain = (e.chain || 0) + 1; bossWind(e, 'spinWind', C.spin); e.lane = rayLen(e.x, e.y, e.dir, C.spin.max); }
+      else { e.chain = 0; bossRecover(e); }
+      return [0, 0];
+    }
+    return [ux * C.spin.spd, uy * C.spin.spd];
+  }
+  if (e.state === 'recover') { if (e.t <= 0) bossWalk(e); return [0, 0]; }
+  bossTurn(e, p.x, p.y, C.turn, dt);
+  if (e.t <= 0) {
+    const off = Math.abs(bossAng(Math.atan2(p.y - e.y, p.x - e.x) - e.dir)), closeFront = d < C.veil.range && off < 0.8;
+    const k = bossPick({ area: bossAreaWeight(e), veil: closeFront ? 1.6 : 0.1, spin: d > 140 ? 1.3 : 0.3 });
+    e.lastAtk = k === 'area' ? 'area' : 'front';
+    if (k === 'area') { bossWind(e, 'songWind', C.song); e.songAngles = maidenSongAngles(); }
+    else if (k === 'veil') { bossWind(e, 'veilWind', C.veil); bossHazard(e, e.x, e.y, C.veil.r, e.t, 'veil', { ang: e.dir, arc: C.veil.arc }); }
+    else { bossWind(e, 'spinWind', C.spin); e.lane = rayLen(e.x, e.y, e.dir, C.spin.max); e.chain = 0; }
+    return [0, 0];
+  }
+  const sp = e.spd * C.spdMul * (rage ? 1.2 : 1), m = e.duoMate;
+  if (m && !m.dead) { // vuelve junto a Vladímir si la separan (el hilo rojo los protege mientras están cerca)
+    const mx = m.x - e.x, my = m.y - e.y, md = Math.hypot(mx, my) || 1;
+    if (md > DUO.linkR * 0.7) return [mx / md * sp, my / md * sp];
+  }
+  const want = d < C.keep[0] ? -0.7 : (d > C.keep[1] ? 1 : 0.2);
+  return [Math.cos(e.dir) * want * sp, Math.sin(e.dir) * want * sp];
 };
 // ---------- Dragón (guardián final) ----------
 // Efectos visuales del Dragón: rayos que caen y explosiones de las bombas (se programan con el mismo retraso que su aviso)
@@ -7544,7 +7647,8 @@ function bossQuake(e) {
 // Solo hacen daño de contacto durante la embestida que avisan
 function isHot(e) {
   // if (e.type === 'boss') return true; // [RETIRADO 2026-11-08] el guardián dañaba siempre al tocarlo
-  if (e.type === 'boss') return e.state === 'charge'; // solo el Ariete, durante la embestida
+  // if (e.type === 'boss') return e.state === 'charge'; // [RETIRADO 2026-11-10] solo el Ariete
+  if (e.type === 'boss') return e.state === 'charge' || e.state === 'spin'; // embestida de Kónchak o giro de Konchakovna
   if (e.type === 'mite' || e.type === 'charger') return e.state === 'dash';
   return false;
 }
@@ -7922,11 +8026,89 @@ function drawMenuBg() {
   g.addColorStop(0, 'rgba(60,40,90,0.28)'); g.addColorStop(1, 'rgba(6,4,10,0.75)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, LW, LH);
 }
+// ---------- Escenario de teatro (2026-11-10, ver «Lore y trama») ----------
+// Los menús son el teatro de la compañía. closed = 1: telón echado (menú principal); closed = 0: telón abierto y recogido
+// a los lados (selección de personaje), con el eclipse en el telón de fondo. lipY: borde del escenario, donde van las candilejas.
+const STAGE = { red: '#6e1426', redD: '#33070f', redL: '#a3263d', gold: '#c9a24a', goldL: '#f1d27a', wood: '#3a2618', woodD: '#24170e', fold: 34, valH: 30 };
+function drawEclipse(cx, cy, R, k) { // sol con la luna delante: k = parte tapada (0 → 1); en la totalidad, corona
+  ctx.save();
+  const halo = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R * 2.6);
+  halo.addColorStop(0, 'rgba(255,214,140,' + (0.28 + 0.12 * k) + ')'); halo.addColorStop(1, 'rgba(255,214,140,0)');
+  ctx.fillStyle = halo; ctx.fillRect(cx - R * 2.6, cy - R * 2.6, R * 5.2, R * 5.2);
+  ctx.strokeStyle = 'rgba(255,240,210,' + (0.35 + 0.4 * k) + ')'; ctx.lineWidth = 1.5; // rayos de la corona
+  for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2 + time * 0.05, l = R * (1.15 + 0.35 * ((i * 7) % 5) / 4 * (0.6 + 0.4 * Math.sin(time * 1.3 + i))); ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * R * 1.02, cy + Math.sin(a) * R * 1.02); ctx.lineTo(cx + Math.cos(a) * l, cy + Math.sin(a) * l); ctx.stroke(); }
+  ctx.fillStyle = '#ffd98a'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#120c18'; ctx.beginPath(); ctx.arc(cx + R * 2 * (1 - k), cy - R * 0.25 * (1 - k), R * 1.01, 0, Math.PI * 2); ctx.fill(); // la luna
+  ctx.restore();
+}
+function drawCurtainCloth(x0, x1, y0, y1, sway) { // tela de terciopelo con pliegues verticales
+  const F = STAGE.fold, n = Math.max(1, Math.ceil((x1 - x0) / F));
+  for (let i = 0; i < n; i++) {
+    const a = x0 + (x1 - x0) * i / n, b = x0 + (x1 - x0) * (i + 1) / n, g = ctx.createLinearGradient(a, 0, b, 0);
+    g.addColorStop(0, STAGE.redD); g.addColorStop(0.35, STAGE.redL); g.addColorStop(0.6, STAGE.red); g.addColorStop(1, STAGE.redD);
+    ctx.fillStyle = g; const w = Math.sin(time * 0.8 + i * 0.9) * sway;
+    ctx.beginPath(); ctx.moveTo(a, y0); ctx.lineTo(b, y0); ctx.lineTo(b + w, y1); ctx.lineTo(a + w, y1); ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = STAGE.gold; ctx.fillRect(x0, y1 - 5, x1 - x0, 3); // bajo dorado
+}
+function drawStage(closed, lipY, opt) {
+  const S = STAGE, O = opt || {};
+  ctx.fillStyle = '#0c0811'; ctx.fillRect(0, 0, LW, LH);
+  if (closed < 1) { // caja escénica: telón de fondo con el eclipse y suelo de tablas en perspectiva
+    const sky = ctx.createLinearGradient(0, 0, 0, lipY); sky.addColorStop(0, '#120c1c'); sky.addColorStop(1, '#2a1b33');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, LW, lipY);
+    if (O.eclipse !== false) drawEclipse(LW / 2, Math.min(LH * 0.36, lipY * 0.45), Math.min(LW, LH) * 0.12, 0.72);
+    const hz = lipY - Math.min(150, LH * 0.22); // fondo del escenario
+    const fl = ctx.createLinearGradient(0, hz, 0, lipY); fl.addColorStop(0, S.woodD); fl.addColorStop(1, S.wood);
+    ctx.fillStyle = fl; ctx.fillRect(0, hz, LW, lipY - hz);
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+    for (let i = -14; i <= 14; i++) { ctx.beginPath(); ctx.moveTo(LW / 2 + i * LW * 0.03, hz); ctx.lineTo(LW / 2 + i * LW * 0.09, lipY); ctx.stroke(); } // tablas
+    for (let k = 1; k < 5; k++) { const y = hz + (lipY - hz) * Math.pow(k / 5, 1.6); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(LW, y); ctx.stroke(); }
+    const fog = ctx.createLinearGradient(0, hz - 30, 0, hz + 30); fog.addColorStop(0, 'rgba(42,27,51,0)'); fog.addColorStop(0.5, 'rgba(60,40,70,0.5)'); fog.addColorStop(1, 'rgba(42,27,51,0)');
+    ctx.fillStyle = fog; ctx.fillRect(0, hz - 30, LW, 60);
+  }
+  // telón: dos hojas que se cierran hacia el centro; abiertas quedan recogidas en los laterales con un cordón dorado
+  const open = 1 - closed, side = LW * (0.5 - 0.44 * open), bottom = lipY;
+  drawCurtainCloth(0, side, 0, bottom, closed * 1.5); drawCurtainCloth(LW - side, LW, 0, bottom, closed * 1.5);
+  if (closed >= 1) { // telón echado: costura central, foco que lo ilumina y el emblema del eclipse bordado
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(LW / 2 - 2, 0, 4, bottom);
+    const sp = ctx.createRadialGradient(LW / 2, bottom * 0.42, 20, LW / 2, bottom * 0.42, Math.max(LW, bottom) * 0.6);
+    sp.addColorStop(0, 'rgba(255,220,170,0.18)'); sp.addColorStop(1, 'rgba(0,0,0,0.5)'); ctx.fillStyle = sp; ctx.fillRect(0, 0, LW, bottom);
+    const ex = LW / 2, ey = bottom * 0.5, er = Math.min(LW, bottom) * 0.2; // emblema bordado: sol dorado con la luna
+    ctx.save(); ctx.globalAlpha = 0.16; ctx.strokeStyle = S.goldL; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2); ctx.stroke();
+    for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; ctx.beginPath(); ctx.moveTo(ex + Math.cos(a) * er * 1.12, ey + Math.sin(a) * er * 1.12); ctx.lineTo(ex + Math.cos(a) * er * 1.35, ey + Math.sin(a) * er * 1.35); ctx.stroke(); }
+    ctx.globalAlpha = 0.12; ctx.fillStyle = S.goldL; ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2); ctx.arc(ex + er * 0.45, ey - er * 0.1, er * 0.95, 0, Math.PI * 2, true); ctx.fill();
+    ctx.restore();
+  } else { // cordones que recogen el telón abierto
+    ctx.strokeStyle = S.gold; ctx.lineWidth = 3;
+    for (const [x, d] of [[side, 1], [LW - side, -1]]) { const y = bottom * 0.62; ctx.beginPath(); ctx.moveTo(x - d * side, y - 18); ctx.quadraticCurveTo(x - d * side * 0.3, y + 10, x + d * 4, y); ctx.stroke(); ctx.fillStyle = S.goldL; ellipse(x + d * 4, y + 8, 4, 8); }
+  }
+  // bambalina: franja de terciopelo arriba con festones y flecos dorados
+  const vh = O.valH || S.valH, fd = Math.min(9, vh * 0.45); // alto de la bambalina y de sus festones
+  drawCurtainCloth(0, LW, 0, vh, 0);
+  ctx.fillStyle = S.redD; for (let x = 0; x < LW; x += 46) { ctx.beginPath(); ctx.ellipse(x + 23, vh - 2, 23, fd, 0, 0, Math.PI); ctx.fill(); }
+  ctx.fillStyle = S.gold; for (let x = 0; x < LW; x += 46) for (let k = 0; k < 7; k++) ctx.fillRect(x + 6 + k * 5.5, vh - 2 + fd * (1 - Math.abs(k - 3) / 4), 1.4, 4);
+  ctx.fillStyle = S.goldL; ctx.fillRect(0, vh - 3, LW, 2);
+  // boca del escenario: canto de madera y candilejas que iluminan hacia arriba
+  ctx.fillStyle = S.woodD; ctx.fillRect(0, lipY, LW, 10); ctx.fillStyle = S.gold; ctx.fillRect(0, lipY, LW, 2);
+  const nL = Math.max(6, Math.round(LW / 70));
+  for (let i = 0; i < nL; i++) {
+    const x = (i + 0.5) * LW / nL, fl = 0.85 + 0.15 * Math.sin(time * 3 + i * 1.7), g = ctx.createRadialGradient(x, lipY, 2, x, lipY, 70);
+    g.addColorStop(0, 'rgba(255,214,140,' + 0.35 * fl + ')'); g.addColorStop(1, 'rgba(255,214,140,0)');
+    ctx.fillStyle = g; ctx.fillRect(x - 70, lipY - 70, 140, 80);
+    ctx.fillStyle = '#ffe7b0'; ellipse(x, lipY + 4, 6, 3);
+  }
+  const pit = ctx.createLinearGradient(0, lipY + 10, 0, LH); pit.addColorStop(0, 'rgba(0,0,0,0.25)'); pit.addColorStop(1, 'rgba(0,0,0,0.6)');
+  ctx.fillStyle = pit; ctx.fillRect(0, lipY + 10, LW, LH - lipY - 10);
+}
 // Desplazamiento vertical del menú de número de jugadores (lo centra si la pantalla es más alta)
 function menuOff() { return state === 'count' ? (LH - BH) / 2 : 0; }
 function drawCount() {
-  drawMenuBg();
+  // drawMenuBg(); // [RETIRADO 2026-11-10] fondo de baldosas; ahora el escenario con el telón echado
   const off = menuOff();
+  drawStage(1, off + 444, { valH: 18 });
+  ctx.save(); ctx.shadowColor = 'rgba(8,2,6,0.85)'; ctx.shadowBlur = 8; // sobre el telón, todo lleva sombra para leerse
   ctx.save(); ctx.translate(0, off);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 36px ' + FONT; ctx.fillText('Mazmorra cooperativa', LW / 2, 64);
@@ -7934,7 +8116,7 @@ function drawCount() {
     const nPads = padsConnected();
     ctx.textAlign = 'right'; ctx.font = '600 13px ' + FONT;
     ctx.fillStyle = nPads ? '#7ee0c3' : '#8f86a0';
-    ctx.fillText(nPads ? 'Mandos detectados: ' + nPads + ' de 4' : 'Sin mandos: pulsa un botón de cada mando para activarlo', LW - 24, 30);
+    ctx.fillText(nPads ? 'Mandos detectados: ' + nPads + ' de 4' : 'Sin mandos: pulsa un botón de cada mando para activarlo', LW - 24, 40); // [antes y = 30: ahora quedaría bajo los flecos de la bambalina]
     ctx.textAlign = 'center';
   }
   const focusBox = (x, y, w, h, on, sel, gold) => { // tarjeta: on = foco del teclado o mando; sel = opción elegida
@@ -7942,7 +8124,8 @@ function drawCount() {
     ctx.lineWidth = on ? 3 : sel ? 2 : 1.5; ctx.strokeStyle = on ? '#b49bff' : sel ? (gold ? '#ffd54a' : '#6b5e86') : '#3b3349'; ctx.stroke();
   };
   // fila 0: modo de juego
-  [['Mazmorra', 'Roguelite de sala en sala'], ['Asedio', 'Defender la fortaleza · prototipo']].forEach(([t, d], i) => {
+  // [RETIRADO 2026-11-10] descripción anterior de Mazmorra: 'Roguelite de sala en sala'
+  [['Mazmorra', 'La función: cuatro actos bajo el eclipse'], ['Asedio', 'Defender la fortaleza · prototipo']].forEach(([t, d], i) => {
     const [x, y, w, h] = modeSeg(i), sel = (i === 1) === siegeMode;
     focusBox(x, y, w, h, mmRow === 0 && sel, sel, i === 1);
     ctx.fillStyle = sel ? (i === 1 ? '#ffd54a' : '#f2eefa') : '#8f86a0'; ctx.font = '700 16px ' + FONT; ctx.fillText((sel ? '● ' : '○ ') + t, x + w / 2, y + 23);
@@ -7984,6 +8167,7 @@ function drawCount() {
   ];
   lines.forEach((l, i) => ctx.fillText(l, LW / 2, 552 + i * 17));
   ctx.restore();
+  ctx.restore(); // sombra del texto sobre el telón
 }
 
 // Textos de la ficha de personaje
@@ -8438,7 +8622,8 @@ function drawSelectCard(i, shown) {
   }
 }
 function drawSelect() {
-  drawMenuBg();
+  // drawMenuBg(); // [RETIRADO 2026-11-10] fondo de baldosas; ahora el escenario con el telón abierto
+  drawStage(0, LH - 110, { valH: 12, eclipse: false }); // los paneles tapan el centro: el eclipse se ve en el telón del menú principal
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 26px ' + FONT; ctx.fillText('Elige personaje', LW / 2, 42);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT;
@@ -8485,7 +8670,8 @@ function drawSelect() {
   if (startT >= 0) {
     ctx.fillStyle = 'rgba(6,4,10,0.6)'; ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'center'; ctx.fillStyle = '#f2eefa'; ctx.font = '700 32px ' + FONT;
-    ctx.fillText('A la mazmorra', LW / 2, LH / 2);
+    // ctx.fillText('A la mazmorra', LW / 2, LH / 2); // [RETIRADO 2026-11-10]
+    ctx.fillText('¡Arriba el telón!', LW / 2, LH / 2);
   }
 }
 
@@ -9307,7 +9493,7 @@ function attackWarn(e) {
     case 'golem': return e.state === 'leapWind' || e.state === 'slamWind';
     case 'splitter': return e.bombCd < 0.5;
     // case 'boss': return e.cd < 0.55 || e.cd2 < 0.4; // [RETIRADO 2026-11-08] temporizadores antiguos
-    case 'boss': return /Wind$/.test(e.state) || e.state === 'charge';
+    case 'boss': return /Wind$/.test(e.state) || e.state === 'charge' || e.state === 'spin';
     default: return false;
   }
 }
@@ -9334,7 +9520,8 @@ function drawExecIndicator(e, y) {
 function drawBossBody(e, x, y, r, fill, wk, stun) {
   let fx = Math.cos(e.dir), fy = Math.sin(e.dir) * K; const fl = Math.hypot(fx, fy) || 1; fx /= fl; fy /= fl;
   const sx = -fy, sy = fx, a = Math.atan2(fy, fx), away = Math.sin(e.dir) < -0.3, kind = e.kind || 'cannon';
-  const rage = e.hp < e.maxHp / 2, dark = '#16121e';
+  // const rage = e.hp < e.maxHp / 2, dark = '#16121e'; // [RETIRADO 2026-11-10] sin el lamento del dúo
+  const rage = bossRage(e), dark = '#16121e';
   const lift = (e.state === 'sweep' ? 1 : wk) * (kind === 'colossus' ? 16 : 8); // el arma se levanta al preparar
   const front = () => {
     ctx.save(); ctx.strokeStyle = dark; ctx.lineWidth = 2;
@@ -9358,7 +9545,18 @@ function drawBossBody(e, x, y, r, fill, wk, stun) {
       ctx.strokeStyle = '#d9cbb0'; ctx.lineWidth = 4; ctx.lineCap = 'round';
       for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(hx + sx * s * hr * 0.6, hy + sy * s * hr * 0.6 - 4); ctx.lineTo(hx + sx * s * hr * 1.2 - fx * hr * 0.6, hy + sy * s * hr * 1.2 - fy * hr * 0.6 - hr * 0.9); ctx.stroke(); }
       if (e.state === 'beamWind' || e.state === 'beam') { ctx.globalAlpha = 0.85; ctx.fillStyle = BOSS.dragon.energy; ellipse(hx + fx * hr * 0.7, hy + fy * hr * 0.7, hr * 0.45, hr * 0.35); }
-    } else { // Coloso: dos puños que se alzan
+    } else if (kind === 'maiden') { // Konchakovna: dos velos que se abren hacia delante al preparar la danza
+      const open = 0.55 + 0.6 * (e.state === 'veilWind' ? wk : 0) + (e.state === 'spin' ? 0.5 : 0), sway = Math.sin(e.anim * 4) * 0.15;
+      ctx.fillStyle = BOSS.maiden.veilCol; ctx.strokeStyle = '#8a2a55'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.85;
+      for (const s of [-1, 1]) {
+        const bx = x + sx * s * r * 0.7, by = y + sy * s * r * 0.7 - r * 0.2;
+        const tx = x + fx * r * (1.3 + open * 0.5) + sx * s * r * (0.4 + open + sway * s), ty = y + fy * r * (1.3 + open * 0.5) + sy * s * r * (0.4 + open + sway * s) - r * 0.1;
+        ctx.beginPath(); ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(bx + fx * r * 1.2, by + fy * r * 1.2 - r * 0.6, tx, ty);
+        ctx.quadraticCurveTo(bx + fx * r * 0.7 + sx * s * r * 0.5, by + fy * r * 0.7 + sy * s * r * 0.5 + r * 0.3, bx, by + r * 0.25);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    } else { // Vladímir (antes Coloso): dos puños que se alzan
       for (const s of [-1, 1]) {
         const cx = x + fx * r * 0.6 + sx * s * r * 0.78, cy = y + fy * r * 0.6 + sy * s * r * 0.78 - lift, rr = r * 0.4 * (1 + 0.25 * wk);
         ctx.fillStyle = '#56657a'; ellipse(cx, cy, rr, rr); ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke();
@@ -9382,10 +9580,23 @@ function drawBossBody(e, x, y, r, fill, wk, stun) {
       ctx.beginPath(); ctx.ellipse(x, y, r * 1.1, r * 0.85, a, 0, Math.PI * 2);
     }
     else if (kind === 'ram') ctx.ellipse(x, y, r * 1.2, r * 0.92, a, 0, Math.PI * 2);
+    else if (kind === 'maiden') { // falda acampanada; girando se ensancha
+      const sw = e.state === 'spin' ? 1.25 + 0.08 * Math.sin(e.rot * 2) : 1;
+      ctx.ellipse(x, y + r * 0.1, r * 1.12 * sw, r * 0.98, 0, 0, Math.PI * 2);
+    }
     else if (kind === 'colossus') for (let i = 0; i < 8; i++) { const t = a + Math.PI / 8 + i * Math.PI / 4, rr = r * (i % 2 ? 1 : 0.93); ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(t) * rr, y + Math.sin(t) * rr); }
     else ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.closePath(); ctx.fill(); ctx.stroke();
-    // espalda: coraza oscura con placas (Cañonero), crin (Ariete) o musgo (Coloso)
+    if (kind === 'maiden') { // tocado alto con penacho y trenzas a la espalda (no lleva púas)
+      const back = a + Math.PI; ctx.lineCap = 'round'; ctx.strokeStyle = '#2a1424'; ctx.lineWidth = r * 0.16;
+      for (const o of [-0.35, 0.35]) { const t = back + o; ctx.beginPath(); ctx.moveTo(x + Math.cos(t) * r * 0.4, y + Math.sin(t) * r * 0.4 - r * 0.5); ctx.quadraticCurveTo(x + Math.cos(t) * r * 1.1, y + Math.sin(t) * r * 1.1, x + Math.cos(t) * r * 1.3, y + Math.sin(t) * r * 1.3 + r * 0.5); ctx.stroke(); }
+      const hx = x - fx * r * 0.1, hy = y - r * 0.55; ctx.lineWidth = 2; ctx.strokeStyle = dark;
+      ctx.fillStyle = '#7a1f45'; ctx.beginPath(); ctx.moveTo(hx - r * 0.42, hy + r * 0.12); ctx.lineTo(hx - r * 0.3, hy - r * 0.75); ctx.lineTo(hx + r * 0.3, hy - r * 0.75); ctx.lineTo(hx + r * 0.42, hy + r * 0.12); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ffd54a'; ctx.fillRect(hx - r * 0.4, hy - r * 0.05, r * 0.8, r * 0.12); // banda dorada
+      ctx.strokeStyle = '#f4b2cf'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(hx, hy - r * 0.75); ctx.quadraticCurveTo(hx + r * 0.5 + Math.sin(e.anim * 3) * 4, hy - r * 1.2, hx + r * 0.7, hy - r * 0.9); ctx.stroke(); // penacho
+      ctx.restore(); return;
+    }
+    // espalda: coraza oscura con placas (Galitski), crin (Kónchak) o musgo (Vladímir)
     const back = a + Math.PI;
     ctx.globalAlpha = 0.55; ctx.lineCap = 'round';
     ctx.strokeStyle = kind === 'colossus' ? '#4f7a4a' : '#2a2234'; ctx.lineWidth = r * 0.3;
@@ -9394,6 +9605,12 @@ function drawBossBody(e, x, y, r, fill, wk, stun) {
     for (const o of [-0.6, 0, 0.6]) { // púas de la espalda
       const t = back + o, px = x + Math.cos(t) * r * 0.95, py = y + Math.sin(t) * r * 0.95, qx = Math.cos(t), qy = Math.sin(t);
       ctx.beginPath(); ctx.moveTo(px + qx * r * 0.28, py + qy * r * 0.28); ctx.lineTo(px - qy * r * 0.14, py + qx * r * 0.14); ctx.lineTo(px + qy * r * 0.14, py - qx * r * 0.14); ctx.closePath(); ctx.fill();
+    }
+    if (kind === 'colossus') { // Vladímir: casco cónico de la Rus, dorado, con nasal (ver «Influencias visuales» en el contexto)
+      const hx = x, hy = y - r * 0.5; ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.strokeStyle = dark;
+      ctx.fillStyle = '#c9a24a'; ctx.beginPath(); ctx.moveTo(hx - r * 0.5, hy + r * 0.15); ctx.quadraticCurveTo(hx - r * 0.4, hy - r * 0.6, hx, hy - r * 1.05); ctx.quadraticCurveTo(hx + r * 0.4, hy - r * 0.6, hx + r * 0.5, hy + r * 0.15); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#8a6a28'; ctx.fillRect(hx - r * 0.5, hy + r * 0.05, r, r * 0.13);
+      if (!away) { ctx.fillStyle = '#c9a24a'; ctx.fillRect(hx + fx * r * 0.12 - r * 0.05, hy + r * 0.12, r * 0.1, r * 0.32); } // nasal
     }
     ctx.restore();
   };
@@ -9602,8 +9819,27 @@ function drawBossAir() {
     ctx.restore();
   }
 }
+// Hilo rojo del dúo (Vladímir y Konchakovna): firme y brillante mientras se protegen; roto y gris si están separados
+function drawDuoThread() {
+  const e = enemies.find(q => q.type === 'boss' && q.kind === 'maiden' && !q.dead && q.spawnT <= 0), m = e && e.duoMate;
+  if (!m || m.dead || m.spawnT > 0) return;
+  const linked = duoLinked(e), dx = m.x - e.x, dy = m.y - e.y, L = Math.hypot(dx, dy) || 1;
+  ctx.save(); ctx.lineCap = 'round';
+  if (linked) {
+    const pulse = 0.6 + 0.4 * Math.sin(time * 6);
+    ctx.strokeStyle = '#ff3b5c'; ctx.globalAlpha = 0.25 * pulse; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(m.x, m.y); ctx.stroke();
+    ctx.globalAlpha = 0.95; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(e.x, e.y);
+    ctx.quadraticCurveTo((e.x + m.x) / 2 - dy / L * 14 * Math.sin(time * 3), (e.y + m.y) / 2 + dx / L * 14 * Math.sin(time * 3), m.x, m.y); ctx.stroke();
+    for (const q of [e, m]) { ctx.globalAlpha = 0.5 * pulse; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(q.x, q.y, q.r + 12, (q.r + 12) * 0.5, 0, 0, Math.PI * 2); ctx.stroke(); }
+  } else { // roto: dos cabos que cuelgan hacia el otro
+    ctx.strokeStyle = '#9a8aa8'; ctx.globalAlpha = 0.55; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+    for (const [a, b] of [[e, m], [m, e]]) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x + (b.x - a.x) / L * 60, a.y + (b.y - a.y) / L * 60 + 10); ctx.stroke(); }
+  }
+  ctx.restore();
+}
 // Avisos de los guardianes en el suelo (los de área y cornadas van como hazards; aquí los disparos y la embestida)
 function drawBossTells() {
+  drawDuoThread();
   for (const e of enemies) {
     if (e.type !== 'boss' || e.dead || e.airborne || e.stunT > 0 || (e.spawnT > 0 && !e.sky)) continue;
     const k = windK(e), C = BOSS.cannon;
@@ -9626,6 +9862,18 @@ function drawBossTells() {
       ctx.beginPath();
       for (const a of e.novaAngles) { ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); }
       ctx.stroke(); ctx.globalAlpha = 0.2 + 0.3 * k; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, r0 + len, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (e.state === 'songWind' && e.songAngles) { // cavatina: radios de las notas; los huecos son los sitios seguros
+      const r0 = e.r + BOSS.maiden.song.out, len = 40 + 110 * k; ctx.save(); ctx.strokeStyle = '#ff6b8a'; ctx.lineWidth = 3 + 3 * k; ctx.globalAlpha = 0.35 + 0.5 * k;
+      ctx.beginPath(); for (const a of e.songAngles) { ctx.moveTo(e.x + Math.cos(a) * r0, e.y + Math.sin(a) * r0); ctx.lineTo(e.x + Math.cos(a) * (r0 + len), e.y + Math.sin(a) * (r0 + len)); } ctx.stroke();
+      ctx.globalAlpha = 0.2 + 0.3 * k; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, r0 + len, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    }
+    if (e.state === 'spinWind') { // carril del giro de Konchakovna
+      const L = e.lane || 0, w = e.r, locked = e.t <= BOSS.maiden.spin.lock;
+      ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.dir); ctx.fillStyle = '#ff4d5e'; ctx.strokeStyle = '#ff4d5e';
+      ctx.globalAlpha = locked ? 0.3 : 0.1 + 0.15 * k; ctx.fillRect(0, -w, L, w * 2);
+      ctx.globalAlpha = locked ? 0.95 : 0.5; ctx.lineWidth = locked ? 3 : 2; if (!locked) ctx.setLineDash([10, 7]); ctx.strokeRect(0, -w, L, w * 2);
+      ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(L - 22, -12); ctx.lineTo(L - 4, 0); ctx.lineTo(L - 22, 12); ctx.stroke(); ctx.restore();
     }
     if (e.kind === 'dragon') {
       const D = BOSS.dragon, F = D.fly;
@@ -9675,6 +9923,15 @@ function drawBossTells() {
   }
 }
 function drawBullet(b) {
+  if (b.note) { // nota de la cavatina de Konchakovna
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(b.x, b.y, 5, 2);
+    const y = b.y - 14 + Math.sin(b.age * 8) * 2;
+    ctx.fillStyle = 'rgba(255,107,138,0.3)'; ellipse(b.x, y, 10, 10);
+    ctx.fillStyle = '#ffe3ec'; ctx.strokeStyle = '#7a1f45'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(b.x - 3, y + 4, 6.5, 4.6, -0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(b.x + 3.2, y + 3); ctx.lineTo(b.x + 3.2, y - 12); ctx.quadraticCurveTo(b.x + 11, y - 8, b.x + 9, y - 2); ctx.stroke();
+    return;
+  }
   if (b.sonic) { // onda de sonido: arcos concéntricos que siguen la dirección del disparo
     const a = Math.atan2(b.vy, b.vx), fade = Math.min(1, b.life);
     ctx.save(); ctx.translate(b.x, b.y - 12); ctx.rotate(a); ctx.lineCap = 'round';
@@ -10010,24 +10267,29 @@ function drawGame() {
   drawFuryScreen();
   drawOffscreen();
   if (SIEGE.on) siegeDrawUI();
-  const boss = enemies.find(e => e.type === 'boss' && (e.spawnT <= 0 || e.sky));
-  if (boss) {
-    const by = H - 22, bw = W - 280, on = guardianLevantable(boss);
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(140, by, bw, 8);
-    ctx.fillStyle = '#e5484d'; ctx.fillRect(140, by, bw * Math.max(0, boss.hp) / boss.maxHp, 8);
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(140, by + 10, bw, 4);
-    ctx.fillStyle = boss.stunT > 0 ? '#ffffff' : (on ? '#6ee7ff' : '#f5c542');
-    ctx.fillRect(140, by + 10, bw * boss.sta / boss.maxSta, 4);
-    // marca fija del 50 %: por encima de ella el guardián no puede volar
-    ctx.fillStyle = on ? '#6ee7ff' : '#f2eefa';
-    ctx.fillRect(140 + bw * TIER_RULES[4].launchSta - 1, by + 7, 2, 10);
-    // nombre del guardián; con la estamina al 50 % o menos, icono de viento a su lado
-    ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
-    const label = (BOSS[boss.kind] || {}).name || 'Guardián del piso', ty = by - 5;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(label, W / 2 + 1, ty + 1);
-    ctx.fillStyle = '#f2eefa'; ctx.fillText(label, W / 2, ty);
-    if (on) drawWindIcon(W / 2 + ctx.measureText(label).width / 2 + 6, ty - 9, 10, '#6ee7ff');
-  }
+  // [RETIRADO 2026-11-10] barra de un solo guardián (ahora drawBossBar, que reparte el ancho entre el dúo):
+  // const boss = enemies.find(e => e.type === 'boss' && (e.spawnT <= 0 || e.sky));
+  // if (boss) {
+  //   const by = H - 22, bw = W - 280, on = guardianLevantable(boss);
+  //   ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(140, by, bw, 8);
+  //   ctx.fillStyle = '#e5484d'; ctx.fillRect(140, by, bw * Math.max(0, boss.hp) / boss.maxHp, 8);
+  //   ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(140, by + 10, bw, 4);
+  //   ctx.fillStyle = boss.stunT > 0 ? '#ffffff' : (on ? '#6ee7ff' : '#f5c542');
+  //   ctx.fillRect(140, by + 10, bw * boss.sta / boss.maxSta, 4);
+  //   // marca fija del 50 %: por encima de ella el guardián no puede volar
+  //   ctx.fillStyle = on ? '#6ee7ff' : '#f2eefa';
+  //   ctx.fillRect(140 + bw * TIER_RULES[4].launchSta - 1, by + 7, 2, 10);
+  //   // nombre del guardián; con la estamina al 50 % o menos, icono de viento a su lado
+  //   ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
+  //   const label = (BOSS[boss.kind] || {}).name || 'Guardián del piso', ty = by - 5;
+  //   ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(label, W / 2 + 1, ty + 1);
+  //   ctx.fillStyle = '#f2eefa'; ctx.fillText(label, W / 2, ty);
+  //   if (on) drawWindIcon(W / 2 + ctx.measureText(label).width / 2 + 6, ty - 9, 10, '#6ee7ff');
+  // }
+  const bossesUi = enemies.filter(e => e.type === 'boss' && !e.dead && (e.spawnT <= 0 || e.sky));
+  bossesUi.sort((a, b) => (a.kind === 'maiden') - (b.kind === 'maiden')); // Vladímir a la izquierda, Konchakovna a la derecha
+  { const n = bossesUi.length, total = W - 280, gap = n > 1 ? 24 : 0, bw = (total - gap * (n - 1)) / Math.max(1, n);
+    bossesUi.forEach((bo, i) => drawBossBar(bo, 140 + i * (bw + gap), bw, n > 1)); }
   if (banner) {
     ctx.globalAlpha = Math.min(1, banner.t * 2);
     ctx.font = '700 17px ' + FONT; ctx.textAlign = 'center';
@@ -10042,6 +10304,23 @@ function drawGame() {
   if (state === 'over') drawOver();
 }
 
+// Barra de un guardián abajo: vida, estamina con la marca de levantable y nombre (con el dúo, dos barras y nombres cortos)
+function drawBossBar(boss, bx, bw, short) {
+  const by = H - 22, on = guardianLevantable(boss);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx, by, bw, 8);
+  ctx.fillStyle = boss.grief ? '#ff3b5c' : '#e5484d'; ctx.fillRect(bx, by, bw * Math.max(0, boss.hp) / boss.maxHp, 8);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx, by + 10, bw, 4);
+  ctx.fillStyle = boss.stunT > 0 ? '#ffffff' : (on ? '#6ee7ff' : '#f5c542');
+  ctx.fillRect(bx, by + 10, bw * boss.sta / boss.maxSta, 4);
+  ctx.fillStyle = on ? '#6ee7ff' : '#f2eefa'; ctx.fillRect(bx + bw * TIER_RULES[4].launchSta - 1, by + 7, 2, 10); // marca de levantable
+  ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
+  let label = (BOSS[boss.kind] || {}).name || 'Guardián del piso';
+  if (short) label = label.split(',')[0] + (boss.grief ? ' · lamento' : duoLinked(boss) ? ' · hilo rojo' : '');
+  const ty = by - 5, cx = bx + bw / 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(label, cx + 1, ty + 1);
+  ctx.fillStyle = short && duoLinked(boss) ? '#ff8fa6' : '#f2eefa'; ctx.fillText(label, cx, ty);
+  if (on) drawWindIcon(cx + ctx.measureText(label).width / 2 + 6, ty - 9, 10, '#6ee7ff');
+}
 // ---------- Botones táctiles: icono de la habilidad del personaje, recarga y estado ----------
 const TBTN = ['bAtk', 'bDash', 'bQ', 'bE', 'bLock'].map(id => { const el = document.getElementById(id); return { el, cv: el.querySelector('canvas'), key: '', cd: 0 }; });
 function paintBtnIcon(b, type, color) {
@@ -12030,7 +12309,7 @@ function drawRunLog() {
 }
 
 // [RETIRADO 2026-11-08] if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
-if (/[?&]debug\b/.test(location.search)) window.MZ = { sfx: { SND, playSnd, initAudio, lastSfx }, get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
+if (/[?&]debug\b/.test(location.search)) window.MZ = { sfx: { SND, playSnd, initAudio, lastSfx }, get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD, damageEnemy, killEnemy, duoLinked, DUO, setStartDepth: d => { devStartDepth = d; }, runKindChoose, resume: () => resume(),
   // menús (pruebas del recorrido): rectángulos en coordenadas lógicas del lienzo y estado de la navegación
   ui: { backBtnRect, modeSeg, actRect, countBox, devRow, levelRect, pauseRect, optRowRect, optTabRect, cardRect, startRect, overRect, get LW() { return LW; }, get LH() { return LH; }, get W() { return W; }, get H() { return H; }, menuOff, get nav() { return { mmRow, mmAct, countSel, siegeMode, devSel, levelSel, devStartDepth, pauseSel, pauseQuit, opt: { tab: OPT.tab, row: OPT.row, from: OPT.from }, testMode, slots: slots.length }; } } };
 })();
