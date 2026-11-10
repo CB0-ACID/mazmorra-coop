@@ -693,7 +693,7 @@ const cvs = document.getElementById('game');
 let ctx = cvs.getContext('2d'); // let: los iconos de los botones táctiles lo cambian un instante para pintar en su propio lienzo
 const stage = document.getElementById('stage');
 let lastMenu = null;
-function isMenuState() { return state === 'count' || state === 'select' || state === 'options' || state === 'ideas' || state === 'dev' || state === 'levels' || state === 'runkind' || state === 'runlog'; }
+function isMenuState() { return state === 'count' || state === 'select' || state === 'options' || state === 'ideas' || state === 'dev' || state === 'levels' || state === 'bosses' || state === 'runkind' || state === 'runlog'; }
 // ---------- Tamaño del marcador en partida ----------
 // Se diseña a escala 1 (pantalla de escritorio) y se amplía cuando el lienzo se ve pequeño, para que en el móvil
 // lo importante no baje de unos mínimos en píxeles reales (CSS): iconos ≈ 26 px, texto ≥ 12 px, barra de vida ≈ 15 px.
@@ -1929,9 +1929,53 @@ function drawMenuHint(extra) {
 }
 // ---------- Dev Options (menú principal): autosalto por los aires, selección de nivel y diario de ideas ----------
 let devStartDepth = 1, devSel = 0, levelSel = 0; // nivel con el que empieza la próxima partida
+// Acceso directo a guardianes (2026-11-10): devBoss = 0 desactivado; 1-4 = la partida empieza en la sala del guardián de ese piso
+let devBoss = 0, bossSel = 0;
+const DEV_BOSSES = [
+  { name: 'Desactivado', sub: 'Partida normal', desc: 'Se empieza en la sala inicial' },
+  { name: 'Galitski', sub: 'Piso 1 · Acto I', desc: 'Salvas, barrido y Estallido' },
+  { name: 'Kónchak', sub: 'Piso 2 · Acto II', desc: 'Embestida, cornada y pisotón' },
+  { name: 'Vladímir y Konchakovna', sub: 'Piso 3 · Acto III', desc: 'Dúo: hilo rojo y lamento' },
+  { name: 'Ígor, Dragón', sub: 'Piso 4 · Acto IV', desc: 'Rayo, rayos del cielo y vuelo' }
+];
+function bossRect(i) { const n = DEV_BOSSES.length, gap = 12, w = Math.min(190, (LW - 60 - gap * (n - 1)) / n), x0 = (LW - (n * w + (n - 1) * gap)) / 2; return [x0 + i * (w + gap), 150, w, 150]; }
+function openBosses() { bossSel = devBoss; state = 'bosses'; menuSwallow(); }
+function closeBosses() { state = 'dev'; devSel = 2; menuSwallow(); }
+function pickBoss(i) { devBoss = i; bossSel = i; closeBosses(); }
+function updateBosses() {
+  let back = escPressed();
+  for (const dev of DEVICES) {
+    const m = menuInput(dev);
+    if (m.dx || m.dy) bossSel = (bossSel + (m.dx || m.dy) + DEV_BOSSES.length) % DEV_BOSSES.length;
+    if (m.a) { pickBoss(bossSel); return; }
+    if (m.d) back = true;
+  }
+  if (back) closeBosses();
+}
+function drawBosses() {
+  drawMenuBg();
+  drawBackBtn(false);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Acceso directo a guardianes', LW / 2, 66);
+  ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('La próxima partida empieza en la sala del guardián elegido', LW / 2, 94);
+  DEV_BOSSES.forEach((b, i) => {
+    const [x, y, w, h] = bossRect(i), sel = bossSel === i;
+    rrect(x, y, w, h, 10); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
+    ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
+    if (i) { rrect(x + 12, y + 12, w - 24, 10, 4); ctx.fillStyle = themeOf(i).pal.top; ctx.fill(); }
+    const words = b.name.split(' '), lines = b.name.length > 14 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [b.name];
+    ctx.fillStyle = '#f2eefa'; ctx.font = '700 17px ' + FONT; lines.forEach((l, k) => ctx.fillText(l, x + w / 2, y + 54 + k * 20 - (lines.length - 1) * 10));
+    ctx.fillStyle = '#b9afc9'; ctx.font = '400 13px ' + FONT; ctx.fillText(b.sub, x + w / 2, y + 96);
+    ctx.fillStyle = '#8f86a0'; ctx.font = '400 11px ' + FONT; ctx.fillText(b.desc, x + w / 2, y + 116);
+    if (devBoss === i) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText(i ? 'elegido' : 'actual', x + w / 2, y + 138); }
+  });
+  drawMenuHint('Elegir uno vuelve a Dev Options · tiene prioridad sobre la selección de nivel');
+}
 // Dev Options: lista de filas (0-4). Volver: botón «‹ Volver», Esc o Movimiento
-const DEV_ROWS = 6; // 5: Registro de partidas
-function devRow(i) { const w = Math.min(520, LW - 80); return [(LW - w) / 2, 128 + i * 72, w, 60]; }
+// const DEV_ROWS = 6; // 5: Registro de partidas [RETIRADO 2026-11-10]
+const DEV_ROWS = 7; // 2: Acceso directo a guardianes · 6: Registro de partidas
+// function devRow(i) { const w = Math.min(520, LW - 80); return [(LW - w) / 2, 128 + i * 72, w, 60]; } // [RETIRADO 2026-11-10] con 7 filas no cabía
+function devRow(i) { const w = Math.min(520, LW - 80), step = Math.min(72, (LH - 128 - 36) / DEV_ROWS); return [(LW - w) / 2, 118 + i * step, w, step - 10]; }
 function levelRect(n) { const cols = 4, w = 200, h = 120, gap = 16, x0 = (LW - (cols * w + (cols - 1) * gap)) / 2, r = Math.floor((n - 1) / cols), c = (n - 1) % cols; return [x0 + c * (w + gap), 130 + r * (h + gap), w, h]; }
 // function devBackRect() { return [LW / 2 - 60, LH - 62, 120, 32]; } // antes: «Volver» abajo; ahora backBtnRect() arriba a la izquierda en todas las subpantallas
 // [RETIRADO 2026-11-08] function menuSwallow() { for (const dev of DEVICES) menuInput(dev); escPressed(); } // el botón que abrió la pantalla no debe activar nada en ella
@@ -1943,10 +1987,11 @@ function closeLevels() { state = 'dev'; devSel = 1; menuSwallow(); }
 function devAct(i) {
   if (i === 0) toggleTest();
   else if (i === 1) openLevels();
-  else if (i === 2) openIdeas();
-  else if (i === 3) location.href = 'diagnostico-mando.html'; // test de mandos (la página tiene «Volver al juego»)
-  else if (i === 4) location.href = 'https://github.com/CB0-ACID/mazmorra-coop/releases/download/tv-latest/app-debug.apk'; // APK para Android TV
-  else if (i === 5) openRunLog();
+  else if (i === 2) openBosses();
+  else if (i === 3) openIdeas();
+  else if (i === 4) location.href = 'diagnostico-mando.html'; // test de mandos (la página tiene «Volver al juego»)
+  else if (i === 5) location.href = 'https://github.com/CB0-ACID/mazmorra-coop/releases/download/tv-latest/app-debug.apk'; // APK para Android TV
+  else if (i === 6) openRunLog();
 }
 function updateDev() {
   let back = escPressed();
@@ -1974,19 +2019,23 @@ function drawDev() {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 30px ' + FONT; ctx.fillText('Dev Options', LW / 2, 66);
   ctx.fillStyle = '#b9afc9'; ctx.font = '400 15px ' + FONT; ctx.fillText('Herramientas para probar y revisar el juego', LW / 2, 94);
-  const names = ['Autosaltar enemigos por los aires', 'Selección de nivel', 'Diario de ideas', 'Test de mandos', 'Descargar app Android TV', 'Registro de partidas'];
-  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Ideas que quiero implementar y que aún considero no viables', 'Muestra qué botones y ejes llegan desde los mandos (sale del juego)', 'APK para instalar la app con mandos en la tele', 'Partidas reales terminadas: resumen por personaje y exportación'];
+  const names = ['Autosaltar enemigos por los aires', 'Selección de nivel', 'Acceso directo a guardianes', 'Diario de ideas', 'Test de mandos', 'Descargar app Android TV', 'Registro de partidas'];
+  const descs = ['Clic de rueda o cruceta lanzan al enemigo apuntado', 'Elige el piso con el que empieza la próxima partida', 'Empieza la partida en la sala de un guardián', 'Ideas que quiero implementar y que aún considero no viables', 'Muestra qué botones y ejes llegan desde los mandos (sale del juego)', 'APK para instalar la app con mandos en la tele', 'Partidas reales terminadas: resumen por personaje y exportación'];
+  const sh = devRow(0)[3] < 56; // filas más bajas en pantallas cortas: la descripción sube
   for (let i = 0; i < DEV_ROWS; i++) {
     const [x, y, w, h] = devRow(i), sel = devSel === i;
     rrect(x, y, w, h, 9); ctx.fillStyle = sel ? '#2f2640' : '#1c1726'; ctx.fill();
     ctx.lineWidth = sel ? 2.5 : 1.5; ctx.strokeStyle = sel ? '#b49bff' : '#3b3349'; ctx.stroke();
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#f2eefa'; ctx.font = '700 16px ' + FONT; ctx.fillText(names[i], x + 18, y + 25);
-    ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText(descs[i], x + 18, y + 45);
+    const ty = sh ? y + h * 0.42 : y + 25, dy = sh ? y + h * 0.8 : y + 45;
+    ctx.fillStyle = '#f2eefa'; ctx.font = '700 16px ' + FONT; ctx.fillText(names[i], x + 18, ty);
+    ctx.fillStyle = '#8f86a0'; ctx.font = '400 12px ' + FONT; ctx.fillText(descs[i], x + 18, dy);
     ctx.textAlign = 'right'; ctx.font = '700 13px ' + FONT;
-    if (i === 0) { ctx.fillStyle = testMode ? '#ffd54a' : '#8f86a0'; ctx.fillText(testMode ? 'Activado' : 'Desactivado', x + w - 18, y + 25); }
-    else if (i === 1) { ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + devStartDepth + ' · ' + themeOf(devStartDepth).name + ' ›', x + w - 18, y + 25); }
-    else { ctx.fillStyle = '#d8d0e6'; ctx.fillText(i === 4 ? 'Descargar ›' : 'Abrir ›', x + w - 18, y + 25); }
+    if (i === 0) { ctx.fillStyle = testMode ? '#ffd54a' : '#8f86a0'; ctx.fillText(testMode ? 'Activado' : 'Desactivado', x + w - 18, ty); }
+    else if (i === 1) { ctx.fillStyle = devBoss ? '#8f86a0' : '#d8d0e6'; ctx.fillText('Piso ' + devStartDepth + ' · ' + themeOf(devStartDepth).name + ' ›', x + w - 18, ty); }
+    else if (i === 2) { ctx.fillStyle = devBoss ? '#ffd54a' : '#8f86a0'; ctx.fillText((devBoss ? DEV_BOSSES[devBoss].name : 'Desactivado') + ' ›', x + w - 18, ty); }
+    // else { ctx.fillStyle = '#d8d0e6'; ctx.fillText(i === 4 ? 'Descargar ›' : 'Abrir ›', x + w - 18, y + 25); } // [RETIRADO 2026-11-10] índices antes de añadir la fila 2
+    else { ctx.fillStyle = '#d8d0e6'; ctx.fillText(i === 5 ? 'Descargar ›' : 'Abrir ›', x + w - 18, ty); }
   }
   drawMenuHint();
 }
@@ -2146,6 +2195,7 @@ cvs.addEventListener('mousemove', e => {
   else if (state === 'dev') { for (let i = 0; i < DEV_ROWS; i++) if (insideAt(x, y, devRow(i))) devSel = i; }
   else if (state === 'runkind') { for (let i = 0; i < 2; i++) if (insideAt(x, y, runKindRect(i))) RUNLOG.sel = i; }
   else if (state === 'levels') { for (let n = 1; n <= 8; n++) if (insideAt(x, y, levelRect(n))) levelSel = n - 1; }
+  else if (state === 'bosses') { for (let i = 0; i < DEV_BOSSES.length; i++) if (insideAt(x, y, bossRect(i))) bossSel = i; }
   else if (state === 'pause') { for (let i = 0; i < 5; i++) if (insideAt(x, y, pauseRect(i)) && pauseSel !== i) { pauseSel = i; pauseQuit = false; } }
   else if (state === 'options') { for (let r = 1; r <= optList().length + 1; r++) if (insideAt(x, y, optRowRect(r))) OPT.row = r; }
   else if (state === 'over') { for (let i = 0; i < 3; i++) if (insideAt(x, y, overRect(i))) overSel = i; }
@@ -2182,6 +2232,9 @@ cvs.addEventListener('pointerdown', e => {
   } else if (state === 'levels') {
     if (inside(backBtnRect())) { closeLevels(); return; }
     for (let n = 1; n <= 8; n++) if (inside(levelRect(n))) { devStartDepth = n; levelSel = n - 1; closeLevels(); return; }
+  } else if (state === 'bosses') {
+    if (inside(backBtnRect())) { closeBosses(); return; }
+    for (let i = 0; i < DEV_BOSSES.length; i++) if (inside(bossRect(i))) { pickBoss(i); return; }
   } else if (state === 'ideas') {
     if (inside(backBtnRect())) { closeIdeas(); return; }
     IDEAS.dragY = y; // arrastrar con el dedo (o el ratón) desplaza el diario
@@ -2559,13 +2612,18 @@ function roomCleared() {
 
 function newRun() {
   seed = 10000 + Math.floor(Math.random() * 90000);
-  floor = genFloor(seed, devStartDepth);
+  // floor = genFloor(seed, devStartDepth); // [RETIRADO 2026-11-10] sin acceso directo a guardianes
+  const d0 = devBoss || devStartDepth; // acceso directo a guardianes: tiene prioridad sobre la selección de nivel
+  floor = genFloor(seed, d0);
   for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.spin = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; p.hotMode = false; p.crossReady = false; p.crossCd = 0; p.emberT = 0; p.loadT = 0; p.sAmmo = p.ch.stickyAmmo || 0; p.sLoadT = 0; for (const kk in p.prev) p.prev[kk] = true; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
-  enterRoom(floor.start, null);
-  showBanner(isTouch ? 'Piso ' + devStartDepth + '. Pausa con el botón II' : 'Piso ' + devStartDepth + '. Pausa con Esc o Start');
+  // enterRoom(floor.start, null); // [RETIRADO 2026-11-10]
+  // showBanner(isTouch ? 'Piso ' + devStartDepth + '. Pausa con el botón II' : 'Piso ' + devStartDepth + '. Pausa con Esc o Start');
+  const bossRoom = devBoss ? [...floor.rooms.values()].find(r => r.type === 'boss') : null;
+  enterRoom(bossRoom || floor.start, null); // en la sala del guardián, enterRoom ya anuncia su nombre
+  if (!bossRoom) showBanner(isTouch ? 'Piso ' + d0 + '. Pausa con el botón II' : 'Piso ' + d0 + '. Pausa con Esc o Start');
 }
 function nextFloor() {
   playSnd('stairs', 0.5);
@@ -7846,6 +7904,7 @@ function update(dt) {
   if (state === 'ideas') { updateIdeas(); return; }
   if (state === 'dev') { updateDev(); return; }
   if (state === 'levels') { updateLevels(); return; }
+  if (state === 'bosses') { updateBosses(); return; }
   if (state === 'runkind') { updateRunKind(dt); return; }
   if (state === 'runlog') { updateRunLog(dt); return; }
   if (state === 'tutorial') { updateTutorial(dt); return; }
@@ -8105,10 +8164,11 @@ function drawStage(closed, lipY, opt) {
 // Desplazamiento vertical del menú de número de jugadores (lo centra si la pantalla es más alta)
 function menuOff() { return state === 'count' ? (LH - BH) / 2 : 0; }
 function drawCount() {
-  // drawMenuBg(); // [RETIRADO 2026-11-10] fondo de baldosas; ahora el escenario con el telón echado
+  // [DESACTIVADO 2026-11-10] telón echado de fondo: la pantalla tardaba más en cargar. Para recuperarlo, quitar drawMenuBg() y descomentar las dos líneas de drawStage y la sombra (y el restore del final de drawCount)
+  drawMenuBg();
   const off = menuOff();
-  drawStage(1, off + 444, { valH: 18 });
-  ctx.save(); ctx.shadowColor = 'rgba(8,2,6,0.85)'; ctx.shadowBlur = 8; // sobre el telón, todo lleva sombra para leerse
+  // drawStage(1, off + 444, { valH: 18 });
+  // ctx.save(); ctx.shadowColor = 'rgba(8,2,6,0.85)'; ctx.shadowBlur = 8; // sobre el telón, todo lleva sombra para leerse
   ctx.save(); ctx.translate(0, off);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f2eefa'; ctx.font = '700 36px ' + FONT; ctx.fillText('Mazmorra cooperativa', LW / 2, 64);
@@ -8151,7 +8211,7 @@ function drawCount() {
     ctx.fillStyle = ch.color; ctx.font = '700 12px ' + FONT; ctx.fillText(ch.name, x, sy + 52);
   });
   // fila 2: accesos
-  [['Controles y sonido', 'Teclas, botones, volumen y tutorial'], ['Dev Options', 'Piso inicial ' + devStartDepth + (testMode ? ' · autosalto' : '') + ' · ideas · test de mandos']].forEach(([t, d], i) => {
+  [['Controles y sonido', 'Teclas, botones, volumen y tutorial'], ['Dev Options', (devBoss ? 'Guardián: ' + DEV_BOSSES[devBoss].name : 'Piso inicial ' + devStartDepth) + (testMode ? ' · autosalto' : '') + ' · ideas · test de mandos']].forEach(([t, d], i) => {
     const [x, y, w, h] = actRect(i), on = mmRow === 2 && mmAct === i;
     focusBox(x, y, w, h, on, on);
     ctx.fillStyle = on ? '#f2eefa' : '#d8d0e6'; ctx.font = '700 14px ' + FONT; ctx.fillText(t, x + w / 2, y + 19);
@@ -8167,7 +8227,7 @@ function drawCount() {
   ];
   lines.forEach((l, i) => ctx.fillText(l, LW / 2, 552 + i * 17));
   ctx.restore();
-  ctx.restore(); // sombra del texto sobre el telón
+  // ctx.restore(); // sombra del texto sobre el telón [DESACTIVADO 2026-11-10 con el telón]
 }
 
 // Textos de la ficha de personaje
@@ -10433,6 +10493,7 @@ function draw() {
   else if (state === 'ideas') drawIdeas();
   else if (state === 'dev') drawDev();
   else if (state === 'levels') drawLevels();
+  else if (state === 'bosses') drawBosses();
   else if (state === 'runkind') drawRunKind();
   else if (state === 'runlog') drawRunLog();
   else { drawGame(); if (state === 'pause') drawPause(); if (state === 'tutorial') drawTutorial(); if (state === 'siegeUp') siegeUpDraw(); }
@@ -10847,7 +10908,7 @@ function ideasLines(maxW) {
   return out;
 }
 function openIdeas() { state = 'ideas'; IDEAS.scroll = 0; menuSwallow(); }
-function closeIdeas() { state = 'dev'; devSel = 2; menuSwallow(); } // el botón que abrió el diario no debe activar nada aquí
+function closeIdeas() { state = 'dev'; devSel = 3; menuSwallow(); } // el botón que abrió el diario no debe activar nada aquí
 function updateIdeas() {
   let back = escPressed();
   for (const dev of DEVICES) {
@@ -12111,6 +12172,7 @@ function runLogLoad() { try { return JSON.parse(localStorage.getItem('mz-registr
 function runLogSave(list) { try { localStorage.setItem('mz-registro', JSON.stringify(list.slice(-RUNLOG_MAX))); return true; } catch (_) { return false; } }
 function runLogBlock() { // motivo por el que la próxima partida no puede ser real (o null)
   if (siegeMode) return 'El modo Asedio no se registra';
+  if (devBoss) return 'Acceso directo a guardián (Dev Options): solo prueba';
   if (devStartDepth !== 1) return 'Empieza en el piso ' + devStartDepth + ' (Dev Options): solo prueba';
   if (testMode) return 'Autosalto activado (Dev Options): solo prueba';
   if (/[?&]debug\b/.test(location.search)) return 'Modo depuración (?debug): solo prueba';
@@ -12236,7 +12298,7 @@ function drawRunKind() {
 
 // Dev Options > Registro de partidas: resumen por personaje, últimas partidas y exportación
 function openRunLog() { state = 'runlog'; RUNLOG.scroll = 0; RUNLOG.msgT = 0; menuSwallow(); }
-function closeRunLog() { state = 'dev'; devSel = 5; menuSwallow(); }
+function closeRunLog() { state = 'dev'; devSel = 6; menuSwallow(); }
 function runLogBtn(i) { const w = 190, g = 12, x0 = LW / 2 - w - g / 2; return [x0 + i * (w + g), LH - 72, w, 34]; } // 0 Copiar · 1 Descargar
 function runLogJSON() { return JSON.stringify(runLogLoad(), null, 1); }
 function runLogCopy() {
@@ -12309,9 +12371,9 @@ function drawRunLog() {
 }
 
 // [RETIRADO 2026-11-08] if (/[?&]debug\b/.test(location.search)) window.MZ = { get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD,
-if (/[?&]debug\b/.test(location.search)) window.MZ = { sfx: { SND, playSnd, initAudio, lastSfx }, get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD, damageEnemy, killEnemy, duoLinked, DUO, setStartDepth: d => { devStartDepth = d; }, runKindChoose, resume: () => resume(),
+if (/[?&]debug\b/.test(location.search)) window.MZ = { sfx: { SND, playSnd, initAudio, lastSfx }, get s() { return { state, room, players, enemies, cam, floor, COLS, ROWS, SIEGE }; }, siege: { SG, sgStartWave, siegeEnter, sgZone: id => sgZone(id), sgEvent, sgUpChoose, setMode: v => { siegeMode = v; }, quick: (chars, mode) => { slots = chars.map((c, i) => ({ dev: ['kb1', 'kb2', 'pad0', 'pad1'][i], cur: c, locked: true })); want = slots.length; npcMode = false; siegeMode = mode !== false; startGame(); if (state === 'tutorial') resume(); } }, enterRoom, roomCleared, update, MUS, musicFanfare, openOptions, AUD, damageEnemy, killEnemy, duoLinked, DUO, setStartDepth: d => { devStartDepth = d; }, setBoss: i => { devBoss = i; }, runKindChoose, resume: () => resume(),
   // menús (pruebas del recorrido): rectángulos en coordenadas lógicas del lienzo y estado de la navegación
-  ui: { backBtnRect, modeSeg, actRect, countBox, devRow, levelRect, pauseRect, optRowRect, optTabRect, cardRect, startRect, overRect, get LW() { return LW; }, get LH() { return LH; }, get W() { return W; }, get H() { return H; }, menuOff, get nav() { return { mmRow, mmAct, countSel, siegeMode, devSel, levelSel, devStartDepth, pauseSel, pauseQuit, opt: { tab: OPT.tab, row: OPT.row, from: OPT.from }, testMode, slots: slots.length }; } } };
+  ui: { backBtnRect, modeSeg, actRect, countBox, devRow, levelRect, bossRect, pauseRect, optRowRect, optTabRect, cardRect, startRect, overRect, get LW() { return LW; }, get LH() { return LH; }, get W() { return W; }, get H() { return H; }, menuOff, get nav() { return { mmRow, mmAct, countSel, siegeMode, devSel, levelSel, devStartDepth, devBoss, bossSel, pauseSel, pauseQuit, opt: { tab: OPT.tab, row: OPT.row, from: OPT.from }, testMode, slots: slots.length }; } } };
 })();
 
 // ===== Código retirado, comentado y sin efecto =====
