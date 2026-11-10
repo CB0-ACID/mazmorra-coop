@@ -164,6 +164,88 @@ Cómo se diseña y se ajusta todo lo nuevo: enemigos, personajes y el futuro sis
 - Se guarda en `localStorage` (`mz-registro`), por dispositivo. Dev Options > Registro de partidas muestra el resumen por personaje y las últimas partidas, y permite copiar o descargar el JSON para analizarlo.
 - Cada partida guarda: fecha, resultado, modo (solo, coop N, 1 + IA), semilla, duración, piso máximo, por jugador (personaje, control, daño recibido, caídas, ejecuciones, habilidades usadas, último golpe recibido), daño total hecho, bajas, ejecuciones, tiempo y daño recibido de cada sala y de cada guardián, y dónde cayó el grupo.
 
+## Lore y trama (desde el 2026-11-10)
+Documento de diseño: nada de este apartado está implementado todavía salvo lo que se indique. Sirve de referencia para la estética de la versión 2D (la que se trabaja habitualmente) y para el prototipo 3D.
+
+**Fuente.** La banda sonora sale de las Danzas polovtsianas, el número de baile del acto II de *El príncipe Ígor* (Borodin; inacabada a su muerte en 1887, completada por Rimski-Kórsakov y Glazunov, estreno en 1890). La ópera adapta el *Cantar de las huestes de Ígor* (siglo XII). Argumento resumido: Ígor parte contra los polovtsianos (nómadas de la estepa) pese a que un eclipse de sol lo anuncia como mal presagio; en su ausencia, el príncipe Galitski se emborracha y conspira en Putivl mientras Yaroslavna, la esposa de Ígor, lo llora desde las murallas; Ígor cae prisionero del kan Kónchak, que le ofrece la libertad a cambio de no volver a atacarle (Ígor se niega) y lo agasaja con las danzas; Vladímir, el hijo de Ígor, se enamora de Konchakovna, la hija del kan, y se queda con ella; Ígor escapa con ayuda de Ovlur y vuelve a una Putivl arrasada. Las danzas se hicieron famosas en París en 1909 con una compañía de ballet rusa.
+
+### Premisa
+- **Una compañía de bailarines de principios del siglo XX**, sin concretar compañía, ciudad ni año. Los personajes jugables son intérpretes de esa compañía.
+- **Todo es una función de teatro.** Los diseños mezclados de los personajes (ninja, dragón chino, torreta, escudo…) son **disfraces** de la función; los pisos son **decorados**; los enemigos, figurantes y bailarines de la obra. Así se justifica que convivan estéticas distintas.
+- **El ciclo de reseteo.** La función está atrapada en un bucle: cada run es una representación. Si cae el grupo, **cae el telón** y la función vuelve a empezar; si vencen, el eclipse se completa, el sol es devorado y la función también vuelve a empezar. No hay salida «normal»: el bucle es el mundo.
+
+### El eclipse: núcleo visual y narrativo
+- Es el presagio del prólogo de la ópera y el centro de todo: abre cada función, avanza con la run y la cierra.
+- En el folclore eslavo una bestia devoraba el sol durante los eclipses. Esa bestia es el **Dragón**, y el Dragón es **Ígor transformado**.
+- **Lectura narrativa:** Ígor ignoró el presagio y rechazó el pacto de Kónchak; su obstinación alimenta el eclipse. Por eso es el villano final: no un monstruo ajeno, sino el protagonista de la obra devorado por su propio orgullo.
+- **Lectura visual (propuesta):** un disco solar que se va tapando piso a piso (en el menú, en el banner de cada piso y en un indicador pequeño del marcador); la luz de las salas baja de tono y las sombras se alargan con cada piso; en el piso 4, totalidad: cielo negro, corona blanca y dorada alrededor del disco. Paleta: corona dorada y blanca, violeta del Dragón (`#b48cff`, ya en `BOSS.dragon.energy`) y siluetas oscuras con el acento de color de cada personaje (como en el prototipo 3D).
+- **Regla de legibilidad:** la oscuridad nunca tapa los avisos de ataque ni las barras; los telegrafiados siguen siendo igual de visibles en todos los pisos.
+
+### Guardianes: asignación de nombres
+Cuatro nombres de la ópera para los guardianes existentes, más Ígor como guardián final nuevo con dos formas.
+
+| Piso | Decorado (bioma actual → lectura) | Guardián actual → personaje | Encaje |
+|---|---|---|---|
+| 1 | Mazmorra → bodegas y salones de Putivl en fiesta | Cañonero → **Príncipe Galitski** | Cañón de salvas de su juerga; el Estallido son fuegos artificiales. Refuerzos: su drúzhina y juerguistas. |
+| 2 | Bosque otoñal → linde de la estepa y campamento polovtsiano | Ariete → **Kan Kónchak** | Embestida de jinete nómada; cornada y pisotón de caballo. Refuerzos: bailarines polovtsianos (las danzas son su pelea). |
+| 3 | Gruta acuática → orilla del río Kayala de noche | Coloso → **Vladímir, hijo de Ígor** | Príncipe joven con armadura pesada: martillazo, grieta y terremoto. **Konchakovna** a su lado (ver abajo). |
+| 4 | Catedral gótica → catedral y murallas de Putivl bajo el eclipse | Nuevo: **Ígor** (forma humana) → **Dragón** (el Dragón de la Catedral actual pasa a ser su segunda forma) | Al derrotar a Ígor, el eclipse llega a la totalidad, se transforma y empieza la pelea del Dragón con su música `final`. Al caer el Dragón, devora el sol y la función vuelve a empezar. |
+
+- **Pendiente de decidir — Konchakovna.** Hay cuatro nombres para tres guardianes no finales. Propuesta: **dúo en el piso 3**, Vladímir (el Coloso) y Konchakovna (nueva, ligera y rápida, ataques de danza en abanico y una onda de canto, por su cavatina). Son amantes: un hilo rojo visible los une y les da escudo mientras están cerca, así que el grupo tiene que separarlos (mecánica coop). Si cae uno, el otro entra en rabia. Alternativa: ciclo de cinco pisos con Konchakovna como guardiana propia.
+- **Ígor, forma humana (propuesta).** Príncipe con casco cónico dorado, capa roja y escudo almendrado. Duelista que recapitula el ciclo: en cada tramo de vida usa la idea de un guardián anterior (salva de Galitski, embestida de Kónchak, golpe al suelo de Vladímir), siempre con frente, arma visible y aviso como el resto de guardianes. Música: la pista `boss`; la transformación da paso a `final`.
+
+### Esquema de progresión de la trama y los niveles
+| Momento | Dónde | Eclipse | Qué pasa en la trama | Temática visual | Música |
+|---|---|---|---|---|---|
+| Prólogo | Menú principal | Empieza | La compañía se prepara; el sol comienza a oscurecerse | Telón, candilejas, disco solar con la primera mordida | `menu` |
+| Acto I · Piso 1 | Putivl: bodegas y salones | 25 % | Ígor ha partido; Galitski gobierna borracho | Interior cálido, velas, tapices rojos; drúzhina rus | `calm` / `fight` / `boss` |
+| Entreacto | Bambalinas | — | Yaroslavna lamenta desde las murallas | Entre cajas de atrezo y focos | coda `boss_win` |
+| Acto II · Piso 2 | Estepa y campamento | 50 % | Ígor prisionero; la oferta de Kónchak; las danzas | Tiendas rojas, ocres, atardecer; babas de piedra | ídem |
+| Entreacto | Bambalinas | — | Ovlur prepara la huida | | |
+| Acto III · Piso 3 | Río Kayala de noche | 75 % | Vladímir elige quedarse con Konchakovna | Agua oscura, luna tapada, reflejos | ídem |
+| Entreacto | Bambalinas | — | Ígor escapa y vuelve a casa | | |
+| Acto IV · Piso 4 | Catedral y murallas de Putivl | 100 % (totalidad) | Ígor regresa, consumido por el eclipse: se convierte en el Dragón | Cielo negro, corona solar, vitrales violetas | `boss` → `final` |
+| Epílogo | — | El sol es devorado | Cae el telón y la función vuelve a empezar (Función n.º + 1) | Oscuridad total y telón que se alza | coda → `menu` |
+
+### Ideas que unen jugabilidad y trama (propuestas)
+**Economía y tienda**
+- **Moneda: Destellos** (luz robada al sol). Caen de los enemigos como chispas doradas; en la interfaz, un pequeño sol.
+- **Tienda: la Guardarropía**, atendida por **Skula y Yeroshka**, los dos músicos desertores de la ópera (dúo cómico que cambia de bando según le conviene). Su surtido cambia según el piso: objetos rus en Putivl, polovtsianos en la estepa y el río.
+- Dos tipos de artículo: **Vestuario** (piezas pasivas para toda la run: máscaras, tocados, cascos, fajines; refuerzan la idea de disfraz) y **Atrezo** (consumibles de un uso).
+- **Sala del tesoro → Camerino**: cofre con Destellos y una pieza de Vestuario gratis o un mostrador pequeño de la Guardarropía; espejo de camerino para cambiar una mejora por otra.
+
+**Mejoras entre salas y entre pisos**
+- **Ovación:** al limpiar ciertas salas, el público aplaude y se elige 1 de 3 **bises** (mejoras pequeñas). Frecuencia por decidir.
+- **Entreacto** entre pisos (bambalinas): la curación que ya existe al bajar de piso, la Guardarropía y el **Lamento de Yaroslavna**: elegir una bendición entre las tres fuerzas que ella invoca en el poema, **Viento** (levantar, aéreo y movilidad; enlaza con el icono de viento del guardián), **Sol** (daño, quemadura y luz contra el eclipse) o **Río** (curación, rescate y vida).
+- **La oferta de Kónchak:** antes del guardián del piso 2, aceptar el pacto (ventaja fuerte con una maldición para el resto de la run) o rechazarlo como Ígor.
+- **Ovlur:** sala secreta o atajo; ofrece saltarse una sala o rescatar a un caído a cambio de Destellos.
+
+**El eclipse como mecánica**
+- Indicador del eclipse en el marcador que avanza por piso.
+- Candelabros o antorchas que se pueden encender en las salas oscuras a cambio de un pequeño bonus (sin tapar nunca los avisos).
+- **Funciones:** cada ciclo completado sube el número de función (dificultad creciente, al estilo del Calor de Hades) y desbloquea Vestuario nuevo como aspecto de los personajes.
+
+**Enemigos y escena**
+- Refuerzos de Kónchak como bailarines polovtsianos (reaprovecha `BOSS_ADDS`).
+- **Babas de piedra** como tótems: potencian a los enemigos cercanos hasta que se rompen.
+- Caer en combate: el personaje queda como **sombra a contraluz** (el fantasma actual).
+- La idea del diario «boss de la party inversa» encaja como **los suplentes**: dobles oscuros de la compañía.
+
+### Influencias visuales: cascos y vestuario de los enemigos
+- **Rus de Kiev (drúzhina de Ígor y de Galitski):** casco cónico y apuntado con protector nasal y cota de malla colgando sobre el cuello y los hombros; acabados dorados o de hierro con remaches; escudo almendrado rojo; capas cortas.
+- **Polovtsianos (cumanos):** casco alto con **máscara facial metálica** con rostro y bigote; penachos de crin; gorros de piel altos; caftanes cruzados; arcos cortos.
+- **Babas de piedra polovtsianas:** estatuas de la estepa con gorro alto y las manos sujetando un cuenco a la altura del vientre; silueta de referencia para tótems y decorado del piso 2.
+- **Por tier (propuesta):** tier 1 sin casco o con gorro de tela o piel; tier 2 casco cónico con nasal; tier 3 casco con máscara facial y cota de malla; élites con penacho; guardianes con casco o tocado ceremonial.
+- **El casco como lectura del estado:** se agrieta con la estamina baja y salta al quedar levantable (refuerza la barra y el color cian sin sustituirlos).
+- **Facciones por piso:** piso 1 rus; pisos 2 y 3 polovtsianos; piso 4 mezcla de ambos en sombra.
+- Coherente con el prototipo 3D: siluetas oscuras con un acento de color, formas simples y reconocibles, texturas sencillas pero intensas.
+
+### Pendiente de decidir
+- Konchakovna: dúo con Vladímir en el piso 3 (propuesta) o piso propio.
+- Si los nombres se cambian ya en el código (`BOSS.*.name`, `THEMES.*.name`) y si el piso 1 deja de ser «mazmorra» y pasa a ser Putivl.
+- Nombre final de la moneda, de la tienda y de las mejoras (Destellos, Guardarropía, bises).
+- Qué ideas de jugabilidad se prototipan primero.
+
 ## Glosario
 Término canónico en **negrita**; entre paréntesis, el anglicismo o la palabra que se usaba y el identificador en el código. En la interfaz y en los documentos se usa siempre el término canónico.
 
