@@ -399,7 +399,11 @@ const AB = {
                r: 55, dmg: 2, sta: 0.35, stackR: 0.25,                 // al detonar: daño y estamina (× DMG.ability); cada carga extra en el mismo enemigo suma daño y +25 % de radio
                breakFrac: 0.4, breakBoss: 0.22,                         // rompe estamina: cada carga detonada en un enemigo le quita esta parte de su estamina máxima (3 cargas = aturdido; en el guardián, 0,22 por carga)
                // [RETIRADO] allyR: 85, allyMul: 1.5 },
-               allyR: 85, allyMul: 1.9 },                              // bomba humana: pegada a un compañero, estalla a su alrededor, lanza a todos y a él no le hace nada (×1,9 de daño para premiar el combo)
+               allyR: 85, allyMul: 1.9,                                // bomba humana: pegada a un compañero, estalla a su alrededor, lanza a todos y a él no le hace nada (×1,9 de daño para premiar el combo)
+               // Remate explosivo (2026-11-10): detonar sobre un enemigo que YA estaba aturdido o en el aire (lo haya dejado así quien sea)
+               // le quita además «finishFrac» de su vida máxima por carga; en el guardián, «finishBoss» por carga y alarga el aturdimiento
+               // «finishStun» s por carga (hasta su aturdimiento normal). No es una ejecución: ejecutar sigue exigiendo acercarse.
+               finishFrac: 0.3, finishBoss: 0.03, finishStun: 0.4 },
   doll:      { hop: 0.3, rest: 0.07, step: 46, h: 20, life: 7, max: 2, seek: 420, touch: 8, // muñeco bomba: salta hacia el enemigo fijado y estalla al tocarlo
                r: 58, dmg: 2.2, sta: 2.2 },                             // explosión (× DMG.ability): daña y lanza por los aires
   recoil:    { reach: 34, r: 58, dmg: 1.6, sta: 0.3, kb: 620, push: 700, inv: 0.25 }, // escopetazo tras rodar: a bocajarro, empuja mucho y te impulsa hacia atrás
@@ -4618,12 +4622,23 @@ function castDetonator(p) {
     } else if (k0.kind === 'enemy') { // pegada a un enemigo: lo lanza; varias cargas en el mismo, más daño y más radio
       // [RETIRADO 2026-11-08] const e = k0.host, hit = coralBlast(e.x, e.y, S.r * (1 + S.stackR * (n - 1)), dmg, dmg * 0.6, 300, { host: e, hostMul: n * 1.5, juggle: 0.75 });
       const e = k0.host, brk = (e.type === 'boss' ? S.breakBoss : S.breakFrac) * n; // cuantas más cargas, más estamina rompe (3 cargas aturden a tier 1-3)
+      const ripe = !e.dead && (e.stunT > 0 || e.airborne); // ya estaba aturdido o en el aire antes de estallar: Remate explosivo
       const hit = coralBlast(e.x, e.y, S.r * (1 + S.stackR * (n - 1)), dmg, dmg * 0.6, 300, { host: e, hostMul: n * 1.5, hostStaFrac: brk, juggle: 0.75 });
       launched.push(e); if (n > 1) floatText(e.x, upY(e.y, 50 + (e.z || 0)), '×' + n, '#ffb347');
+      if (ripe && !e.dead) coralFinish(e, n);
     } else coralBlast(k0.x, k0.y, S.r, dmg * 0.8, dmg * 0.5, 300, { juggle: 0.7 }); // en el suelo: explosión normal
   }
   stickies = stickies.filter(k => k.owner !== p);
   if (!p.down) lockNearestOf(p, launched.filter(e => !e.dead && e.airborne));
+}
+// Remate explosivo: las cargas sobre un enemigo aturdido o lanzado (por Coral o por un compañero) le arrancan un trozo de vida
+function coralFinish(e, n) {
+  const S = AB.sticky, boss = e.type === 'boss';
+  e.hp -= e.maxHp * (boss ? S.finishBoss : S.finishFrac) * n; e.flash = 0.2;
+  if (boss && e.stunT > 0) e.stunT = Math.min(Math.max(e.stunT, tierRule(e).stunTime), e.stunT + S.finishStun * n); // lo mantiene aturdido para el remate
+  floatText(e.x, upY(e.y, 70 + (e.z || 0)), '¡Remate explosivo!', '#ff6fb5'); burst(e.x, upY(e.y, 20 + (e.z || 0)), '#ff6fb5', 14);
+  shake = Math.max(shake, 8); hitstop = Math.max(hitstop, 0.06);
+  if (e.hp <= 0) killEnemy(e, false);
 }
 // Muñeco bomba (tras esquivar): un muñequito con un explosivo a la espalda que ficha a un enemigo,
 // se le acerca a saltitos y estalla al tocarlo (o cuando un enemigo lo toca): daña y lanza por los aires
@@ -7987,7 +8002,8 @@ const ABILITY_TEXT = {
   overdrive: ['Purga', 'Onda que vacía el calor; luego dispara rápido sin calentarse'],
   detonate: ['Detonar', 'Al rojo: hace estallar a todos los chamuscados; con 2+ llamitas los lanza'],
   // [RETIRADO 2026-11-08] detonator: ['Detonador', 'Estallan tus cargas: lanzan a quien las lleve; en un compañero, bomba humana'],
-  detonator: ['Detonador', 'Estallan tus cargas: cada una rompe estamina (3 en el mismo enemigo lo aturden) y lo lanza; en un compañero, bomba humana'],
+  // [RETIRADO 2026-11-10] detonator: ['Detonador', 'Estallan tus cargas: cada una rompe estamina (3 en el mismo enemigo lo aturden) y lo lanza; en un compañero, bomba humana'],
+  detonator: ['Detonador', 'Estallan tus cargas: cada una rompe estamina (3 en el mismo enemigo lo aturden) y lo lanza; sobre un aturdido o en el aire, Remate explosivo; en un compañero, bomba humana'],
   mortar: ['Lluvia de mortero', 'Mantén para apuntar: caen 6 granadas sobre la zona'],
   turret: ['Torreta', 'Dispara sola; vuelve a pulsar para guardarla. Cualquiera puede cargarla a la espalda'],
   overcharge: ['Sobrecarga', 'Más cadencia y apenas calienta; la torreta cura a los aliados cerca'],
@@ -10413,7 +10429,8 @@ const TUT_STRAT = {
   'Escarcha': ['Mantén el rayo sobre un enemigo: suma frío (el aro helado) y, al llenarlo, lo congela. Si dejas de darle, el frío se va. Estallido helado (1) congela al instante a los de una zona.', 'Con un congelado a tiro, salta y pulsa otra vez en el aire: el picado detona la congelación, lo deja aturdido y enfría a los de al lado.', 'Burbuja de hielo (2): escudo de vida extra unos segundos; al romperse o acabar, estalla y enfría y empuja a los de alrededor. Úsala al lanzarte a un grupo.'],
   // [RETIRADO 2026-11-08] (textos de la Coral de pistolas con calor)
   // 'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
-  'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido, listo para rematar.', 'Pega una carga a un compañero y detónala: bomba humana que lanza a todos los de alrededor. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
+  // [RETIRADO 2026-11-10] 'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido, listo para rematar.', 'Pega una carga a un compañero y detónala: bomba humana que lanza a todos los de alrededor. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
+  'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido. Si ya estaba aturdido o en el aire, Remate explosivo: le arranca un buen trozo de vida (al guardián lo mantiene aturdido más tiempo).', 'En grupo, deja que otros aturdan o lancen y detona encima. Pega una carga a un compañero y detónala: bomba humana que lanza a todos. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
   'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.'],
   // [RETIRADO 2026-11-08] 'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: humo, más velocidad y Garra taladro (1) e Izuna de furia (2), que agarra sin lanzar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
   'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: tus golpes pegan y aturden mucho más, vas más rápida y tienes Garra taladro (1) e Izuna de furia (2). Fuera de furia pegas menos: no dejes de atacar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
