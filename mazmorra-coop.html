@@ -1922,7 +1922,12 @@ let testMode = false;
 let npcMode = false; // modo 1 jugador + aliado IA
 // Levantar al caído (del laboratorio de interacción): quien cae queda en el suelo y un aliado lo levanta manteniendo el ataque a su lado.
 // La cuenta atrás se pausa mientras lo levantan; si el aliado se aparta, la barra baja poco a poco. Al agotarse, pasa a fantasma
-const REVIVE = { r: 52, time: 1.6, ghostTime: 3.2, bleed: 12, decay: 0.5, crawl: 0.18, ghostSpeed: 0.5, hp: 40 };
+// [RETIRADO 2026-11-12] const REVIVE = { r: 52, time: 1.6, ghostTime: 3.2, bleed: 12, decay: 0.5, crawl: 0.18, ghostSpeed: 0.5, hp: 40 };
+// again / againBleed (2026-11-12, idea de Elden Ring Nightreign y de las «caídas» compartidas de Monster Hunter): cada vez que el mismo
+// jugador cae en la misma sala, levantarlo cuesta más (tiempo × (1 + again × (k − 1))) y se desangra antes (bleed / (1 + againBleed × (k − 1))).
+// k = caídas en esta sala; se reinicia al entrar en otra. Así el grupo no puede ignorar el daño a base de levantarse una y otra vez.
+const REVIVE = { r: 52, time: 1.6, ghostTime: 3.2, bleed: 12, decay: 0.5, crawl: 0.18, ghostSpeed: 0.5, hp: 40, again: 0.6, againBleed: 0.4 };
+function reviveK(p) { return Math.max(0, (p.roomDowns || 1) - 1); } // caídas previas en esta sala
 const humans = () => players.filter(p => !p.npc);
 // Aliado IA: sigue al jugador a poca distancia. Si el jugador lleva a Ceniza con el escudo alzado, se pone detrás a cubierto
 function npcInput(p) {
@@ -2528,6 +2533,7 @@ function showBanner(text) { banner = { text, t: 1.8 }; }
 function enterRoom(r, dir) {
   playSnd('door', 0.3);
   useRoom(r);
+  for (const q of players) q.roomDowns = 0; // [2026-11-12] caídas de la sala (levantar cuesta más cada vez)
   room = r; r.visited = true; portalT = 0; enemies = []; bossFx = []; bullets = []; pBullets = []; effects = []; hazards = []; chains = []; for (const t of turrets) t.owner.turretHp = t.hp; turrets = []; pZones = []; arcOrbs = []; grenades = []; missiles = []; dragonFx = []; stalacs = []; embers = []; cBombs = []; stickies = []; shells = []; dolls = []; for (const q of players) if (q.flip) { q.flip = null; q.flipAng = 0; q.moveT = 0; q.z = 0; }
   if (!r.pickups) r.pickups = [];
   pickups = r.pickups;
@@ -4223,11 +4229,12 @@ function updateRevive(dt) {
     if (!p.down) continue;
     const helping = players.some(q => q.reviving === p && !q.down);
     if (helping) {
-      p.rev = (p.rev || 0) + dt / (p.ghost ? REVIVE.ghostTime : REVIVE.time);
+      // [RETIRADO 2026-11-12] p.rev = (p.rev || 0) + dt / (p.ghost ? REVIVE.ghostTime : REVIVE.time);
+      p.rev = (p.rev || 0) + dt / ((p.ghost ? REVIVE.ghostTime : REVIVE.time) * (1 + REVIVE.again * reviveK(p))); // cada caída en la sala, más lento
       if (Math.random() < 0.4) particles.push({ x: p.x + (Math.random() - 0.5) * 20, y: p.y - 6, vx: 0, vy: -50, life: 0.4, max: 0.4, color: '#7ee08a', s: 3 });
     } else {
       p.rev = Math.max(0, (p.rev || 0) - dt * REVIVE.decay); // no se reinicia de golpe
-      if (!p.ghost) { p.bleed = (p.bleed == null ? REVIVE.bleed : p.bleed) - dt; if (p.bleed <= 0) { p.ghost = true; p.bleed = 0; floatText(p.x, p.y - 34, 'Fantasma', '#a79cb6'); } }
+      if (!p.ghost) { p.bleed = (p.bleed == null ? REVIVE.bleed / (1 + REVIVE.againBleed * reviveK(p)) : p.bleed) - dt; if (p.bleed <= 0) { p.ghost = true; p.bleed = 0; floatText(p.x, p.y - 34, 'Fantasma', '#a79cb6'); } }
     }
     if (p.rev >= 1) { // ¡en pie!
       p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive;
@@ -6819,7 +6826,8 @@ function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   p.kbx = dx / d * HURT.kb * kbm * (heavyHit ? 1.3 : 1); p.kby = dy / d * HURT.kb * kbm * (heavyHit ? 1.3 : 1);
   shake = Math.max(shake, 6); burst(p.x, p.y - 12, p.color, 10);
   // [RETIRADO 2026-11-08] if (p.hp <= 0) { p.hp = 0; p.down = true; p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
-  if (p.hp <= 0) { p.hp = 0; p.down = true; playSnd('down', 0.3); p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
+  // [RETIRADO 2026-11-12] if (p.hp <= 0) { p.hp = 0; p.down = true; playSnd('down', 0.3); p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
+  if (p.hp <= 0) { p.hp = 0; p.down = true; playSnd('down', 0.3); p.slash = null; p.cast = null; p.roomDowns = (p.roomDowns || 0) + 1; p.bleed = REVIVE.bleed / (1 + REVIVE.againBleed * reviveK(p)); p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído' + (p.roomDowns > 1 ? ' otra vez: cuesta más levantarlo' : '')); }
   return true;
 }
 
@@ -7022,6 +7030,7 @@ function nearestAirborne(p) {
 }
 // Ejecución: tier 2 y 3 mueren al instante; el guardián pierde una cuarta parte de su vida
 function executeEnemy(e, p, how) {
+  if (e.type === 'boss' && p && !p.down && players.filter(q => !q.down).length > 1) bossAggroSet(e, p); // [2026-11-12] quien ejecuta al guardián se lleva su atención
   if (p.ch.fury) furyGain(p, FURY.execGain); // Ámbar: ejecutar también llena la furia
   const ang = Math.atan2(e.y - p.y, e.x - p.x), ey = upY(e.y, 12 + e.z);
   if (how === 'melee' && !p.ch.canMelee) how = 'ranged';
@@ -7123,8 +7132,30 @@ function killEnemy(e, executed) {
 }
 
 // ---------- Enemigos ----------
+// Atención del guardián en grupo (2026-11-12, como la «enemistad» de Monster Hunter): no persigue siempre al más cercano.
+// Cada «hold» s (al azar entre min y max) cambia de objetivo, con preferencia por quien no ha perseguido; si su objetivo cae, cambia
+// enseguida, y quien lo ejecuta se lleva su atención. Al cambiar, aviso sobre el elegido. La Provocación de Ceniza manda sobre todo.
+const BOSS_AGGRO = { min: 6, max: 9, nearW: 1.5, warn: '¡A por ti!' };
+function bossAggroPick(e, except) {
+  const live = players.filter(p => !p.down && p !== except);
+  if (!live.length) return null;
+  let tot = 0; const w = live.map(p => { const d = Math.hypot(p.x - e.x, p.y - e.y); const v = (p === e.aggroLast ? 0.35 : 1) * (1 + BOSS_AGGRO.nearW * Math.max(0, 1 - d / 600)); tot += v; return v; });
+  let r = Math.random() * tot; for (let i = 0; i < live.length; i++) { r -= w[i]; if (r <= 0) return live[i]; }
+  return live[live.length - 1];
+}
+function bossAggroSet(e, p) {
+  if (!p || p === e.aggro) { e.aggroT = BOSS_AGGRO.min + Math.random() * (BOSS_AGGRO.max - BOSS_AGGRO.min); return; }
+  e.aggroLast = e.aggro; e.aggro = p; e.aggroT = BOSS_AGGRO.min + Math.random() * (BOSS_AGGRO.max - BOSS_AGGRO.min);
+  floatText(p.x, p.y - 50 * p.ch.size, BOSS_AGGRO.warn, '#ff6b6b');
+}
 function nearestPlayer(e) {
   if (e.tauntT > 0 && e.tauntBy && !e.tauntBy.down) return [e.tauntBy, Math.hypot(e.tauntBy.x - e.x, e.tauntBy.y - e.y)]; // provocado
+  if (e.type === 'boss' && !SIEGE.on && players.filter(p => !p.down).length > 1) { // guardián en grupo: atención repartida
+    if (!e.aggro || e.aggro.down || !players.includes(e.aggro)) bossAggroSet(e, bossAggroPick(e, e.aggro));
+    else if ((e.aggroT = (e.aggroT || 0) - (e.aggroClock === time ? 0 : time - (e.aggroClock || time))) <= 0) bossAggroSet(e, bossAggroPick(e, null));
+    e.aggroClock = time;
+    if (e.aggro) return [e.aggro, Math.hypot(e.aggro.x - e.x, e.aggro.y - e.y)];
+  }
   let best = null, bd = 1e9;
   for (const p of players) if (!p.down) { const d = Math.hypot(p.x - e.x, p.y - e.y); if (d < bd) { bd = d; best = p; } }
   return [best, bd];
@@ -9470,7 +9501,7 @@ function drawPlayer(p) {
     ctx.globalAlpha = 1;
     const ry = p.y - 6;
     ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(p.x, ry, 22, 0, Math.PI * 2); ctx.stroke();
-    if (!p.ghost) { ctx.strokeStyle = '#ff6b6b'; ctx.beginPath(); ctx.arc(p.x, ry, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, (p.bleed || 0) / REVIVE.bleed)); ctx.stroke(); }
+    if (!p.ghost) { ctx.strokeStyle = '#ff6b6b'; ctx.beginPath(); ctx.arc(p.x, ry, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, (p.bleed || 0) / (REVIVE.bleed / (1 + REVIVE.againBleed * reviveK(p))))); ctx.stroke(); }
     if ((p.rev || 0) > 0) { ctx.strokeStyle = '#7ee08a'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(p.x, ry, 28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p.rev); ctx.stroke(); }
     ctx.font = '700 11px ' + FONT; ctx.textAlign = 'center';
     ctx.fillStyle = p.ghost ? '#a79cb6' : '#ff8f8f'; ctx.fillText(p.ghost ? 'fantasma' : Math.ceil(p.bleed || 0) + ' s', p.x, p.y + 30);

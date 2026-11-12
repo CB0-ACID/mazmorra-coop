@@ -145,6 +145,12 @@ Cómo se diseña y se ajusta todo lo nuevo: enemigos, personajes y el futuro sis
   | Refuerzos del guardián por oleada | 2 | 3 / 4 / 5 con 2 / 3 / 4 jugadores |
   | Enemigos por sala | presupuesto `ENC` | crece con `np` en cada tier |
 
+  | Guardián: a quién persigue | al jugador | en grupo cambia de objetivo cada 6–9 s (prefiere a quien no perseguía), aviso «¡A por ti!»; quien lo ejecuta se lleva su atención; la Provocación manda (`BOSS_AGGRO`) |
+  | Levantar a un caído | 1,6 s, 12 s para desangrarse | cada caída del mismo jugador en la misma sala: +60 % de tiempo para levantarlo y −40 % de margen (`REVIVE.again`, `againBleed`); se reinicia al cambiar de sala |
+  | Dúo (piso 3) | — | cada cuerpo recibe el mismo escalado que un guardián y luego su parte (`DUO.share`); cada uno tiene su propia atención |
+
+  Referencias (2026-11-12): Monster Hunter sube la vida del monstruo en grupo (World: ~×2,6 con 2-4 jugadores, junto con los umbrales de derribo), no su daño, y reparte la amenaza con la «enemistad»: el monstruo cambia de objetivo. Además, las caídas del grupo son compartidas (3 por misión), así que más jugadores no da más vidas. Elden Ring sube la vida del jefe ×1,6–2,7 según invocados y apenas su daño. Nightreign encarece cada reanimación sucesiva (40 → 90 → 240 de daño para levantar). Risk of Rain 2 escala con un factor 1 + 0,3 × (n − 1) y la vida de los jefes con los jugadores vivos. De ahí: escalar vida y aguante pero no el daño, repartir la presión y que levantarse no sea gratis.
+
   Resultado con el bot experto (2026-11-10): el guardián del piso 4 pasó de 13–19 s a 24–57 s en grupo (antes duraba menos que en solitario), y el tiempo crece con el tamaño del grupo. El grupo sigue ganando casi siempre con el bot porque reanima; la tasa real se calibra con el registro de partidas.
 
 **6. Roles que se necesitan, no que se suman.** En coop los tiradores rompen estamina, los melee rematan y hacen el daño, los tanques sostienen y protegen. Una habilidad que hace bien el trabajo de otro rol sin coste se recorta; una que potencia al compañero (cubrir con el escudo, levantar para rematar en el aire, detonar el frío de otro) se premia.
