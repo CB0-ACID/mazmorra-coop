@@ -1181,7 +1181,7 @@ function menuSfx(r) {
 //   menu    → la sección central de la danza (otro segmento), con arpa, flauta y cuerdas
 //   calm    → explorar: el tema principal lento, en menor, con celesta, drones y mucha reverberación
 //   fight   → combate: el tema en Re menor con sintetizadores (arpegio, bajo, batería electrónica) y capas orquestales; entra con energía
-//   boss    → guardián: el tema en Do menor armónica, rápido, metales y coro, con fases según la vida del guardián
+//   boss    → guardianes: la «Danza general» en 3/4 con el coro «¡Canta gloria al kan!» y su crescendo coral, con fases según la vida del guardián
 //   room / boss_win → codas lentas que cierran en La mayor y devuelven a la exploración; la del guardián, más larga y elaborada
 // Reacciona a la partida en tiempo real (musicMix): capas por intensidad (enemigos vivos), fases del guardián (<50 % coro y cuerdas agudas;
 // <25 % sube medio tono y acelera), y poca vida (algún jugador por debajo del 35 %): latido, sonido apagado y algo más de tempo.
@@ -1261,6 +1261,37 @@ const THEME_MENU = bars(
   'E5 - F#5 - D5 - - - C#5 - B4 - C#5 - - -',
   'C#5 - - - - - - - - - - - - - - -',
   '. . . . . . . . . . . . . . . .');
+// «Danza general» (Allegro, 3/4): coro de hombres «¡Canta gloria al kan!». Compases de 12 semicorcheas
+const rest3 = n => Array(n * 12).fill('.').join(' ');
+const seq = (...parts) => parts.map(([n, p]) => Array(n).fill(p).join(' | ')).join(' | '); // [compases, patrón] repetidos
+const KHAN_A = bars( // en Re mayor (la armadura es Si menor)
+  '. . . . A4 - - - B4 - . .',
+  '. . . . B4 - - - C#5 - . .',
+  '. . . . C#5 - - - D5 - . .',
+  '. . . . D5 - - - E5 - . .',
+  '. . . . F#5 - - - - - G5 -',
+  'G5 - F#5 - F#5 - F5 - F5 - E5 -',
+  'E5 - D#5 - D#5 - D5 - D5 - C#5 -',
+  'C#5 - B4 - B4 - - - B4 - - -');
+const KHAN_A_CH = ['D', 'D', 'D', 'D', 'D', 'G', 'F#', 'Bm'];
+const KHAN_B = bars( // la respuesta, sobre Fa#
+  'A#4 - - - A#4 - - - B4 - - -',
+  'D5 C#5 B4 - A#4 - - - A#4 - - -',
+  'F#5 - F5 - D#5 - D5 - D5 - C#5 -',
+  'D5 - C#5 - C#5 - B4 - B4 - A#4 -',
+  'A#4 - - - A#4 - - - B4 - - -',
+  'D5 C#5 B4 - A#4 - - - A#4 - - -',
+  'A#5 - G5 - G5 - F#5 - F#5 - F5 -',
+  'F5 - E5 - E5 - D#5 - D#5 - D5 -');
+const KHAN_B_CH = ['F#', 'F#', 'F#', 'F#', 'F#', 'F#', 'A', 'A'];
+const KHAN_E = bars( // crescendo coral: cada acorde entra en la segunda parte y se liga al compás siguiente
+  '. . . . F#3+C4+D#4+A4 - - - - - - -', '- - - - G3+C#4+E4+A4 - - - - - - -', '- - - - G#3+D4+F4+A4 - - - - - - -', '- - - - A3+D4+F#4+A4 - - - - - - -',
+  '- - - - F#3+C4+D#4+A4 - - - - - - -', '- - - - G3+C#4+E4+A4 - - - - - - -', '- - - - G#3+D4+F4+A4 - - - - - - -', '- - - - A3+D4+F#4+A4 - - - - - - -',
+  '- - - - B3+D4+F4+G#4 - - - - - - -', '- - - - C4+D4+F#4+A4 - - - - - - -', '- - - - C#4+D4+G4+A#4 - - - - - - -', '- - - - D4+G4+B4+D5 - - - - - - -',
+  '- - - - A#3+C#4+E4+G4 - - - - - - -', '- - - - B3+D4+F#4+B4 - - - - - - -', '- - - - A3+C#4+F#4+A4 - - - - - - -', '- - - - A3+D4+F#4+D5 - - - - - - -');
+const KHAN_E_CH = ['D#dim', 'A', 'G#dim', 'D', 'D#dim', 'A', 'G#dim', 'D', 'G#dim', 'D', 'A#dim', 'G', 'A#dim', 'Bm', 'F#m', 'D'];
+const KHAN_E_INNER = bars(rest3(3), 'A3 - - - Bb3 - - - B3 - - -', rest3(3), 'A3 - - - Bb3 - - - B3 - - -', rest3(3), 'D4 - - - Eb4 - - - E4 - - -', rest3(4));
+const KHAN_CLIMB = bars('. . . . D4+D3 - - - D#4+D#3 - - -', '- - - - F4+F3 - - - F#4+F#3 - - -', '- - - - A#4+A#3 - - - B4+B3 - - -', '- - - - C5+C4 - - - C#5+C#4 - - -'); // sube por semitonos hasta Re
 const MUSIC_DEF = {
   menu: { bpm: 84, loop: true, verb: 0.45, fadeIn: 1.5,
     chords: ['Bm', 'E', 'A', 'D', 'E', 'A', 'Bm', 'A', 'Bm', 'E', 'A', 'A'],
@@ -1342,6 +1373,33 @@ const MUSIC_DEF = {
       { drums: oneShot(224, { 0: 'b+c+T', 24: 'r', 26: 'r', 28: 's', 29: 's', 30: 's', 31: 's', 32: 'c', 128: 'c' }), gain: 0.8 } // entrada y platillos
     ] },
 */
+  // Guardianes: «Danza general» de las Danzas polovtsianas (Allegro en 3/4), el coro de hombres «¡Canta gloria al kan!»
+  // (notas tomadas de la partitura). Compases de 3/4 (12 semicorcheas, 'bar: 12'); blanca con puntillo a 69 (negra a 207), como en la partitura.
+  // Forma: timbales solos «pa-pa-PAM-PAM» (2 compases, solo al empezar) → A: el coro canta el tema (golpes que suben La-Si, Si-Do#, Do#-Re, Re-Mi
+  // y bajada cromática a Si) dos veces → B: la respuesta en Fa# → A → E: el crescendo coral (acordes largos que crecen compás a compás
+  // sobre armonía cromática) → subida por semitonos con redoble → vuelve a A. Fases como antes: <50 % entran metales, violines agudos y platillos;
+  // <25 % medio tono arriba y más deprisa.
+  boss: { bpm: 207, bar: 12, loop: true, verb: 0.32, fadeIn: 0.2, loopStart: 24,
+    chords: [].concat(['D', 'D'], KHAN_A_CH, KHAN_A_CH, KHAN_B_CH, KHAN_A_CH, KHAN_E_CH, ['D', 'F#', 'B', 'C#']),
+    voices: [
+      { notes: bars(rest3(2), KHAN_A, KHAN_A, KHAN_B, KHAN_A, rest3(20)), shift: -12, inst: 'chorus', gain: 0.12 },   // coro de hombres con el tema
+      { notes: bars(rest3(2), KHAN_A, KHAN_A, KHAN_B, KHAN_A, rest3(20)), inst: 'chorus', gain: 0.06 },               // coro una octava arriba
+      { notes: bars(rest3(2), KHAN_A, KHAN_A, KHAN_B, KHAN_A, rest3(20)), shift: -12, inst: 'brass', gain: 0.1, layer: 'peak' },
+      { notes: bars(rest3(2), KHAN_A, KHAN_A, KHAN_B, KHAN_A, rest3(20)), shift: 12, inst: 'strings', gain: 0.045, layer: 'peak' }, // violines arriba, como en la partitura
+      { notes: bars(rest3(34), KHAN_E, KHAN_CLIMB), inst: 'swell', gain: 0.11 },                                       // crescendo coral
+      { notes: bars(rest3(34), KHAN_E_INNER, rest3(4)), inst: 'swell', gain: 0.07 },                                  // voz interior cromática
+      { notes: bars(rest3(50), KHAN_CLIMB), shift: 12, inst: 'strings', gain: 0.06 },
+      { notes: seq([2, '. . . . . . . . . . . .'], [32, '. . . . 1+5 - - - . . . .'], [20, '. . . . . . . . . . . .']), base: 50, inst: 'ost', gain: 0.07 }, // golpes de cuerdas en la parte 2
+      { notes: seq([2, 'R - - - - - - - - - - -'], [48, 'R - - - - - - - - - - -']) + ' | ' + bars('. . . . D2 - - - D#2 - - -', '- - - - F2 - - - F#2 - - -', '- - - - A#2 - - - B2 - - -', '- - - - C3 - - - C#3 - - -'),
+        base: 38, inst: 'lowstr', gain: 0.13 },
+      { notes: seq([2, '. . . . . . . . . . . .'], [32, '1 . . . 5 . . . 8 . . .'], [20, '. . . . . . . . . . . .']), base: 50, inst: 'ost', gain: 0.035, layer: 'drive' },
+      { drums: seq([2, 'V . V . V - - - V - - -'], [32, 'T . . . . . . . V . . .'], [3, 'T . . . . . . . . . . .'], [1, 'T . T . T . T T T T T T'], [3, 'T . . . . . . . . . . .'], [1, 'T . T . T . T T T T T T'],
+        [3, 'T . . . . . . . . . . .'], [1, 'T . T . T . T T T T T T'], [3, 'T . . . . . . . . . . .'], [1, 'T . T . T . T T T T T T'], [4, 'T . . . T . . . T . . .']), gain: 0.85 },
+      { drums: seq([1, '. . . . . . . . . . . .'], [1, '. . . . . . . . r r s s'], [32, 'k . . . r . . . r . . .'], [16, '. . . . . . . . . . . .'], [2, 'r . r . r . r . r . r .'], [2, 's s s s s s s s s s s s']), gain: 0.7, layer: 'drive' },
+      { drums: oneShot(648, { 24: 'c+b', 120: 'c', 216: 'c', 312: 'c+b', 408: 'w' }), gain: 0.75, layer: 'peak' },
+      { drums: oneShot(648, { 24: 'b', 408: 'b', 600: 'w' }), gain: 0.7 }
+    ] },
+/* Guardián anterior (el tema de la danza en Do menor armónica), sustituido por la «Danza general» con coro. Se deja comentado:
   boss: { bpm: 136, loop: true, verb: 0.3, fadeIn: 0.2, loopStart: 16,
     chords: ['Cm', 'Fm', 'G', 'Cm', 'Fm', 'G', 'Ab', 'Fm', 'G', 'Cm', 'Fm', 'G', 'Ab'],
     voices: [
@@ -1356,6 +1414,7 @@ const MUSIC_DEF = {
       { drums: oneShot(208, { 16: 'c', 112: 'c' }), gain: 0.6, layer: 'peak' }, // platillo al empezar cada vuelta del tema
       { drums: oneShot(208, { 0: 'b+c+T', 8: 'r', 10: 'r', 12: 's', 13: 's', 14: 's', 15: 's' }), gain: 0.8 }
     ] },
+*/
   // Guardián final (Dragón de la Catedral): épica, dramática y sin respiro, en la línea del tema de Fatalis (Monster Hunter World).
   // Re menor, 170 BPM. Ostinato de cuerdas a semicorcheas, coro que canta, metales con el tema, golpes de metal y graves
   // en ritmo 3+3+2 y timbales sin parar. Forma: entrada coral (2 compases) → A: tema en los metales (6) → B: coro y violines arriba,
@@ -1594,13 +1653,13 @@ function parseChord(s) {
 }
 const REL = { R: 0, 1: 0, 3: 1, 5: 2, O: 3, 8: 3 };
 function compileMusic(def) {
-  const len = def.len || def.chords.length * 16, chords = def.chords.map(parseChord), steps = Array.from({ length: len }, () => []), layers = new Set(['base']);
+  const barLen = def.bar || 16, len = def.len || def.chords.length * barLen, chords = def.chords.map(parseChord), steps = Array.from({ length: len }, () => []), layers = new Set(['base']);
   for (const v of def.voices) {
     v.layer = v.layer || 'base'; layers.add(v.layer);
     const tk = toks(v.drums || v.notes);
     let cur = null; // nota(s) abiertas que '-' alarga
     for (let i = 0; i < len; i++) {
-      const tok = tk[i % tk.length], ch = chords[Math.floor(i / 16) % chords.length];
+      const tok = tk[i % tk.length], ch = chords[Math.floor(i / barLen) % chords.length];
       if (tok === '-') { if (cur) for (const ev of cur) ev.len++; continue; }
       cur = null;
       if (tok === '.') continue;
@@ -1614,7 +1673,7 @@ function compileMusic(def) {
       }).filter(Boolean);
     }
   }
-  return { bpm: def.bpm, loop: def.loop, verb: def.verb || 0.3, delay: def.delay || 0, fadeIn: def.fadeIn || 0.3, loopStart: def.loopStart || 0, overlap: def.overlap || 0, len, steps, layers: [...layers] };
+  return { bpm: def.bpm, bar: barLen, loop: def.loop, verb: def.verb || 0.3, delay: def.delay || 0, fadeIn: def.fadeIn || 0.3, loopStart: def.loopStart || 0, overlap: def.overlap || 0, len, steps, layers: [...layers] };
 }
 let MUSIC = null; // pistas compiladas (al primer uso)
 const MUS = { mode: null, track: null, bus: null, layers: {}, lv: {}, step: 0, next: 0, fanUntil: 0, duck: 1, tempo: 1, trans: 0, transWant: 0, build: 0, dt: 0,
@@ -1647,6 +1706,12 @@ function mLfo(t, end, rate, depth, delay) { // vibrato (en cents)
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(depth, t + (delay || 0.25)); l.connect(g); l.start(t); l.stop(end + 0.05); return g;
 }
 function mFilter(type, f, q) { const b = actx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; }
+function INST_choirCore(out, t, f, dur, g, att, rel) { // coro: sierras con vibrato por filtros de formante; ataque y caída a medida
+  const e = actx.createGain(), end = mEnv(e, t, g, att, dur, rel), lfo = mLfo(t, end, 5, 9, Math.min(0.4, att + 0.1)), mix = actx.createGain();
+  const f1 = mFilter('bandpass', 650, 4), f2 = mFilter('bandpass', 1080, 5), f3 = mFilter('lowpass', 520, 0.5), f4 = mFilter('bandpass', 2600, 6);
+  for (const d of [-14, 0, 14]) mOsc(t, end, f, 'sawtooth', d, mix, lfo);
+  for (const b of [f1, f2, f3, f4]) { mix.connect(b); b.connect(e); } e.connect(out);
+}
 const INST = {
   // Sintetizadores del combate
   arp(out, t, f, dur, g) { const lp = mFilter('lowpass', 4200, 7), e = actx.createGain(), end = t + Math.min(dur, 0.2);
@@ -1666,6 +1731,8 @@ const INST = {
   brass(out, t, f, dur, g) { const lp = mFilter('lowpass', 400, 2), e = actx.createGain(), end = mEnv(e, t, g, 0.04, dur, 0.22), lfo = mLfo(t, end, 5, 5, 0.35);
     lp.frequency.setValueAtTime(350, t); lp.frequency.exponentialRampToValueAtTime(Math.min(4000, f * 9), t + 0.07); lp.frequency.setTargetAtTime(Math.min(2600, f * 5), t + 0.07, 0.25);
     for (const d of [-6, 6]) mOsc(t, end, f, 'sawtooth', d, lp, lfo); lp.connect(e); e.connect(out); },
+  chorus(out, t, f, dur, g) { INST_choirCore(out, t, f, dur, g, Math.min(0.12, Math.max(0.02, dur * 0.3)), 0.25); }, // coro que canta notas cortas, con ataque rápido
+  swell(out, t, f, dur, g) { INST_choirCore(out, t, f, dur, g, Math.max(0.4, dur * 0.85), 0.5); },                    // coro que crece durante toda la nota
   choir(out, t, f, dur, g) { const e = actx.createGain(), end = mEnv(e, t, g, 0.35, dur, 0.6), lfo = mLfo(t, end, 5, 9, 0.4), mix = actx.createGain();
     const f1 = mFilter('bandpass', 700, 4), f2 = mFilter('bandpass', 1150, 5), f3 = mFilter('lowpass', 500, 0.5);
     for (const d of [-12, 0, 12]) mOsc(t, end, f, 'sawtooth', d, mix, lfo);
@@ -1699,7 +1766,8 @@ function mSweep(out, t, dur, f0, f1, gain, wave) {
   o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05);
 }
 function mDrum(out, t, d, k, pc, trans) {
-  if (d === 'T') { const f = mf(38 + ((pc - 2 + 12) % 12) + trans); mSweep(out, t, 1.1, f * 1.04, f, 0.55 * k, 'sine'); mSweep(out, t, 0.5, f * 2.02, f * 2, 0.12 * k, 'triangle'); mNoiseRaw(out, t, 0.12, 380, 'lowpass', 0.35 * k); }
+  if (d === 'V') { const f = mf(38 + ((pc + 7 - 2 + 12) % 12) + trans); mSweep(out, t, 1.1, f * 1.04, f, 0.55 * k, 'sine'); mSweep(out, t, 0.5, f * 2.02, f * 2, 0.12 * k, 'triangle'); mNoiseRaw(out, t, 0.12, 380, 'lowpass', 0.35 * k); } // timbal en la quinta del acorde
+  else if (d === 'T') { const f = mf(38 + ((pc - 2 + 12) % 12) + trans); mSweep(out, t, 1.1, f * 1.04, f, 0.55 * k, 'sine'); mSweep(out, t, 0.5, f * 2.02, f * 2, 0.12 * k, 'triangle'); mNoiseRaw(out, t, 0.12, 380, 'lowpass', 0.35 * k); }
   else if (d === 'k') { mSweep(out, t, 0.6, 85, 38, 0.6 * k, 'sine'); mNoiseRaw(out, t, 0.15, 160, 'lowpass', 0.5 * k); }
   else if (d === 's') { mNoiseRaw(out, t, 0.18, 2400, 'bandpass', 0.3 * k); mSweep(out, t, 0.08, 190, 140, 0.12 * k, 'triangle'); }
   else if (d === 'r') mNoiseRaw(out, t, 0.12, 2600, 'bandpass', 0.14 * k);
@@ -1824,10 +1892,10 @@ function musicUpdate() {
   const outFor = n => MUS.layers[n] || MUS.layers.base;
   while (MUS.next < t + 0.2) {
     const sd = 60 / (tr.bpm * MUS.tempo) / 4;
-    if (MUS.step % 16 === 0) MUS.trans = MUS.transWant; // el cambio de tono entra al empezar compás
+    if (MUS.step % tr.bar === 0) MUS.trans = MUS.transWant; // el cambio de tono entra al empezar compás
     if (!muted) {
       playMusicStep(tr, MUS.step, MUS.next, sd, outFor, MUS.trans);
-      const beat = tr.bpm < 90 ? 4 : 8; // latido sincronizado con el pulso
+      const beat = tr.bar === 12 ? 12 : tr.bpm < 90 ? 4 : 8; // latido sincronizado con el pulso (en 3/4, uno por compás)
       if (MUS.dyn.danger > 0.05 && MUS.step % beat === 0) mHeart(MUS.next, 0.4 + 0.6 * MUS.dyn.danger);
     }
     MUS.step++; if (MUS.step >= tr.len) MUS.step = tr.loopStart; MUS.next += sd;
