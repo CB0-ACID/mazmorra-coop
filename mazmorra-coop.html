@@ -274,7 +274,8 @@ function tierRule(e) { return TIER_RULES[e.tier] || TIER_RULES[1]; }
 const ENEMY_DMG = {
   mite:     { dash: 10 },               // embestida avisada
   slime:    { spit: 14 },               // escupitajo con aviso en el suelo
-  bat:      { sonic: 12 },              // onda de sonido
+  // [RETIRADO 2026-11-12] bat: { sonic: 12 },
+  bat:      { sonic: 12, dive: 14 },    // onda de sonido · picado sobre quien se queda lejos
   charger:  { dash: 22, swipe: 26 },    // embestida avisada y zarpazo
   shooter:  { shot: 16 },               // disparo (de 1 en 1 o en abanico de 3)
   golem:    { leap: 32, slam: 36 },     // salto y pisotón
@@ -435,7 +436,8 @@ const AB = {
              heatPerShot: 0.032, cool: 0.5, coolDelay: 0.3,   // a tope se sobrecalienta tras unos 4 s de fuego seguido; enfría 0,5/s tras 0,3 s sin disparar
              overheatTime: 1.6, overchargeHeat: 0.25 },       // bloqueada 1,6 s al sobrecalentarse · con Sobrecarga cada bala calienta 4 veces menos
   overcharge: { time: 5, mul: 0.5, healR: 130, healEvery: 1, healPct: 0.04 }, // Sobrecarga: cadencia ×2 para Ciruela y su torreta; la torreta cura un 4 % de la vida máxima por segundo a los aliados cercanos
-  reaper:    { range: 300, speed: 1300, maxT: 0.4, len: 82, arc: 0.85, dmg: 2, heal: 20 }, // Puño ejecutor: salta al ejecutable más cercano (o al más cercano) y golpea en cono
+  // [RETIRADO 2026-11-12] reaper: { range: 300, speed: 1300, maxT: 0.4, len: 82, arc: 0.85, dmg: 2, heal: 20 },
+  reaper:    { range: 300, speed: 1300, maxT: 0.4, len: 82, arc: 0.85, dmg: 2, heal: 10 }, // Puño ejecutor: salta al ejecutable más cercano (o al más cercano) y golpea en cono
   dragon: {  // Poder del dragón: el nivel 1 se recarga solo; las cargas 2 y 3 se ganan con ejecuciones propias o de aliados cercanos
     max: 3, step: 0.45, allyR: 240, regen: 6, sta: 2, // sta: sus golpes quitan el doble de estamina que de vida
     l1: { speed: 560, range: 460, r: 12, dmg: 3, splash: 46 },                         // bola de fuego que prende
@@ -631,7 +633,9 @@ const BRAWLER_KIT = {
 // [RETIRADO 2026-11-08] claves antiguas: grande → tanque, golpe → brawler (agil y tirador no cambian)
 const ROLES = {
   // [RETIRADO 2026-11-08] tanque: hp: 160 (con 160 PV caían por desgaste: reciben de 5 a 10 veces más daño por sala que el resto)
-  tanque:  { role: 'Tanque',  size: 1.35, hp: 200, speed: 135, canShoot: false, autoLock: true, finisher: 'heavy', moveType: 'block', weight: 'heavy' }, // bloquean en vez de esquivar
+  // [RETIRADO 2026-11-12] tanque: { …, melee 2 (base), sin meleeSta } — hacían la mitad de daño que el resto y las salas les duraban el doble
+  // melee 2,4: +20 % de daño cuerpo a cuerpo; meleeSta 1,5: sus golpes rompen un 50 % más de estamina (más aturdimientos, su papel)
+  tanque:  { role: 'Tanque',  size: 1.35, hp: 200, speed: 135, melee: 2.4, meleeSta: 1.5, canShoot: false, autoLock: true, finisher: 'heavy', moveType: 'block', weight: 'heavy' }, // bloquean en vez de esquivar
   agil:    { role: 'Ágil',    size: 0.75, hp: 60, speed: 225, moveCd: 0.45, shotType: 'hitscan', canMelee: false, weight: 'light' },
   // Brawlers: la habilidad 1 es una embestida que lanza al primer enemigo; la 2, una caída Izuna con un enemigo en el aire
   brawler: { role: 'Brawler', melee: 4, canShoot: false, autoLock: true, finisher: 'normal', meleeKit: BRAWLER_KIT, meleeStyle: 'fist', priType: 'rush', priLen: 260, rushSpeed: 680, secType: 'drop', secCd: 4, dropDmg: 5, dropSta: 0.75, dropRadius: 60 },
@@ -4538,7 +4542,13 @@ function updatePZones(dt) {
     if (z.t < z.delay) continue;
     z.done = true;
     if (z.kind === 'roots') {
-      for (const e of liveTargets()) if (!e.airborne && e.type !== 'boss' && Math.hypot(e.x - z.x, e.y - z.y) < z.r + e.r) {
+      // [RETIRADO 2026-11-12] solo enredaban (el ataque preparado seguía al soltarse) y no tocaban al guardián:
+      // for (const e of liveTargets()) if (!e.airborne && e.type !== 'boss' && Math.hypot(e.x - z.x, e.y - z.y) < z.r + e.r) {
+      //   e.rootT = AB.roots.time; damageEnemy(e, z.x, z.y, 0, e.maxSta * AB.roots.sta, 0);
+      // }
+      for (const e of liveTargets()) if (!e.airborne && Math.hypot(e.x - z.x, e.y - z.y) < z.r + e.r) {
+        if (e.type === 'boss') { interruptHit(e, true); continue; } // al guardián no lo enredan, pero le cortan el ataque que prepara
+        interruptHit(e, true); // [2026-11-12] el ataque que preparaba se pierde (no sale al soltarse)
         e.rootT = AB.roots.time; damageEnemy(e, z.x, z.y, 0, e.maxSta * AB.roots.sta, 0);
       }
       effects.push({ type: 'vines', x: z.x, y: z.y, r: z.r, t: 0, dur: 0.6, color: z.owner.color });
@@ -6766,6 +6776,8 @@ function drawPip(x, y, frac, type, color, active, disabled, z = 17, secs = 0, fx
 }
 
 // ¿Llega el golpe por el frente de un tanque que bloquea?
+// [2026-11-12] Ceniza con el escudo en alto recibe la mitad de las zonas del suelo que no para de frente (y nada si lo acaba de alzar)
+const SHIELD_ZONE_MUL = 0.5;
 function blocks(p, sx, sy) {
   if (p.shieldUp) { let d2 = Math.atan2(sy - p.y, sx - p.x) - Math.atan2(p.ay, p.ax); d2 = Math.atan2(Math.sin(d2), Math.cos(d2)); return Math.abs(d2) <= AB.wall.arc; }
   if (!p.blocking) return false;
@@ -6962,7 +6974,8 @@ function meleeHit(p, e, s) {
     return;
   }
   // [RETIRADO 2026-11-08] damageEnemy(e, p.x, p.y, dmg, dmg, s.def.kb, airHit);
-  damageEnemy(e, p.x, p.y, dmg, dmg * (furyOn ? FURY.sta / FURY.dmg : 1), s.def.kb, airHit); // en furia, la estamina sube FURY.sta (no se dobla con el daño)
+  // [RETIRADO 2026-11-12] damageEnemy(e, p.x, p.y, dmg, dmg * (furyOn ? FURY.sta / FURY.dmg : 1), s.def.kb, airHit);
+  damageEnemy(e, p.x, p.y, dmg, dmg * (furyOn ? FURY.sta / FURY.dmg : 1) * (p.ch.meleeSta || 1), s.def.kb, airHit); // en furia, la estamina sube FURY.sta (no se dobla con el daño); meleeSta: los tanques rompen más
   impactFx(p, e, heavy, s.kind === 'flurry');
   if (e.dead) return;
   if (s.def.launcher && tryLaunch(e, s.def.forceLaunch)) { p.lockOn = true; p.target = e; } // quien lo lanza lo fija al instante
@@ -7166,6 +7179,23 @@ function bossAggroSet(e, p) {
   e.aggroLast = e.aggro; e.aggro = p; e.aggroT = BOSS_AGGRO.min + Math.random() * (BOSS_AGGRO.max - BOSS_AGGRO.min);
   floatText(p.x, p.y - 50 * p.ch.size, BOSS_AGGRO.warn, '#ff6b6b');
 }
+// [2026-11-12] Castigo a distancia de todos los guardianes: quien pasa más de «hold» s lejos (a más de «dist») recibe una lluvia
+// avisada de «n» zonas a su alrededor (una justo donde está). Con rabia, más a menudo. Se esquiva moviéndose; no castiga acercarse.
+const BOSS_FAR = { dist: 380, hold: 2.5, n: 3, r: 50, spread: 90, delay: 1.1, cd: 7, cdRage: 5 };
+function bossFarPunish(e, dt) {
+  if (e.dummy || SIEGE.on || e.sky) return;
+  e.farCd = (e.farCd == null ? BOSS_FAR.cd : e.farCd) - dt;
+  for (const q of players) { if (q.down) continue; const far = Math.hypot(q.x - e.x, q.y - e.y) > BOSS_FAR.dist; q.farT = far ? (q.farT || 0) + dt / Math.max(1, enemies.filter(o => o.type === 'boss' && !o.dead).length) : 0; } // con el dúo, cada uno suma su parte
+  if (e.farCd > 0) return;
+  const q = players.filter(q => !q.down && (q.farT || 0) >= BOSS_FAR.hold).sort((a, b) => b.farT - a.farT)[0];
+  if (!q) return;
+  e.farCd = bossRage(e) ? BOSS_FAR.cdRage : BOSS_FAR.cd; q.farT = 0;
+  for (let i = 0; i < BOSS_FAR.n; i++) {
+    const a = Math.random() * Math.PI * 2, rr = i ? BOSS_FAR.spread * (0.6 + Math.random() * 0.4) : 0;
+    hazards.push({ x: q.x + Math.cos(a) * rr, y: q.y + Math.sin(a) * rr, r: BOSS_FAR.r, t: 0, delay: BOSS_FAR.delay + i * 0.15, owner: e, detach: true, dmg: edmg(e, 'bomb') });
+  }
+  floatText(q.x, q.y - 50 * q.ch.size, '¡No te quedes lejos!', '#ff6b6b');
+}
 function nearestPlayer(e) {
   if (e.tauntT > 0 && e.tauntBy && !e.tauntBy.down) return [e.tauntBy, Math.hypot(e.tauntBy.x - e.x, e.tauntBy.y - e.y)]; // provocado
   if (e.type === 'boss' && !SIEGE.on && players.filter(p => !p.down).length > 1) { // guardián en grupo: atención repartida
@@ -7173,6 +7203,11 @@ function nearestPlayer(e) {
     else if ((e.aggroT = (e.aggroT || 0) - (e.aggroClock === time ? 0 : time - (e.aggroClock || time))) <= 0) bossAggroSet(e, bossAggroPick(e, null));
     e.aggroClock = time;
     if (e.aggro) return [e.aggro, Math.hypot(e.aggro.x - e.x, e.aggro.y - e.y)];
+  }
+  if (HUNTERS.types[e.type] && !SIEGE.on) { // cazadores: prefieren al jugador de distancia
+    let hb = null, hd = HUNTERS.range;
+    for (const p of players) if (!p.down && isRangedPlayer(p)) { const d = Math.hypot(p.x - e.x, p.y - e.y); if (d < hd) { hd = d; hb = p; } }
+    if (hb) return [hb, hd];
   }
   let best = null, bd = 1e9;
   for (const p of players) if (!p.down) { const d = Math.hypot(p.x - e.x, p.y - e.y); if (d < bd) { bd = d; best = p; } }
@@ -7193,6 +7228,11 @@ function randomFloorNear(px, py, minD, maxD) {
 }
 
 // Cada IA devuelve su velocidad deseada [vx, vy]
+const BAT_DIVE = { min: 260, max: 560, wind: 0.6, fly: 0.45, r: 48, cd: 5 }; // [2026-11-12] picado del murciélago (castiga quedarse lejos)
+// [2026-11-12] Cazadores: murciélagos y tiradores van a por el jugador de distancia (tirador o ágil) más cercano si lo hay a tiro;
+// así quien dispara desde atrás también recibe presión en grupo
+const HUNTERS = { types: { bat: 1, shooter: 1 }, range: 700 };
+function isRangedPlayer(p) { return !p.ch.canMelee || p.ch.family === 'tirador' || p.ch.family === 'agil'; }
 const ENEMY_AI = {
   // [RETIRADO] slime original, sustituido por el escupitajo: slime(e, p, d, nx, ny) { const s = e.spd * (0.7 + 0.3 * Math.sin(e.anim * 6)); return [nx * s, ny * s]; },
   slime(e, p, d, nx, ny, dt) { // no hace daño al tocarte: su ataque es un escupitajo con aviso en el suelo
@@ -7294,6 +7334,14 @@ const ENEMY_AI = {
   },
   bat(e, p, d, nx, ny, dt) { // tier 1 volador: se mantiene a distancia dando vueltas y lanza una onda de sonido
     e.cd -= dt;
+    // [2026-11-12] Picado: si su objetivo está lejos (fuera del alcance de la onda), marca el suelo donde está y cae en picado sobre ese punto
+    e.diveCd = (e.diveCd == null ? 2 + Math.random() * 2 : e.diveCd) - dt;
+    if (e.state === 'walk' && e.diveCd <= 0 && d > BAT_DIVE.min && d < BAT_DIVE.max) {
+      e.state = 'diveWind'; e.windDur = e.t = BAT_DIVE.wind; e.diveCd = BAT_DIVE.cd + Math.random() * 1.5; e.tx = p.x; e.ty = p.y; e.lx0 = e.x; e.ly0 = e.y;
+      hazards.push({ x: p.x, y: p.y, r: BAT_DIVE.r, t: 0, delay: BAT_DIVE.wind + BAT_DIVE.fly, owner: e, dmg: edmg(e, 'dive') }); return [0, 0];
+    }
+    if (e.state === 'diveWind') { e.t -= dt; if (e.t <= 0) { e.state = 'dive'; e.t = 0; } return [0, 0]; }
+    if (e.state === 'dive') { e.t += dt; const k = Math.min(1, e.t / BAT_DIVE.fly); e.x = e.lx0 + (e.tx - e.lx0) * k; e.y = e.ly0 + (e.ty - e.ly0) * k; if (k >= 1) { e.state = 'recover'; e.t = 0.6; } return [0, 0]; }
     if (e.state === 'walk') {
       if (e.cd <= 0 && d < 280) { e.state = 'wind'; e.windDur = e.t = 0.8; e.cd = 2.4 + Math.random() * 1.2; return [0, 0]; }
       const want = d < 150 ? -1 : (d > 230 ? 1 : 0), st = Math.sin(e.anim * 2.2 + e.phase);
@@ -7354,7 +7402,8 @@ const ENEMY_AI = {
   // [RETIRADO 2026-11-08 · v2] }
   // [RETIRADO 2026-11-08 · v2] return [nx * sp, ny * sp];
   // [RETIRADO 2026-11-08 · v2] }
-  boss(e, p, d, nx, ny, dt) { return BOSS_AI_BY_KIND[e.kind || 'cannon'](e, p, d, dt); }
+  // [RETIRADO 2026-11-12] boss(e, p, d, nx, ny, dt) { return BOSS_AI_BY_KIND[e.kind || 'cannon'](e, p, d, dt); }
+  boss(e, p, d, nx, ny, dt) { bossFarPunish(e, dt); return BOSS_AI_BY_KIND[e.kind || 'cannon'](e, p, d, dt); }
 };
 // [RETIRADO 2026-11-08 · v2] // Guardián: constantes de ritmo y de sus dos ataques
 // [RETIRADO 2026-11-08 · v2] const BOSS_AI = {
@@ -7932,7 +7981,13 @@ function updateHazards(dt) {
       const dx = p.x - h.x, dy = p.y - h.y, dd = Math.hypot(dx, dy);
       if (dd > h.r + p.r) continue;
       if (h.arc) { let da = Math.atan2(dy, dx) - h.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); if (Math.abs(da) > h.arc && dd > p.r + 10) continue; }
-      hurtPlayer(p, h.x, h.y, null, h.dmg || (h.owner ? contactDmg(h.owner) : DMG_FALLBACK));
+      // [RETIRADO 2026-11-12] hurtPlayer(p, h.x, h.y, null, h.dmg || (h.owner ? contactDmg(h.owner) : DMG_FALLBACK));
+      let hd = h.dmg || (h.owner ? contactDmg(h.owner) : DMG_FALLBACK);
+      if (p.shieldUp && !blocks(p, h.x, h.y)) { // Ceniza con el escudo en alto: la zona del suelo le llega por debajo o por detrás
+        if (p.blockT <= BLOCK_PERFECT) { floatText(p.x, p.y - 40, 'Bloqueo perfecto', '#ffd54a'); burst(p.x, p.y - 10, '#ffd54a', 10); continue; } // recién alzado: nada
+        hd *= SHIELD_ZONE_MUL; // alzado: la mitad
+      }
+      hurtPlayer(p, h.x, h.y, null, hd);
     }
     for (const t of turrets) if (Math.hypot(t.x - h.x, t.y - h.y) <= h.r + 10) hurtTurret(t, 2);
     boomSnd(h.r);
@@ -8408,7 +8463,8 @@ const ABILITY_TEXT = {
   iceBubble: ['Burbuja de hielo', 'Escudo de ' + ICE_BUBBLE.hp + ' PV durante ' + ICE_BUBBLE.time + ' s; al romperse o acabar, estalla: enfría y empuja a los de alrededor'],
   frostMode: ['Cambio de disparo', 'Cambia entre rayo, misiles de cristal y bola de nieve'],
   // roots: ['Raíces', 'Inmovilizan a los enemigos de una zona'],
-  roots: ['Enredaderas', 'Mantén para ampliar el área a tu alrededor; inmoviliza y los enredados pierden más estamina'],
+  // [RETIRADO 2026-11-12] roots: ['Enredaderas', 'Mantén para ampliar el área a tu alrededor; inmoviliza y los enredados pierden más estamina'],
+  roots: ['Enredaderas', 'Mantén para ampliar el área a tu alrededor; inmoviliza, corta el ataque que preparaban (también al guardián) y los enredados pierden más estamina'],
   reaper: ['Puño ejecutor', 'Salta al ejecutable más cercano y lo ejecuta; si no hay, golpea al más cercano'],
   dragon: ['Poder del dragón', 'Nivel 1: bola de fuego · 2: dragón que gira · 3: forma de dragón'],
   // [RETIRADO 2026-11-08] drill: ['Garra taladro', 'Furia: se lanza girando, arrastra a los que pilla con muchos golpes y los lanza'],
@@ -9683,7 +9739,7 @@ function drawWindIcon(x, y, s, col) {
 function windK(e) {
   if (e.airborne || e.stunT > 0) return 0;
   const clamp = (v) => Math.min(1, Math.max(0, v));
-  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind' || e.state === 'sgWind' ) return clamp(1 - e.t / e.windDur);
+  if (e.state === 'wind' || e.state === 'swipeWind' || e.state === 'leapWind' || e.state === 'slamWind' || e.state === 'sgWind' || e.state === 'diveWind') return clamp(1 - e.t / e.windDur);
   if (e.type === 'boss' && /Wind$/.test(e.state)) return clamp(1 - e.t / e.windDur);
   if (e.type === 'shooter' && e.cd < 0.6) return clamp(1 - e.cd / 0.6);
   if (e.type === 'splitter' && e.bombCd < 0.6) return clamp(1 - e.bombCd / 0.6);
@@ -9695,7 +9751,7 @@ function attackWarn(e) {
   if (e.state === 'sgWind') return true; // asedio: golpe preparado contra un objetivo
   switch (e.type) {
     case 'mite': case 'slime': return e.state === 'wind';
-    case 'bat': return e.state === 'wind';
+    case 'bat': return e.state === 'wind' || e.state === 'diveWind'; // [2026-11-12] diveWind
     case 'charger': return e.state === 'wind' || e.state === 'swipeWind';
     case 'shooter': return e.cd < 0.6;
     case 'golem': return e.state === 'leapWind' || e.state === 'slamWind';
@@ -10940,9 +10996,9 @@ const TUT_CHARGED_ANIM = { seismic: { shape: 'disc', r: 80 }, arcane: { shape: '
 const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas', launcher: 'Lanzagranadas' };
 const TUT_STRAT = {
   // [RETIRADO 2026-11-08] 'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
-  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje. Álzalo justo antes del golpe para un bloqueo perfecto: rompe gran parte de la estamina del atacante (también si es el golpe al suelo de un guardián cercano). Lo que bloqueas con el escudo en alto os cura a ti y al aliado cubierto (con un límite que se recarga).', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
+  'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje. Álzalo justo antes del golpe para un bloqueo perfecto: rompe gran parte de la estamina del atacante (también si es el golpe al suelo de un guardián cercano). Lo que bloqueas con el escudo en alto os cura a ti y al aliado cubierto (con un límite que se recarga). Con el escudo en alto, las zonas del suelo te hacen la mitad (nada si acabas de alzarlo).', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
   // [RETIRADO 2026-11-12] 'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.']
-  'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor a tu alrededor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas que se recuperan de una en una: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan. Atacar justo después suelta la Onda arcana, que empuja a todos.', 'Mantén Atacar para la Singularidad arcana: el orbe vuela a distancia, atrae a los enemigos y estalla; ideal para agruparlos antes de rematar. Retrocede de un enemigo y ataca para el Báculo ascendente, que lo lanza.'],
+  'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor a tu alrededor; cortan el ataque que estuvieran preparando (también el del guardián) y los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas que se recuperan de una en una: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan. Atacar justo después suelta la Onda arcana, que empuja a todos.', 'Mantén Atacar para la Singularidad arcana: el orbe vuela a distancia, atrae a los enemigos y estalla; ideal para agruparlos antes de rematar. Retrocede de un enemigo y ataca para el Báculo ascendente, que lo lanza.'],
   // [RETIRADO 2026-11-08] 'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
   // [RETIRADO 2026-11-08] 'Escarcha': ['Mantén el rayo sobre un enemigo: suma frío (el aro helado) y, al llenarlo, lo congela. Si dejas de darle, el frío se va.', 'Estallido helado (1) congela al instante a los de una zona. Después, detona: Bola de nieve (2) a distancia o picado (pulsa movimiento dos veces) de cerca.', 'Detonar aturde al congelado, listo para rematar, y enfría a los de al lado. La Bola de nieve atraviesa: enfría a todos, detona a cada congelado y crece con cada uno; no hace falta cargarla (cargar solo da tamaño y alcance).'],
   'Escarcha': ['Mantén el rayo sobre un enemigo: suma frío (el aro helado) y, al llenarlo, lo congela. Si dejas de darle, el frío se va. Estallido helado (1) congela al instante a los de una zona.', 'Con un congelado a tiro, salta y pulsa otra vez en el aire: el picado detona la congelación, lo deja aturdido y enfría a los de al lado.', 'Burbuja de hielo (2): escudo de vida extra unos segundos; al romperse o acabar, estalla y enfría y empuja a los de alrededor. Úsala al lanzarte a un grupo.'],
@@ -10951,7 +11007,7 @@ const TUT_STRAT = {
   // [RETIRADO 2026-11-10] 'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido, listo para rematar.', 'Pega una carga a un compañero y detónala: bomba humana que lanza a todos los de alrededor. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
   'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido. Si ya estaba aturdido o en el aire, Remate explosivo: le arranca un buen trozo de vida (al guardián lo mantiene aturdido más tiempo).', 'En grupo, deja que otros aturdan o lancen y detona encima. Pega una carga a un compañero y detónala: bomba humana que lanza a todos. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
   // [RETIRADO 2026-11-12] 'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.']
-  'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica (cinco puñetazos, no lanza) para el combo completo; mantén Atacar para el Uppercut del dragón, que avanza y lanza. Retrocede de un enemigo y ataca para el Gancho ascendente.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano (tier 1 o aturdido) y lo ejecuta: te cura 20 PV.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando (tú o un aliado cerca).'],
+  'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica (cinco puñetazos, no lanza) para el combo completo; mantén Atacar para el Uppercut del dragón, que avanza y lanza. Retrocede de un enemigo y ataca para el Gancho ascendente.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano (tier 1 o aturdido) y lo ejecuta: te cura 10 PV.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando (tú o un aliado cerca).'],
   // [RETIRADO 2026-11-08] 'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: humo, más velocidad y Garra taladro (1) e Izuna de furia (2), que agarra sin lanzar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
   // [RETIRADO 2026-11-12] 'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: tus golpes pegan y aturden mucho más, vas más rápida y tienes Garra taladro (1) e Izuna de furia (2). Fuera de furia pegas menos: no dejes de atacar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.']
   'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía tras 2 s sin pegar; ejecutar la llena más). Llena, entras 6,5 s en furia: tus golpes pegan y aturden mucho más, vas un 30 % más rápida y golpeas más seguido. Fuera de furia pegas menos: no dejes de atacar.', 'En furia cambian tus habilidades: Garra taladro (1) arrastra a los que toca y al final los succiona delante de ti, aturdidos, para seguir el combo; Izuna de furia (2) agarra al más cercano aunque esté en el suelo (no al guardián).', 'Zarpazo, Contrazarpazo y Tajo sombra (atraviesa al enemigo) forman el combo. Mantén Atacar para la Estrella fugaz: saltas, golpeas al caer y, si aciertas, recargas la Embestida (1), que levanta al primero que pilla.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando; Caída Izuna (2, fuera de furia) lo estampa contra el suelo.'],

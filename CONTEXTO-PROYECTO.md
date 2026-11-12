@@ -167,6 +167,14 @@ Cómo se diseña y se ajusta todo lo nuevo: enemigos, personajes y el futuro sis
 
 **8. Proceso para cualquier cambio.** Hipótesis ligada a un principio → **ofrecer** la simulación (solo con ambos niveles de bot; coop con un conjunto pequeño de composiciones; ablación si se toca una habilidad) y ejecutarla solo si el usuario lo pide: el testeo de cambios lo decide él, no se lanza por sistema → aplicar dejando lo anterior comentado con `[RETIRADO fecha]` → actualizar textos y tutoriales → calibrar con el registro de partidas reales. Si se testea, comprobar que en solitario (n = 1) no cambia nada cuando el cambio era solo de grupo.
 
+### Cambios de equilibrio del 2026-11-12 (tanques y personajes de distancia)
+- Tanques (Ceniza, Musgo): +20 % de daño cuerpo a cuerpo (`melee` 2,4) y sus golpes rompen un 50 % más de estamina (`meleeSta` 1,5). Motivo: hacían la mitad de daño, las salas les duraban el doble y morían por desgaste.
+- Ceniza: con el escudo en alto, las zonas del suelo que no para de frente le hacen la mitad (`SHIELD_ZONE_MUL`); si lo acaba de alzar (ventana del bloqueo perfecto), nada.
+- Musgo: las Enredaderas cortan el ataque que preparaban los enemigos (no sale al soltarse) y también el del guardián, al que no enredan.
+- Brasa: el Puño ejecutor cura 10 PV (antes 20).
+- Personajes de distancia: murciélagos y tiradores van a por el jugador de distancia más cercano (`HUNTERS`); el murciélago cae en picado, con aviso en el suelo, sobre quien está lejos (`BAT_DIVE`); todos los guardianes lanzan una lluvia avisada sobre quien pasa más de 2,5 s a más de 380 px (`BOSS_FAR`). Se decidió no bajarles el daño: no pegan más que el resto, les sobra seguridad.
+- Descartado: que ejecutar cure a los tanques.
+
 ## Registro de partidas (desde el 2026-11-08)
 - Al confirmar los personajes se elige **Partida real** (se registra) o **Partida de prueba** (no se registra). «Reintentar» mantiene la elección; «Cambiar de personaje» vuelve a preguntar.
 - Solo cuentan partidas reales que empiezan en el piso 1 sin herramientas de Dev (piso inicial distinto, autosalto, `?debug`) y que terminan en **derrota** (cae el grupo) o **victoria** (cae el Dragón, fin del ciclo). Las abandonadas no se guardan. Asedio no se registra.
