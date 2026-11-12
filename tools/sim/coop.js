@@ -32,7 +32,9 @@ const names = comp.map(c => sim.ev(`CHARS[${c}].name`));
 const out = { id, comp: names, n: comp.length, level, seeds: NS, scen: {}, runs: [] };
 const SC = [['mix', 2, 'room'], ['g1', 1, 'boss'], ['g2', 2, 'boss'], ['g3', 3, 'boss'], ['g4', 4, 'boss']];
 G.__simStart(comp, comp.length, 1);
+const SCEN_ON = process.env.COOP_SCEN !== '0'; // COOP_SCEN=0: solo partidas completas
 for (const [sid, depth, kind] of SC) {
+  if (!SCEN_ON) break;
   const L = out.scen[sid] = [];
   for (let s = 0; s < NS; s++) {
     G.__M = newMetrics(); sim.ev('__PM = {}');
@@ -44,21 +46,25 @@ for (const [sid, depth, kind] of SC) {
 const NR = process.env.COOP_RUNS != null ? +process.env.COOP_RUNS : NS; // partidas completas (0 = solo encuentros)
 for (let s = 0; s < NR; s++) {
   G.__simStart(comp, comp.length, 1); sim.ev('__PM = {}');
-  const run = { seed: 5000 + s, rooms: 0, floor: 1, t: 0, cleared: false };
+  const run = { seed: 5000 + s, rooms: 0, floor: 1, t: 0, cleared: false, revUsed: [], noRev: 0 };
   let alive = true;
   for (let d = 1; d <= 4 && alive; d++) {
     run.floor = d;
     const list = G.__seq(d, run.seed);
     if (d > 1) sim.ev('for (const p of players) { if (p.down) { p.down = false; p.ghost = false; p.hp = Math.min(p.maxHp, REVIVE.hp); } healPlayer(p, HEAL.floor); }');
+    sim.ev('if (typeof revivesLeft !== "undefined") revivesLeft = revivePool();'); // reanimaciones del piso (como nextFloor)
+    let noRevSeen = false;
     for (const r of list) {
       G.__M = newMetrics();
       sim.ev('(r => { state = "play"; r.cleared = false; r.waves = null; r.pickups = []; for (const p of players) p.bot = null; enterRoom(r, null); banner = null; })')(r);
       const res = runRoom(S, r.type === 'boss' ? 360 : 240);
       run.t += res.t;
+      if (!noRevSeen && sim.ev('typeof revivesLeft !== "undefined" && reviveLimited() && revivesLeft === 0')) { noRevSeen = true; run.noRev++; }
       if (res.res !== 'win') { alive = false; run.end = res.res + ' · ' + (r.type === 'boss' ? 'guardián' : 'sala'); break; }
       run.rooms++;
       sim.ev('for (const p of players) for (const k of pickups) healPlayer(p, HEAL.pickup); pickups.length = 0;');
     }
+    run.revUsed.push(sim.ev('typeof revivesLeft !== "undefined" ? revivePool() - revivesLeft : 0'));
   }
   run.cleared = alive; run.P = JSON.parse(sim.ev('JSON.stringify(__PM)'));
   out.runs.push(run);
