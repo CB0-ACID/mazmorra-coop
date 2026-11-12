@@ -994,7 +994,8 @@ function initAudio() {
   noiseBuf = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.5), actx.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
 }
-addEventListener('keydown', e => { initAudio(); if (e.code === 'KeyM' && !(state === 'options' && OPT.cap)) setAudio('on', !AUD.on); }); // M: activa o silencia todo el sonido
+// addEventListener('keydown', e => { initAudio(); if (e.code === 'KeyM' && !(state === 'options' && OPT.cap)) setAudio('on', !AUD.on); }); // M: activa o silencia todo el sonido // [RETIRADO 2026-11-11]
+addEventListener('keydown', e => { initAudio(); if (e.code === 'KeyM' && !(state === 'options' && OPT.cap) && !['kb1', 'kb2'].some(d => Object.values(BINDS[d]).some(a => a.includes('KeyM')))) setAudio('on', !AUD.on); }); // M: activa o silencia todo el sonido (salvo si se ha asignado a una acción) [ARREGLO 2026-11-11]
 addEventListener('pointerdown', initAudio);
 function sfxOk(name, gap) {
   if (!actx || muted || !AUD.sfxOn) return false;
@@ -2683,14 +2684,19 @@ function newRun() {
   // floor = genFloor(seed, devStartDepth); // [RETIRADO 2026-11-10] sin acceso directo a guardianes
   const d0 = devBoss || devStartDepth; // acceso directo a guardianes: tiene prioridad sobre la selección de nivel
   floor = genFloor(seed, d0);
-  for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.spin = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; p.hotMode = false; p.crossReady = false; p.crossCd = 0; p.emberT = 0; p.loadT = 0; p.sAmmo = p.ch.stickyAmmo || 0; p.sLoadT = 0; for (const kk in p.prev) p.prev[kk] = true; }
+  //for (const p of players) { p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.spin = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; p.hotMode = false; p.crossReady = false; p.crossCd = 0; p.emberT = 0; p.loadT = 0; p.sAmmo = p.ch.stickyAmmo || 0; p.sLoadT = 0; for (const kk in p.prev) p.prev[kk] = true; } // [RETIRADO 2026-11-11]
+  for (const p of players) { p.maxHp = p.ch.hp; p.hp = p.maxHp; p.down = false; p.inv = 0; p.priCd = p.secCd = 0; p.altCd = 0; p.secMode = null; p.shieldOut = null; p.cast = null; p.lockOn = false; p.target = null; p.soft = null; p.fireT = 0; p.charging = false; p.heat = 0; p.overheat = 0; p.spin = 0; p.turretHp = null; p.overchargeT = 0; p.dragonCharges = p.ch.secType === 'dragon' ? 1 : 0; p.dragonRegenT = 0; p.mCh = null; p.priCdMax = p.secCdMax = 0; p.shotHold = true; p.ammo = p.ch.ammo || 0; p.reloadT = 0; p.fan = null; p.burst = null; p.braveN = 0; p.bubbleT = 0; p.idleT = 0; p.hotMode = false; p.crossReady = false; p.crossCd = 0; p.emberT = 0; p.loadT = 0; p.sAmmo = p.ch.stickyAmmo || 0; p.sLoadT = 0; for (const kk in p.prev) p.prev[kk] = true;
+    // [ARREGLO 2026-11-11] lo que sobrevivía a «Reintentar»: fantasma, Vigor del asedio acumulado, furia, escudo roto, Bastión/Provocación/Purga y el empujón del golpe final
+    p.ghost = false; p.rev = 0; p.bleed = null; p.reviving = null; p.hitstunT = 0; p.kbx = p.kby = 0; p.fury = 0; p.furyT = 0; p.furyIdle = 0;
+    p.shieldT = 0; p.tauntT = 0; p.overdriveT = 0; p.shieldHp = null; p.shieldBroken = false; p.shieldOn = p.shieldUp = false; p.shieldRegenT = 0; p.sgCarry = false; p.sgReady = null; }
   turrets = [];
   wheelSteps = 0;
   state = 'play';
   // enterRoom(floor.start, null); // [RETIRADO 2026-11-10]
   // showBanner(isTouch ? 'Piso ' + devStartDepth + '. Pausa con el botón II' : 'Piso ' + devStartDepth + '. Pausa con Esc o Start');
   const bossRoom = devBoss ? [...floor.rooms.values()].find(r => r.type === 'boss') : null;
-  enterRoom(bossRoom || floor.start, null); // en la sala del guardián, enterRoom ya anuncia su nombre
+  // enterRoom(bossRoom || floor.start, null); // en la sala del guardián, enterRoom ya anuncia su nombre // [RETIRADO 2026-11-12] los jugadores aparecían encima del guardián
+  enterRoom(bossRoom || floor.start, bossRoom ? 'up' : null); // en la sala del guardián, enterRoom ya anuncia su nombre // [ARREGLO 2026-11-12]
   if (!bossRoom) showBanner(isTouch ? 'Piso ' + d0 + '. Pausa con el botón II' : 'Piso ' + d0 + '. Pausa con Esc o Start');
 }
 function nextFloor() {
@@ -2823,7 +2829,8 @@ const MOVES = {
   jump: { name: 'Salto', desc: 'Hacia un enemigo en el aire te enganchas y sigues el combo', icon: 'jump',
     start(p, c, mx, my) { startJump(p, mx || 0, my || 0); } }, // el salto lleva su propio estado (p.jump, ver «Salto»)
   // [RETIRADO 2026-11-08] flip: { name: 'Doble salto', desc: 'Cada pulsación salta con una voltereta (dos seguidos); el segundo salto deja caer una estalactita de hielo', icon: 'jump',
-  flip: { name: 'Salto y picado', desc: 'Salta con una voltereta; si hay un congelado a tiro, pulsa de nuevo en el aire para caer en picado sobre él y detonar la congelación', icon: 'jump', // [RETIRADO 2026-11-08] desc: '… como una estalactita'
+  // [RETIRADO 2026-11-12] icon: 'jump' (compartía el icono del salto de Brasa y Ámbar)
+  flip: { name: 'Salto y picado', desc: 'Salta con una voltereta; si hay un congelado a tiro, pulsa de nuevo en el aire para caer en picado sobre él y detonar la congelación', icon: 'flip', // [RETIRADO 2026-11-08] desc: '… como una estalactita'
     start(p, c, mx, my) { startFlip(p, mx || 0, my || 0); },
     update(p, c, dt) { updateFlip(p, dt); } }, // el salto usa p.flip; mientras dura, p.moveT > 0 y controla el desplazamiento
   block: { name: 'Guardia', desc: 'Mantén para bloquear; justo a tiempo, bloqueo perfecto', icon: 'block', hold: true }
@@ -3020,7 +3027,8 @@ function diveImpact(p) {
   for (const e of liveTargets()) {
     if (Math.hypot(e.x - p.x, e.y - p.y) >= DIVE.r + e.r || (e.z || 0) > 60) continue;
     const fz = e.frozenT > 0;
-    damageEnemy(e, p.x, p.y, dmg, e.maxSta * DIVE.sta, DIVE.kb, true); // a un congelado le entra el extra de quebradizo
+    // damageEnemy(e, p.x, p.y, dmg, e.maxSta * DIVE.sta, DIVE.kb, true); // a un congelado le entra el extra de quebradizo // [RETIRADO 2026-11-12] al congelado en el aire lo rompía el golpe y ya no se podía detonar
+    if (fz) e.frozenAir = false; damageEnemy(e, p.x, p.y, dmg, e.maxSta * DIVE.sta, DIVE.kb, true); // a un congelado le entra el extra de quebradizo // [ARREGLO 2026-11-12]
     // [RETIRADO 2026-11-08] if (fz && !e.dead) breakFrozen(e, p.x, p.y, DIVE.kb);             // y además se rompe
     if (fz && !e.dead) detonateFrozen(e, p, p.x, p.y);                 // y además detona la congelación
   }
@@ -3340,7 +3348,8 @@ function updatePlayer(p, dt) {
     if (d > 4) { p.ax = dx / d; p.ay = dy / d; }
   } else if (p.stickT <= 0) { p.ax = p.fx; p.ay = p.fy; }
 
-  if (p.reviving) { p.charging = false; p.beaming = false; p.slash = null; p.bufA = 0; p.shotHold = true; return; } // levantando a un aliado: no ataca
+  // if (p.reviving) { p.charging = false; p.beaming = false; p.slash = null; p.bufA = 0; p.shotHold = true; return; } // levantando a un aliado: no ataca // [RETIRADO 2026-11-12] al acabar de levantar salía un cargado no deseado
+  if (p.reviving) { p.charging = false; p.beaming = false; p.slash = null; p.bufA = 0; p.shotHold = true; p.mHold = null; p.mCharging = false; return; } // levantando a un aliado: no ataca // [ARREGLO 2026-11-12]
   if (p.rush || p.drop || p.drill || p.leap || p.dragonRush || p.reapDash || p.shieldCharge) return; // durante embestida, caída Izuna, taladro o salto no se ataca
 
   // golpe: el tipo depende de si acabas de moverte o de cómo te mueves respecto al objetivo
@@ -3434,7 +3443,8 @@ function updatePlayer(p, dt) {
   } else if (c.shotMode === 'auto') { // disparo continuo sin calentamiento (Ciruela)
     // disparar justo después de moverse lanza un misil teledirigido desde Ciruela y otro desde su torreta
     if (c.postMoveMissile && aP && (p.moveT > 0 || p.postMoveT > 0) && !p.shotHold) {
-      p.postMoveT = 0; p.shotHold = true; p.shotCd = c.shotCd;
+      // p.postMoveT = 0; p.shotHold = true; p.shotCd = c.shotCd; // [RETIRADO 2026-11-12] dos misiles por una sola esquiva
+      p.postMoveT = 0; p.postMoveUsed = p.moveT > 0; p.shotHold = true; p.shotCd = c.shotCd; // [ARREGLO 2026-11-12]
       fireMissile(p, p.x + p.ax * 14, p.y + p.ay * 14, 14, Math.atan2(p.ay, p.ax), missileTarget(p, p.x, p.y));
       const t = myTurret(p);
       if (t) fireMissile(p, t.x, t.y, 20 + (t.z || 0), t.ang, missileTarget(null, t.x, t.y));
@@ -4987,6 +4997,7 @@ function addScorch(e, n) {
 function updateScorch(dt) {
   for (const e of enemies) {
     if (!(e.scorch > 0) || e.dead) continue;
+    if (e.sky) continue; // [ARREGLO 2026-11-12] en vuelo el Dragón no recibe daño
     e.scorchT -= dt;
     if (e.scorchT <= 0) { e.scorch = Math.max(0, Math.ceil(e.scorch) - 1); e.scorchT = AB.scorch.fade; } // se apagan de una en una
     const n = scorchN(e);
@@ -5297,9 +5308,11 @@ function fireImpact(e, sx, sy, heavy) {
 function updateBurns(dt) {
   for (const e of enemies) {
     if (!(e.burnT > 0) || e.dead) continue;
+    if (e.sky) continue; // [ARREGLO 2026-11-12] en vuelo el Dragón no recibe daño (la quemadura espera a que aterrice)
     e.burnT -= dt; e.burnTick -= dt;
     if (e.burnTick <= 0) {
       e.burnTick += BURN.tick; e.hp -= BURN.dps * BURN.tick; e.flash = Math.max(e.flash || 0, 0.05);
+      if (SIEGE.on && !e.burnBy) e.lastHp = e.hp; // [ARREGLO 2026-11-12] el fuego de las trampas no los desvía hacia los jugadores
       if (e.hp <= 0) { killEnemy(e, false); continue; }
     }
     if (Math.random() < 0.55) particles.push({ x: e.x + (Math.random() - 0.5) * e.r * 1.4, y: upY(e.y, 6 + (e.z || 0) + Math.random() * e.r * 1.6), vx: (Math.random() - 0.5) * 16, vy: -50 - Math.random() * 40,
@@ -6650,6 +6663,11 @@ function drawAbilityIcon(type, cx, cy, s, col) {
     case 'teleport': // desaparece y reaparece delante
       C('B', -0.55, 0.15, 0.4, { fill: false, w: th, dash: [0.22, 0.2] }); L('B', th, [[-0.05, 0.05], [0.25, 0.05]], { dash: [0.12, 0.14] });
       C('L', 0.62, 0.05, 0.36); C('W', 0.52, -0.06, 0.11); L('W', th, [[0.6, -0.9], [0.6, -0.56]]); L('W', th, [[0.43, -0.73], [0.77, -0.73]]); break;
+    case 'flip': // voltereta de Escarcha: giro casi completo con flecha alrededor de su cristal (rombo); suelo debajo
+      C('B', 0, -0.05, 0.78, { fill: false, w: th, a0: -0.75, a1: Math.PI * 1.32 });
+      ARW('L', Math.cos(Math.PI * 1.32) * 0.78, -0.05 + Math.sin(Math.PI * 1.32) * 0.78, -Math.sin(Math.PI * 1.32), Math.cos(Math.PI * 1.32), 0.36);
+      P('L', [[0, -0.5], [0.3, -0.05], [0, 0.4], [-0.3, -0.05]]); P('B', [[0, -0.5], [0.3, -0.05], [0, 0.4]]); C('W', -0.1, -0.15, 0.08);
+      L('L', th, [[-0.6, 0.98], [0.6, 0.98]]); break;
     case 'jump': // salto en arco
       C('B', 0, 0.55, 0.82, { fill: false, w: th, a0: Math.PI, a1: Math.PI * 1.72, dash: [0.2, 0.18] });
       C('B', 0, 0.55, 0.82, { fill: false, w: th, a0: Math.PI * 1.72, a1: Math.PI * 1.98 });
@@ -6744,7 +6762,8 @@ function shieldHeal(cz, blocked, perfect) { // cura lo que permita la reserva a 
 }
 function onBlock(p, sx, sy, srcEnemy, bullet) {
   const perfect = p.blockT <= BLOCK_PERFECT && !p.perfectUsed;
-  if (p.shieldUp) wearShield(p, bullet ? AB.wall.bulletCost : AB.wall.hitCost); // el escudo en alto se desgasta
+  // if (p.shieldUp) wearShield(p, bullet ? AB.wall.bulletCost : AB.wall.hitCost); // [RETIRADO 2026-11-11] con daño continuo (rayo, embestida) se desgastaba en cada fotograma
+  if (p.shieldUp && (bullet || perfect || !((p.blockWearT || 0) > time))) { wearShield(p, bullet ? AB.wall.bulletCost : AB.wall.hitCost); if (!bullet) p.blockWearT = time + 0.25; } // el escudo en alto se desgasta (golpes sin bala: como mucho uno cada 0,25 s) [ARREGLO 2026-11-11]
   const dx = p.x - sx, dy = p.y - sy, d = Math.hypot(dx, dy) || 1;
   if (!perfect && (p.blockFx || 0) > time) return;
   p.blockFx = time + 0.25;
@@ -6776,7 +6795,8 @@ function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   // [RETIRADO 2026-11-08] if (!p.down && blocks(p, sx, sy)) { onBlock(p, sx, sy, srcEnemy, null); return false; } // guardia de los tanques
   if (!p.down && blocks(p, sx, sy)) { // guardia de los tanques; con el escudo en alto, lo bloqueado cura (Escudo reparador)
     const perfect = p.blockT <= BLOCK_PERFECT && !p.perfectUsed;
-    if (p.shieldUp) shieldHeal(p, dmg != null ? dmg : srcEnemy ? contactDmg(srcEnemy) : DMG_FALLBACK, perfect);
+    // if (p.shieldUp) shieldHeal(p, dmg != null ? dmg : srcEnemy ? contactDmg(srcEnemy) : DMG_FALLBACK, perfect); // [RETIRADO 2026-11-11]
+    if (p.shieldUp && (perfect || !((p.blockWearT || 0) > time))) shieldHeal(p, dmg != null ? dmg : srcEnemy ? contactDmg(srcEnemy) : DMG_FALLBACK, perfect); // [ARREGLO 2026-11-11] al mismo ritmo que el desgaste
     onBlock(p, sx, sy, srcEnemy, null); return false;
   }
   if (p.down || p.inv > 0 || p.jump || p.rush || p.drop || p.drill || p.leap || p.dragonRush || p.reapDash || p.shieldCharge || (p.slash && p.slash.def.pass) || (p.moveT > 0 && p.ch.moveInvuln)) return false;
@@ -6836,8 +6856,10 @@ function interruptHit(e, heavy) {
     // [RETIRADO 2026-11-08] con los temporizadores antiguos: // if (e.cd < 0.55) e.cd = e.hp < e.maxHp / 2 ? 1.4 : 2; // if (e.cd2 < 0.4) e.cd2 = 1;
     // if (e.state === 'ringWind' || e.state === 'fanWind') { e.state = 'walk'; e.ringAngles = null; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2; } // [RETIRADO 2026-11-08 · v2]
     if (/Wind$/.test(e.state)) { // cancela el ataque preparado y sus avisos del suelo
-      for (const h of hazards) if (h.owner === e) h.cancel = true;
+      // for (const h of hazards) if (h.owner === e) h.cancel = true; // [RETIRADO 2026-11-12] quedaban rayos fantasma: se veían y oían pero no dañaban
+      for (const h of hazards) if (h.owner === e && !h.detach) h.cancel = true; // [ARREGLO 2026-11-12]
       e.state = 'walk'; e.novaAngles = null; e.songAngles = null; e.songAgain = false; e.chain = 0; e.t = e.hp < e.maxHp / 2 ? 0.8 : 1.2;
+      if (bossRage(e)) e.t = 0.8; // [ARREGLO 2026-11-12] el lamento cuenta como rabia
     }
     return;
   }
@@ -6940,6 +6962,7 @@ function stunEnemy(e) {
   e.stunT = tierRule(e).stunTime; e.sta = 0;
   if (e.state === 'leap') e.z = 0;
   e.state = 'walk'; e.t = 1;
+  e.songAgain = false; e.chain = 0; // [ARREGLO 2026-11-12] si no, su siguiente Cavatina con rabia sonaba una sola vez
   floatText(e.x, upY(e.y, 40 + e.z), 'Aturdido', '#ffd54a'); burst(e.x, upY(e.y, 20 + e.z), '#ffd54a', 10);
 }
 // [RETIRADO 2026-11-08] umbrales sueltos y funciones por tipo; ahora todo sale de TIER_RULES:
@@ -6971,7 +6994,7 @@ function tryLaunch(e, force) {
   // [RETIRADO 2026-11-08] if (e.frozenT > 0 && e.type !== 'boss') { e.hp = 0; killEnemy(e, true); return false; } // congelado en el suelo y lanzado por los aires: se rompe
   if (e.frozenT > 0) { breakFrozen(e, e.x, e.y, 0); if (e.dead) return false; } // congelado y lanzado: se rompe (romper, no matar)
   // [RETIRADO 2026-11-08] e.airborne = true; e.z = 1; ...
-  e.airborne = true; e.z = Math.max(1, e.z || 0); e.vz = LAUNCH_VZ; e.kbx *= 0.2; e.kby *= 0.2; e.state = 'walk'; // el volador sale desde su altura
+  e.airborne = true; e.z = Math.max(1, e.z || 0); e.vz = LAUNCH_VZ; e.kbx *= 0.2; e.kby *= 0.2; e.state = 'walk'; e.songAgain = false; e.chain = 0; // el volador sale desde su altura · [ARREGLO 2026-11-12] songAgain/chain
   floatText(e.x, e.y - 40, '¡Al aire!', '#ffffff'); burst(e.x, e.y, '#d8cfe6', 10); SFX.launch();
   const b = e.blockedHit; e.blockedHit = null;
   if (e.flying && b && b.t === time) damageEnemy(e, b.sx, b.sy, b.hp, b.sta, b.kb, true); // el ataque que lanza a un volador también le hace daño
@@ -7713,7 +7736,9 @@ BOSS_AI_BY_KIND.dragon = function (e, p, d, dt) {
       if (q.down) continue;
       const s = (q.x - mx) * ux + (q.y - my) * uy; if (s < -q.r || s > e.beamL) continue;
       const off = Math.abs((q.x - mx) * -uy + (q.y - my) * ux); if (off > C.beam.w / 2 + q.r) continue;
-      hurtPlayer(q, mx + ux * s, my + uy * s, null, edmg(e, 'beam'));
+      // hurtPlayer(q, mx + ux * s, my + uy * s, null, edmg(e, 'beam')); // [RETIRADO 2026-11-11]
+      if (blocks(q, mx, my)) hurtPlayer(q, mx, my, null, edmg(e, 'beam')); // [ARREGLO 2026-11-11] la guardia se mide hacia la boca del Dragón, no hacia el punto del rayo al lado
+      else hurtPlayer(q, mx + ux * s, my + uy * s, null, edmg(e, 'beam'));
     }
     shake = Math.max(shake, 3);
     if (e.t <= 0) bossRecover(e);
@@ -8356,6 +8381,7 @@ function chargedSlot(c, p) {
   if (c.shotMode === 'launcher') return { icon: 'sticky', title: 'Disparo cargado: Carga pegajosa', desc: 'Cargador de 3. Se pega a enemigo, compañero o suelo; detonada, rompe la estamina' }; // [RETIRADO 2026-11-08] desc: '…; estalla con el Detonador'
   // if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: 'Sin carga ni calentamiento' };
   if (c.shotMode === 'auto') return { icon: 'gatling', title: 'Fuego continuo: Gatling', desc: c.gatling ? 'Coge velocidad al mantenerlo; se sobrecalienta' : 'Sin carga ni calentamiento' };
+  if (c.shotStyle === 'revolver') return { icon: 'fanFire', title: 'Disparo cargado: Vaciar el tambor', desc: 'Mantén y suelta: dispara las balas que queden repartidas entre los objetivos a tiro; más carga, más daño' }; // [2026-11-12] antes caía en «Tiro perforante», que Marea no tiene
   return { icon: 'chargedShot', title: 'Disparo cargado: Tiro perforante', desc: 'Mantén y suelta: hasta ×' + c.chargeMaxMul + ' de daño y atraviesa' };
 }
 // Golpes especiales: salen solos según cómo atacas (tras moverte, avanzando hacia el fijado o retrocediendo)
@@ -8374,7 +8400,8 @@ function specialSlots(c) {
     return { icon: 'sp_' + g + '_' + (WEAPON_OF[c.meleeStyle] || 'blade'), kind: SPECIAL_KIND[k], name: m.name, body: body[0].toUpperCase() + body.slice(1) };
   });
   const out = [];
-  if (c.shotStyle === 'revolver') out.push({ icon: 'fanFire', kind: 'Tras moverte', name: 'Vaciar el tambor', body: 'Bravata: recarga y, con el tambor recargado, hace ×1,5 de daño.' });
+  // [RETIRADO 2026-11-12] if (c.shotStyle === 'revolver') out.push({ icon: 'fanFire', kind: 'Tras moverte', name: 'Vaciar el tambor', body: 'Bravata: recarga y, con el tambor recargado, hace ×1,5 de daño.' }); (nombre del cargado en el hueco de la Bravata)
+  if (c.shotStyle === 'revolver') out.push({ icon: 'fanFire', kind: 'Tras moverte', name: 'Bravata', body: 'Dispara justo tras moverte: recargas el tambor y esas 6 balas hacen ×1,5 de daño.' });
   if (c.dollShot) out.push({ icon: 'doll', kind: 'Tras moverte', name: 'Muñeco bomba', body: 'Ficha a un enemigo, va a saltitos hacia él y estalla al tocarlo: daña y lanza por los aires. Máx. 2.' });
   if (c.recoilShot) out.push({ icon: 'recoil', kind: 'Tras moverte', name: 'Escopetazo', body: 'Explosión a bocajarro que empuja mucho y te impulsa hacia atrás. No gasta granadas.' });
   if (c.crossTrigger) out.push({ icon: 'volley', kind: 'Tras moverte', name: 'Gatillo cruzado', body: 'Las dos pistolas a la vez, ×2 de daño cada una y sin calentar.' });
@@ -8390,7 +8417,8 @@ const ABILITY_NEEDS = {
 };
 const fmtS = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
 function shotText(c) {
-  if (c.shotMode === 'frost') return 'Ondas continuas; cargando, bola de nieve';
+  // [RETIRADO 2026-11-12] if (c.shotMode === 'frost') return 'Ondas continuas; cargando, bola de nieve'; (la Bola de nieve ya no se alcanza: Escarcha solo dispara el rayo)
+  if (c.shotMode === 'frost') return 'Rayo continuo que suma frío; al llenar el aro, el enemigo se congela';
   if (c.shotStyle === 'revolver') return 'Revólver de 6 balas; cargado vacía el tambor; tras moverte, Bravata';
   if (!c.canShoot) return 'Sin disparo';
   if (c.shotMode === 'auto') return c.postMoveMissile ? 'Continuo, cada vez más rápido y con calor; tras moverte, misil teledirigido (y otro de la torreta)' : 'Instantáneo y continuo, sin carga';
@@ -9085,7 +9113,8 @@ function shade(hex, k) { // aclara (k > 0) u oscurece (k < 0) un color #rrggbb
 // }
 
 // Portal de salida (sale al vencer al guardián). Se cruza poniéndose al lado y pulsando el botón de fijar.
-const PORTAL = { x: (MID_X + 0.5) * T, y: (MID_Y + 0.5) * T };
+// const PORTAL = { x: (MID_X + 0.5) * T, y: (MID_Y + 0.5) * T }; // [RETIRADO 2026-11-12] se calculaba una vez con la sala por defecto: en la sala del guardián el portal funcionaba lejos de donde se dibuja
+const PORTAL = { get x() { return (MID_X + 0.5) * T; }, get y() { return (MID_Y + 0.5) * T; } }; // [ARREGLO 2026-11-12]
 function updatePortal(dt) { // se cruza confirmando con el botón de fijar al lado (INTERACTS)
   if (portalGo) { portalGo = false; nextFloor(); }
 }
@@ -10649,7 +10678,8 @@ function tutTabRect(i) { const g = tutGeo(), tw = (g.pw - 36 - 2 * 8) / 3; retur
 function tutBtn(next) { const g = tutGeo(); return next ? [g.px + g.pw - 18 - 216, g.py + g.ph - 100, 216, 86] : [g.px + 18, g.py + g.ph - 52, 110, 32]; }
 function tutLabel(id) {
   if (TUT.input === 'touch') return '';
-  const s = bindName(TUT.input === 'pad' ? 'pad' : 'kb1', id);
+  // const s = bindName(TUT.input === 'pad' ? 'pad' : 'kb1', id); // [RETIRADO 2026-11-12] enseñaba siempre las teclas del Teclado A
+  const tp = players.find(q => q.ch === TUT.queue[TUT.idx]); const s = bindName(TUT.input === 'pad' ? 'pad' : (tp && tp.dev === 'kb2' ? 'kb2' : 'kb1'), id); // [ARREGLO 2026-11-12]
   return s.split(' / ')[0];
 }
 // Botón dibujado según el dispositivo: tecla, botón de cara del mando o dedo sobre el botón táctil.
@@ -10764,7 +10794,11 @@ function tutSpecAbility(type, c) {
     case 'volley': return Object.assign(base, { hitAt: 0.15, fx: [-0.25, 0, 0.25].map(a => ({ type: 'tracer', x: 0, y: -8, ax: Math.cos(a), ay: Math.sin(a), len: E * 0.85, w: 3, z2: 0, color: col, d0: 0, dur: 0.22 })) });
     case 'ricochet': return Object.assign(base, { hitAt: 0.3, fx: [tr(E * 0.85, 3, col), ring(far, -9, 9, col, 0.3, 0.22)] });
     case 'reaper': return Object.assign(base, { hitAt: 0.2, fx: [{ type: 'cone', x: 0, y: 0, ang: 0, r: 100, arc: AB.reaper.arc, color: col, d0: 0, dur: 0.3 }] });
-    case 'beam': case 'rush': return Object.assign(base, { hitAt: 0.15, fx: [{ type: 'beam', x: 0, y: -8, ax: 1, ay: 0, len: E * 0.9, w: c.priWidth || 20, color: col, d0: 0, dur: 0.3 }] });
+    case 'detonator': return Object.assign(base, { fx: [ring(far, -9, 34, '#ef5da8', 0, 0.3), ring(far, -9, 18, '#ffffff', 0.05, 0.2)] });
+    case 'mortar': return Object.assign(base, { fx: [0, 0.18, 0.36].map((d, i) => ring(far + (i - 1) * 22, -9, AB.mortar.shellR * 0.8, '#ffb347', d, 0.3)) });
+    case 'furyDrop': return Object.assign(base, { fx: [ring(far, -9, FURY.grab.radius * 0.6, col, 0.1, 0.4), ring(far, -9, FURY.grab.radius * 0.3, '#ffffff', 0.25, 0.25)] });
+    // [RETIRADO 2026-11-12] case 'beam': case 'rush': (sin la Garra taladro)
+    case 'beam': case 'rush': case 'drill': return Object.assign(base, { hitAt: 0.15, fx: [{ type: 'beam', x: 0, y: -8, ax: 1, ay: 0, len: E * 0.9, w: c.priWidth || 20, color: col, d0: 0, dur: 0.3 }] });
     default: return Object.assign(base, { fx: [ring(far, -9, 30, col, 0, 0.35)] });
   }
 }
@@ -10794,7 +10828,10 @@ function tutMoveItems(c) {
     if (c.finisher === 'flurry' && K.flurry) out.push({ name: K.flurry.name, sub: 'Remate del combo', desc: 'Cinco puñetazos seguidos; no lanza.', spec: tutSpecMelee({ shape: 'thrust', len: 60, width: 30, dur: 0.3 }, c) });
     if (c.chargedMelee && CHARGED_TEXT[c.chargedMelee]) { const t = CHARGED_TEXT[c.chargedMelee]; out.push({ name: t[0], sub: 'Mantener Atacar', desc: t[1] + '.', spec: tutSpecMelee(Object.assign({ dur: 0.35 }, TUT_CHARGED_ANIM[c.chargedMelee]), c) }); }
   } else {
-    out.push({ name: TUT_SHOT_NAME[c.shotStyle] || 'Disparo', sub: 'Atacar', desc: shotText(c) + '.', spec: tutSpecShot(c) });
+    // [RETIRADO 2026-11-12] out.push({ name: TUT_SHOT_NAME[c.shotStyle] || 'Disparo', sub: 'Atacar', desc: shotText(c) + '.', spec: tutSpecShot(c) });
+    if (c.shotMode === 'frost') out.push({ name: FROST_MODE[0].name, sub: 'Mantener Atacar', desc: FROST_MODE[0].desc + '.', spec: tutSpecShot(c) }); // Escarcha: solo rayo
+    else out.push({ name: TUT_SHOT_NAME[c.shotStyle] || 'Disparo', sub: 'Atacar', desc: shotText(c) + '.', spec: tutSpecShot(c) });
+    if (c.shotMode === 'launcher' || c.shotStyle === 'revolver') { const cs = chargedSlot(c); out.push({ name: cs.title.replace(/^[^:]*: /, ''), sub: 'Mantener Atacar', desc: cs.desc + '.', spec: tutSpecShot(c) }); } // Coral: carga pegajosa · Marea: vaciar el tambor
     specialSlots(c).forEach(s => out.push({ name: s.name, sub: s.kind, desc: s.body, spec: tutSpecShot(c) }));
   }
   return out;
@@ -10806,10 +10843,24 @@ function tutAbilityItems(c) {
     const t = ABILITY_TEXT[type] || [type, ''], need = ABILITY_NEEDS[type];
     out.push({ name: t[0], sub: 'Habilidad ' + n + (cd ? ' · recarga ' + fmtS(cd) : ''), desc: t[1] + (need ? '. ' + need + '.' : '.'), spec: tutSpecAbility(type, c) });
   };
-  slot(c.priType, 1, c.priCd); slot(c.secType, 2, c.secCd);
+  // [RETIRADO 2026-11-12] slot(c.priType, 1, c.priCd); slot(c.secType, 2, c.secCd);
+  slot(c.priType, 1, c.priCd);
+  if (c.priType === 'raiseShield') { // Ceniza con el escudo alzado: el ataque cambia; va junto a la habilidad que lo activa
+    out.push({ name: SHIELD_BASH.name, sub: 'Escudo alzado · Atacar', desc: 'Empuja mucho y daña poco, sin bajar el escudo.', spec: tutSpecMelee(SHIELD_BASH, c) });
+    out.push({ name: 'Embestida de escudo', sub: 'Escudo alzado · mantener Atacar', desc: 'Avanza con el escudo por delante arrastrando a los enemigos; contra un muro quedan aturdidos.', spec: tutSpecMelee({ shape: 'thrust', len: 110, width: 40, dur: 0.35, lunge: 200 }, c) });
+  }
+  slot(c.secType, 2, c.secCd);
   if (c.secAlt) slot(c.secAlt, 2, secAltCd(c.secAlt)); // alternativa de la habilidad 2 (Ceniza con el escudo bajado; Coral Al rojo)
+  if (c.fury) { // Ámbar: en furia, las habilidades 1 y 2 cambian
+    for (const [type, n, cd] of [['drill', 1, FURY.drill.cd], ['furyDrop', 2, FURY.grab.cd]]) {
+      const t = ABILITY_TEXT[type], need = ABILITY_NEEDS[type];
+      out.push({ name: t[0], sub: 'En furia · habilidad ' + n + ' · recarga ' + fmtS(cd), desc: t[1] + (need ? '. ' + need + '.' : '.'), spec: tutSpecAbility(type, c) });
+    }
+  }
   const mv = MOVES[c.moveType] || MOVES.dash;
-  out.push({ name: mv.name, sub: 'Movimiento' + (c.moveCd ? ' · pausa ' + fmtS(c.moveCd) : ''), desc: mv.desc + '.', spec: tutSpecMove(c.moveType, c) });
+  // [RETIRADO 2026-11-12] out.push({ name: mv.name, sub: 'Movimiento' + (c.moveCd ? ' · pausa ' + fmtS(c.moveCd) : ''), desc: mv.desc + '.', spec: tutSpecMove(c.moveType, c) });
+  const mvSub = 'Movimiento' + (c.moveCharges ? ' · ' + c.moveCharges + ' cargas, una cada ' + fmtS(c.moveRecharge) : c.moveCd ? ' · pausa ' + fmtS(c.moveCd) : ''); // Musgo: cargas del teletransporte
+  out.push({ name: mv.name, sub: mvSub, desc: mv.desc + '.', spec: tutSpecMove(c.moveType, c) });
   return out;
 }
 // Las listas se construyen una vez por personaje y pestaña: así cada animación conserva su ciclo
@@ -10823,15 +10874,23 @@ function tutTabMoves(c, x, y, w, h) {
   items.forEach((it, i) => tutCard(it, x + (i % 2) * (cw + 8), y + Math.floor(i / 2) * (rh + 8), cw, rh, c, tutK(i)));
 }
 function tutTabAbilities(c, x, y, w, h) {
-  const items = tutItems(c, 1), rh = Math.min(122, (h - (items.length - 1) * 8) / items.length);
+  const items = tutItems(c, 1);
+  if (items.length > 4) { // Ámbar (habilidades de furia) y Ceniza (ataques con el escudo alzado): dos columnas, como en Golpes
+    const rows = Math.ceil(items.length / 2), cw = (w - 8) / 2, rh = Math.min(122, (h - (rows - 1) * 8) / rows);
+    items.forEach((it, i) => tutCard(it, x + (i % 2) * (cw + 8), y + Math.floor(i / 2) * (rh + 8), cw, rh, c, tutK(i)));
+    return;
+  }
+  const rh = Math.min(122, (h - (items.length - 1) * 8) / items.length);
   items.forEach((it, i) => tutCard(it, x, y + i * (rh + 8), w, rh, c, tutK(i)));
 }
 const TUT_CHARGED_ANIM = { seismic: { shape: 'disc', r: 80 }, arcane: { shape: 'disc', r: 80, reach: 60 }, uppercut: { shape: 'thrust', len: 115, width: 56 }, starfall: { shape: 'disc', r: 55, reach: 80 } };
-const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas' };
+// [RETIRADO 2026-11-12] const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas' };
+const TUT_SHOT_NAME = { revolver: 'Revólver', gatling: 'Gatling', book: 'Ondas de hielo', dual: 'Pistolitas', launcher: 'Lanzagranadas' };
 const TUT_STRAT = {
   // [RETIRADO 2026-11-08] 'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje.', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
   'Ceniza': ['Ponte entre el grupo y los enemigos: el escudo bloquea y aguanta el empuje. Álzalo justo antes del golpe para un bloqueo perfecto: rompe gran parte de la estamina del atacante (también si es el golpe al suelo de un guardián cercano). Lo que bloqueas con el escudo en alto os cura a ti y al aliado cubierto (con un límite que se recarga).', 'Provocación (2, con el escudo alzado) atrae a los enemigos cercanos hacia ti; con el escudo bajado, Lanzar escudo los golpea a distancia.', 'Carga el golpe sísmico cuando te rodeen para lanzar a varios a la vez.'],
-  'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.'],
+  // [RETIRADO 2026-11-12] 'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan.', 'El golpe arcano cargado concentra a los enemigos cercanos: ideal para agruparlos antes de un remate.']
+  'Musgo': ['Liana (1) lanza por los aires y, si toca a un aliado, os une y os cura; Enredaderas (2): mantén para un área mayor a tu alrededor; los enredados pierden más estamina.', 'El teletransporte tiene 3 cargas que se recuperan de una en una: sirve para salir de un grupo o llegar a un punto; las paredes lo frenan. Atacar justo después suelta la Onda arcana, que empuja a todos.', 'Mantén Atacar para la Singularidad arcana: el orbe vuela a distancia, atrae a los enemigos y estalla; ideal para agruparlos antes de rematar. Retrocede de un enemigo y ataca para el Báculo ascendente, que lo lanza.'],
   // [RETIRADO 2026-11-08] 'Escarcha': ['Mantén el disparo para ondas continuas: controla pasillos y mantén alejados a los enemigos.', 'Estallido helado (1) congela al enemigo; aprovecha esos segundos para que tus aliados lo golpeen.', 'El doble salto te reposiciona rápido sobre el grupo cuando te acorralan.'],
   // [RETIRADO 2026-11-08] 'Escarcha': ['Mantén el rayo sobre un enemigo: suma frío (el aro helado) y, al llenarlo, lo congela. Si dejas de darle, el frío se va.', 'Estallido helado (1) congela al instante a los de una zona. Después, detona: Bola de nieve (2) a distancia o picado (pulsa movimiento dos veces) de cerca.', 'Detonar aturde al congelado, listo para rematar, y enfría a los de al lado. La Bola de nieve atraviesa: enfría a todos, detona a cada congelado y crece con cada uno; no hace falta cargarla (cargar solo da tamaño y alcance).'],
   'Escarcha': ['Mantén el rayo sobre un enemigo: suma frío (el aro helado) y, al llenarlo, lo congela. Si dejas de darle, el frío se va. Estallido helado (1) congela al instante a los de una zona.', 'Con un congelado a tiro, salta y pulsa otra vez en el aire: el picado detona la congelación, lo deja aturdido y enfría a los de al lado.', 'Burbuja de hielo (2): escudo de vida extra unos segundos; al romperse o acabar, estalla y enfría y empuja a los de alrededor. Úsala al lanzarte a un grupo.'],
@@ -10839,11 +10898,15 @@ const TUT_STRAT = {
   // 'Coral': ['Dispara en ráfagas cortas: el calor sube y, al sobrecalentarte, pierdes el disparo un momento.', 'Abanico (1): con calor alto, quien reciba varios rayos en el suelo sale lanzado.', 'Purga (2) empuja a los enemigos cercanos y después dispara más rápido sin calentarte.'],
   // [RETIRADO 2026-11-10] 'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido, listo para rematar.', 'Pega una carga a un compañero y detónala: bomba humana que lanza a todos los de alrededor. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
   'Coral': ['Pulsa para lanzar granadas: rebotan, estallan al tocar, dañan y mantienen a los enemigos en el aire, pero apenas aturden.', 'Mantén para pegar cargas pegajosas (cargador de 3). Detonador (1) las hace estallar: cada carga rompe estamina y con 3 en el mismo enemigo queda aturdido. Si ya estaba aturdido o en el aire, Remate explosivo: le arranca un buen trozo de vida (al guardián lo mantiene aturdido más tiempo).', 'En grupo, deja que otros aturdan o lancen y detona encima. Pega una carga a un compañero y detónala: bomba humana que lanza a todos. Tras esquivar, el muñeco bomba persigue al fijado; Lluvia de mortero (2) cubre una zona.'],
-  'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.'],
+  // [RETIRADO 2026-11-12] 'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica para el combo completo.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano: úsalo sobre enemigos aturdidos.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando.']
+  'Brasa': ['Encadena Directo, Cruzado y Ráfaga volcánica (cinco puñetazos, no lanza) para el combo completo; mantén Atacar para el Uppercut del dragón, que avanza y lanza. Retrocede de un enemigo y ataca para el Gancho ascendente.', 'Puño ejecutor (1) salta al enemigo ejecutable más cercano (tier 1 o aturdido) y lo ejecuta: te cura 20 PV.', 'El nivel 1 del Poder del dragón (2) se recarga solo; los niveles 2 y 3 se ganan ejecutando (tú o un aliado cerca).'],
   // [RETIRADO 2026-11-08] 'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: humo, más velocidad y Garra taladro (1) e Izuna de furia (2), que agarra sin lanzar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
-  'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: tus golpes pegan y aturden mucho más, vas más rápida y tienes Garra taladro (1) e Izuna de furia (2). Fuera de furia pegas menos: no dejes de atacar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.'],
-  'Marea': ['El revólver tiene 6 balas y se recarga solo si no disparas durante unos segundos.', 'La granada (1) va al enemigo fijado: úsala para agrupar enemigos.', 'Disparo rebotante (2): mantenlo cargado para rebotar con más daño.'],
-  'Ciruela': ['El gatling es continuo y sin carga: mantén el fuego y reposiciónate con el movimiento.', 'La torreta (1) dispara sola un rato; colócala donde pasen los enemigos.', 'Sobrecarga (2) acelera a la torreta y cura a los aliados cercanos.']
+  // [RETIRADO 2026-11-12] 'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía si dejas de pegar). Llena: tus golpes pegan y aturden mucho más, vas más rápida y tienes Garra taladro (1) e Izuna de furia (2). Fuera de furia pegas menos: no dejes de atacar.', 'Zarpazo y Contrazarpazo forman el combo; el Tajo sombra cargado atraviesa al enemigo.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando.', 'Caída Izuna (2) cae sobre un enemigo en el aire: úsala cuando los lances por los aires.']
+  'Ámbar': ['Pegar llena la barra de furia (bajo la vida; se vacía tras 2 s sin pegar; ejecutar la llena más). Llena, entras 6,5 s en furia: tus golpes pegan y aturden mucho más, vas un 30 % más rápida y golpeas más seguido. Fuera de furia pegas menos: no dejes de atacar.', 'En furia cambian tus habilidades: Garra taladro (1) arrastra a los que toca y al final los succiona delante de ti, aturdidos, para seguir el combo; Izuna de furia (2) agarra al más cercano aunque esté en el suelo (no al guardián).', 'Zarpazo, Contrazarpazo y Tajo sombra (atraviesa al enemigo) forman el combo. Mantén Atacar para la Estrella fugaz: saltas, golpeas al caer y, si aciertas, recargas la Embestida (1), que levanta al primero que pilla.', 'Salta hacia un enemigo en el aire para engancharte y mantenerlo flotando; Caída Izuna (2, fuera de furia) lo estampa contra el suelo.'],
+  // [RETIRADO 2026-11-12] 'Marea': ['El revólver tiene 6 balas y se recarga solo si no disparas durante unos segundos.', 'La granada (1) va al enemigo fijado: úsala para agrupar enemigos.', 'Disparo rebotante (2): mantenlo cargado para rebotar con más daño.']
+  'Marea': ['El revólver tiene 6 balas y se recarga solo si pasan 3 s sin disparar ni usar habilidades.', 'Dispara justo tras moverte (Bravata): recargas el tambor y esas balas hacen ×1,5 de daño. Mantén Atacar para vaciar el tambor sobre los objetivos a tiro.', 'La granada (1) va al enemigo fijado, explota y lo lanza: úsala para levantar y agrupar.', 'Disparo rebotante (2): fuerte al primero y rebota en dos más (en todos si están en el aire); mantenlo cargado para más daño.'],
+  // [RETIRADO 2026-11-12] 'Ciruela': ['El gatling es continuo y sin carga: mantén el fuego y reposiciónate con el movimiento.', 'La torreta (1) dispara sola un rato; colócala donde pasen los enemigos.', 'Sobrecarga (2) acelera a la torreta y cura a los aliados cercanos.']
+  'Ciruela': ['La gatling coge velocidad mientras mantienes el fuego (de unas 3 a unas 9 balas por segundo en 1,5 s) y se sobrecalienta tras unos 4 s seguidos: vigila la barra de calor.', 'Tras moverte sale un misil teledirigido (y otro de la torreta); usa el movimiento para reposicionarte.', 'La torreta (1) dispara sola un rato; cualquiera puede cargarla a la espalda con Fijar y soltarla manteniéndolo.', 'Sobrecarga (2) duplica la cadencia casi sin calentar, y la torreta cura a los aliados cercanos.']
 };
 function tutTabStrategy(c, x, y, w) {
   let yy = y + 14;
@@ -11050,8 +11113,11 @@ function defaultFor(dev) { return defaultBinds()[dev]; }
 // Asigna una tecla o botón. Si ya lo usa otra acción del mismo dispositivo, se intercambian
 function assignBind(dev, id, v) {
   const map = BINDS[dev], prev = map[id];
-  for (const o in map) if (o !== id && map[o].includes(v)) map[o] = prev.length ? [prev[0]] : [];
-  map[id] = [v]; saveBinds();
+  // for (const o in map) if (o !== id && map[o].includes(v)) map[o] = prev.length ? [prev[0]] : []; // [RETIRADO 2026-11-11] dejaba sin tecla a la otra acción (p. ej. al dar a Pausa una tecla en uso) y perdía su segunda tecla
+  // [ARREGLO 2026-11-11] la otra acción conserva el resto de sus teclas; si se quedara sin ninguna y no hay con qué intercambiar, no se asigna (se sigue esperando otra tecla)
+  for (const o in map) if (o !== id && map[o].includes(v) && map[o].length === 1 && !prev.length) return false;
+  for (const o in map) if (o !== id && map[o].includes(v)) { const rest = map[o].filter(c => c !== v); map[o] = rest.length ? rest : [prev[0]]; }
+  map[id] = [v]; saveBinds(); return true;
 }
 function startCapture(dev, id) {
   OPT.cap = { dev, id }; OPT.key = null; OPT.capT = time; OPT.capIgnore = new Set();
@@ -11099,14 +11165,17 @@ function updateOptions() {
     if (OPT.key) {
       const c = OPT.key; OPT.key = null;
       if (c === 'Escape') done = true;                                       // cancelar
-      else if (OPT.cap.dev !== 'pad') { assignBind(OPT.cap.dev, OPT.cap.id, c); done = true; }
+      // else if (OPT.cap.dev !== 'pad') { assignBind(OPT.cap.dev, OPT.cap.id, c); done = true; } // [RETIRADO 2026-11-11]
+      else if (OPT.cap.dev !== 'pad') done = assignBind(OPT.cap.dev, OPT.cap.id, c);
     }
     if (!done && OPT.cap.dev === 'pad') {
       const btn = padCaptureButton();
-      if (btn !== null) { assignBind('pad', OPT.cap.id, btn); done = true; }
+      // if (btn !== null) { assignBind('pad', OPT.cap.id, btn); done = true; } // [RETIRADO 2026-11-11]
+      if (btn !== null) done = assignBind('pad', OPT.cap.id, btn);
       else if (time - OPT.capT > 8) done = true;                              // sin pulsar en 8 s, se cancela
     }
-    if (done) OPT.cap = null;
+    // if (done) OPT.cap = null; // [RETIRADO 2026-11-11]
+    if (done) { OPT.cap = null; for (const dev of DEVICES) menuInput(dev, true); } // [ARREGLO 2026-11-11] la tecla recién asignada sigue pulsada: que no active su acción en el menú
     return;
   }
   const R = optList().length + 2; // pestañas, acciones y «Restaurar»
@@ -11481,7 +11550,7 @@ function sgSpawn(q) {
   const e = makeEnemy(q.type, z.B.x + (z.east ? -1 : 1) * Math.random() * 30, z.B.y + (Math.random() - 0.5) * T * 2.2, !!q.elite);
   e.hp *= f; e.maxHp *= f; e.lastHp = e.hp;
   e.sgZ = z; e.sg = { inc: q.inc, wp: [{ x: z.F.x, y: z.F.y + (Math.random() - 0.5) * 60 }], after: 'assign', obj: null, attacking: false };
-  if (q.banner) { e.banner = true; q.inc.banner = e; }
+  if (q.banner) { e.banner = true; q.inc.banner = e; e.bannerInc = q.inc; } // [ARREGLO 2026-11-12] bannerInc: su escuadra aunque él ya se haya fugado
   sgList(z).push(e); S.all.push(e);
   q.inc.spawned++; q.inc.alive++;
 }
@@ -11631,6 +11700,7 @@ function sgDestroy(o) {
     showBanner(z.name + ' perdida: retiraos al patio (andando o por la piedra de paso); su paso se cierra a vuestra espalda');
     sgAlert('lost' + z.id, z.name + ' perdida');
     for (const sl of z.slots) sl.trap = null; // sus defensas caen con ella
+    S.tunnels = S.tunnels.filter(tn => tn.z !== z); // [ARREGLO 2026-11-11] sus túneles caen con ella: si no, nadie puede sellarlos y la oleada no termina nunca
   }
   { burst(o.x, o.y - 30, '#a89cbd', 40); shake = Math.max(shake, 8); effects.push({ type: 'ring', x: o.x, y: o.y, r: o.r + 40, t: 0, dur: 0.5, color: '#ff6b6b' }); }
   if (o.kind === 'powder') { // el polvorín explota
@@ -11738,12 +11808,14 @@ function siegeUpdate(dt) {
   }
   S.all = S.all.filter(e => !e.sgDone);
   // fin de la oleada
-  if (S.phase === 'wave' && !S.spawnQ.length && !S.all.length && !S.transit.length && !S.tunnels.length && !S.rain) sgEndWave();
+  // if (S.phase === 'wave' && !S.spawnQ.length && !S.all.length && !S.transit.length && !S.tunnels.length && !S.rain) sgEndWave(); // [RETIRADO 2026-11-12] acababa la oleada con los ácaros de un divisor vivos, o tras caer la Puerta en el mismo fotograma
+  if (S.phase === 'wave' && !S.result && !S.spawnQ.length && !S.all.length && !enemies.some(e => !e.dead) && !S.transit.length && !S.tunnels.length && !S.rain) sgEndWave(); // [ARREGLO 2026-11-12]
   if (S.stab <= 0 && !S.result) sgFinish(false, 'Retirada', 'La estabilidad del frente ha caído a cero: la muralla exterior está perdida.');
 }
 function sgBannerFall(e, z) { // cae el portaestandarte: su escuadra se desmoraliza
   showBanner('¡Ha caído el portaestandarte! +' + SG.goldBanner + ' oro');
-  for (const q of sgList(z)) if (!q.dead && q.sg && q.sg.inc === e.sg.inc && Math.hypot(q.x - e.x, q.y - e.y) < 260) { q.getup = Math.max(q.getup || 0, 1.2); floatText(q.x, q.y - 40, 'Desmoralizado', '#b9afc9'); }
+  // for (const q of sgList(z)) if (!q.dead && q.sg && q.sg.inc === e.sg.inc && Math.hypot(q.x - e.x, q.y - e.y) < 260) { q.getup = Math.max(q.getup || 0, 1.2); floatText(q.x, q.y - 40, 'Desmoralizado', '#b9afc9'); } // [RETIRADO 2026-11-12] con su inc ya a null aturdía a todos los fugados de alrededor
+  for (const q of sgList(z)) if (!q.dead && q.sg && (e.bannerInc || e.sg.inc) && q.sg.inc === (e.bannerInc || e.sg.inc) && Math.hypot(q.x - e.x, q.y - e.y) < 260) { q.getup = Math.max(q.getup || 0, 1.2); floatText(q.x, q.y - 40, 'Desmoralizado', '#b9afc9'); } // [ARREGLO 2026-11-12]
 }
 function sgOffZone(z, dt) { // [RETIRADO, sin uso con el mapa continuo] simulación sencilla de las zonas sin jugadores
   const L = z.enemies;
@@ -12269,7 +12341,8 @@ function runLogEnd(win, why) {
     guardianes: c.guardianes, salas: c.salas, final: why || null
   };
   const list = runLogLoad(); list.push(rec);
-  RUNLOG.last = runLogSave(list) ? { n: list.length, win } : null;
+  // RUNLOG.last = runLogSave(list) ? { n: list.length, win } : null; // [RETIRADO 2026-11-12] con el registro lleno decía siempre n.º 1001
+  RUNLOG.last = runLogSave(list) ? { n: Math.min(list.length, RUNLOG_MAX), win } : null; // [ARREGLO 2026-11-12]
 }
 // Ganchos sobre funciones del juego (no cambian su comportamiento; solo anotan)
 { const _nr = newRun; newRun = function () { const r = _nr.apply(this, arguments); runLogStart(); return r; }; }
@@ -12289,7 +12362,7 @@ function runLogEnd(win, why) {
     return res; }; }
 { const _hp = hurtPlayer; hurtPlayer = function (p, sx, sy, srcEnemy) {
     const h0 = p.hp, wasDown = p.down; const r = _hp.apply(this, arguments); const j = r && runLogPlayer(p);
-    if (j) { const d = Math.max(0, h0 - Math.max(0, p.hp)); j.recibido += d; RUNLOG.cur.roomTaken += d; j.ultimoGolpe = srcEnemy ? (srcEnemy.type === 'boss' ? 'guardián ' + (srcEnemy.kind || '') : srcEnemy.type) : 'zona o proyectil'; if (!wasDown && p.down) j.caidas++; }
+    if (j) { const d = Math.max(0, h0 - Math.max(0, p.hp)); j.recibido += d; RUNLOG.cur.roomTaken += d; j.ultimoGolpe = srcEnemy ? (srcEnemy.type === 'boss' ? 'guardián ' + (srcEnemy.kind || '') : srcEnemy.type) : 'zona o proyectil'; if (!wasDown && p.down) { j.caidas++; RUNLOG.cur.golpeFinal = j.ultimoGolpe; } } // [ARREGLO 2026-11-12] golpeFinal
     return r; }; }
 { const _de = damageEnemy; damageEnemy = function (e) { const h0 = Math.max(0, e.hp), d0 = e.dead; const r = _de.apply(this, arguments); if (RUNLOG.cur && !d0) RUNLOG.cur.hecho += h0 - Math.max(0, e.hp); return r; }; }
 { const _ex = executeEnemy; executeEnemy = function (e, p) { const h0 = Math.max(0, e.hp); const r = _ex.apply(this, arguments); const c = RUNLOG.cur; if (c) { c.hecho += h0 - Math.max(0, e.hp); c.ejecuciones++; const j = runLogPlayer(p); if (j) j.ejecuciones++; } return r; }; }
@@ -12302,7 +12375,8 @@ function runLogEnd(win, why) {
     const r = _up.apply(this, arguments);
     if (RUNLOG.cur && before === 'play' && state === 'over' && !SIEGE.on) {
       const j = RUNLOG.cur.jugadores.find(q => q.ultimoGolpe);
-      runLogEnd(false, { piso: floor.depth, sala: room.type || 'sala', golpe: j ? j.ultimoGolpe : null });
+      // runLogEnd(false, { piso: floor.depth, sala: room.type || 'sala', golpe: j ? j.ultimoGolpe : null }); // [RETIRADO 2026-11-12] guardaba el último golpe del primer jugador golpeado, no el que acabó la partida
+      runLogEnd(false, { piso: floor.depth, sala: room.type || 'sala', golpe: RUNLOG.cur.golpeFinal || (j ? j.ultimoGolpe : null) }); // [ARREGLO 2026-11-12]
     }
     return r; }; }
 
