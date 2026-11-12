@@ -234,6 +234,9 @@ const ENEMY_SCALE = {
               multiSta: 0.8, execDecay: 0.8, regenPerPlayer: 0.04 }
 };
 function scaleN() { return Math.max(1, humans().length); } // jugadores que cuentan para el escalado
+// Jugadores efectivos para el escalado de un enemigo: los del dúo (Vladímir y Konchakovna) cuentan la mitad por jugador extra
+function guardianN(kind) { const n = scaleN(); return kind && typeof DUO !== 'undefined' && DUO.share[kind] ? 1 + DUO.coopK * (n - 1) : n; }
+function enemyN(e) { return e && e.nEff != null ? e.nEff : scaleN(); }
 // Élite: versión reforzada de un tier 2 (probabilidad chance0 + chancePerDepth × piso por sala)
 const ELITE = { hp: 2.5, sta: 1.5, r: 1.35, dmg: 1.3, kb: 0.6, chance0: 0.12, chancePerDepth: 0.06 };
 // [RETIRADO 2026-11-08] multiplicadores sueltos, integrados en ENEMY, ENEMY_SCALE y ELITE:
@@ -1927,6 +1930,13 @@ let npcMode = false; // modo 1 jugador + aliado IA
 // jugador cae en la misma sala, levantarlo cuesta más (tiempo × (1 + again × (k − 1))) y se desangra antes (bleed / (1 + againBleed × (k − 1))).
 // k = caídas en esta sala; se reinicia al entrar en otra. Así el grupo no puede ignorar el daño a base de levantarse una y otra vez.
 const REVIVE = { r: 52, time: 1.6, ghostTime: 3.2, bleed: 12, decay: 0.5, crawl: 0.18, ghostSpeed: 0.5, hp: 40, again: 0.6, againBleed: 0.4 };
+// Reanimaciones compartidas (2026-11-12): el grupo tiene tantas por piso como jugadores (2, 3 o 4; «1 + IA» = 2). Cada vez que alguien
+// levanta a un caído se gasta una. Sin ninguna, los caídos se quedan en el suelo hasta vencer al guardián: al caer este se levantan
+// gratis y al viajar al piso siguiente se repone el total. En el asedio no hay límite.
+let revivesLeft = 0;
+function revivePool() { return players.length; }
+function reviveLimited() { return !SIEGE.on && players.length > 1; }
+function canRevive() { return !reviveLimited() || revivesLeft > 0; }
 function reviveK(p) { return Math.max(0, (p.roomDowns || 1) - 1); } // caídas previas en esta sala
 const humans = () => players.filter(p => !p.npc);
 // Aliado IA: sigue al jugador a poca distancia. Si el jugador lleva a Ceniza con el escudo alzado, se pone detrás a cubierto
@@ -2646,7 +2656,8 @@ function spawnWave() {
 // Redondeo a 6 decimales antes de Math.ceil: evita que el ruido de coma flotante suba un punto entero
 function snap(v) { return Math.round(v * 1e6) / 1e6; }
 function makeEnemy(type, x, y, elite, kind) { // kind: guardián concreto (el dúo); si falta, el del piso
-  const b = ENEMY[type], dp = floor.depth - 1, np = Math.max(1, humans().length);
+  // [RETIRADO 2026-11-12] const b = ENEMY[type], dp = floor.depth - 1, np = Math.max(1, humans().length);
+  const b = ENEMY[type], dp = floor.depth - 1, np = guardianN(type === 'boss' ? (kind || bossKindFor(floor.depth)) : null); // jugadores efectivos (el dúo cuenta menos)
   // [RETIRADO 2026-11-08] escalado en unidades abstractas (multiplicadas después por ENEMY_HP_MUL y ENEMY_STA_MUL):
   // let hp = b.hp + dp * b.tier * 0.5, sta = b.sta ? b.sta + dp * b.tier * 0.5 : 0;
   // if (type === 'boss') { hp = b.hp + dp * 10 + (np - 1) * 15; sta = b.sta + dp * 4 + (np - 1) * 6; }
@@ -2662,7 +2673,7 @@ function makeEnemy(type, x, y, elite, kind) { // kind: guardián concreto (el d�
   if (elite) { hp = Math.ceil(snap(hp * ELITE.hp)); sta = Math.ceil(snap(sta * ELITE.sta)); }
   if (sta > 0 && np > 1) sta = snap(sta * (1 + (type === 'boss' ? G.multiSta : SC.multiSta) * (np - 1)));
   return {
-    type, tier: b.tier, x, y, r: (bc ? bc.r : b.r) * (elite ? ELITE.r : 1), hp, maxHp: hp, sta, maxSta: sta,
+    type, tier: b.tier, nEff: np, x, y, r: (bc ? bc.r : b.r) * (elite ? ELITE.r : 1), hp, maxHp: hp, sta, maxSta: sta,
     spd: b.spd * (1 + SC.spdPerDepth * dp), color: bc ? bc.color : b.color, elite, kind: bk, dir: Math.PI / 2, lastAtk: null,
     spawnT: 0.7, flash: 0, kbx: 0, kby: 0, t: 1 + Math.random() * 1.2, anim: Math.random() * 6, state: 'walk',
     cd: 1 + Math.random(), cd2: 2, rot: 0, phase: Math.random() * 6, dirx: 0, diry: 0, face: 0, dead: false,
@@ -2676,7 +2687,9 @@ function roomCleared() {
   musicFanfare(room.type === 'boss' ? 'boss' : 'room');
   playSnd(room.type === 'boss' ? 'bossWin' : 'clear', 0.5);
   let revived = false;
-  for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
+  // [RETIRADO 2026-11-12] al limpiar cualquier sala se levantaban gratis: ahora solo al vencer al guardián (y al cambiar de piso)
+  // for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
+  if (room.type === 'boss' || !reviveLimited()) for (const p of players) if (p.down) { p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive; revived = true; }
   // if (room.type === 'boss') { room.stairs = true; showBanner(isFinalBoss(floor.depth) ? '¡Ciclo completado! El Dragón ha caído: ve al portal' : 'Guardián derrotado: ve al portal y pulsa Fijar'); } // [RETIRADO 2026-11-10]
   if (room.type === 'boss') { room.stairs = true; showBanner(isFinalBoss(floor.depth) ? '¡El sol ha sido devorado! Cae el telón: ve al portal' : 'Fin del ' + themeOf(floor.depth).act + ': ve al portal y pulsa Fijar'); }
   else {
@@ -2696,6 +2709,7 @@ function newRun() {
     p.ghost = false; p.rev = 0; p.bleed = null; p.reviving = null; p.hitstunT = 0; p.kbx = p.kby = 0; p.fury = 0; p.furyT = 0; p.furyIdle = 0;
     p.shieldT = 0; p.tauntT = 0; p.overdriveT = 0; p.shieldHp = null; p.shieldBroken = false; p.shieldOn = p.shieldUp = false; p.shieldRegenT = 0; p.sgCarry = false; p.sgReady = null; }
   turrets = [];
+  revivesLeft = revivePool(); // [2026-11-12] reanimaciones compartidas del piso
   wheelSteps = 0;
   state = 'play';
   // enterRoom(floor.start, null); // [RETIRADO 2026-11-10]
@@ -2710,6 +2724,7 @@ function nextFloor() {
   const d = floor.depth + 1;
   floor = genFloor(seed, d);
   for (const p of players) { if (p.down) { p.down = false; p.ghost = false; p.hp = Math.min(p.maxHp, REVIVE.hp); } healPlayer(p, HEAL.floor); }
+  revivesLeft = revivePool(); // [2026-11-12] piso nuevo: reanimaciones repuestas
   enterRoom(floor.start, null);
   showBanner('Piso ' + d);
 }
@@ -3201,7 +3216,8 @@ function updatePlayer(p, dt) {
     p.x += cx * k * dt; p.y += cy * k * dt; collide(p, true);
     return;
   }
-  p.reviving = players.find(q => q !== p && q.down && p.revHolding && Math.hypot(q.x - p.x, q.y - p.y) < REVIVE.r) || null;
+  // [RETIRADO 2026-11-12] p.reviving = players.find(q => q !== p && q.down && p.revHolding && Math.hypot(q.x - p.x, q.y - p.y) < REVIVE.r) || null;
+  p.reviving = canRevive() ? players.find(q => q !== p && q.down && p.revHolding && Math.hypot(q.x - p.x, q.y - p.y) < REVIVE.r) || null : null; // sin reanimaciones no se puede levantar
   const furyK = p.furyT > 0; // modo furia de Ámbar: golpea y recupera el salto más rápido
   p.inv = Math.max(0, p.inv - dt); p.atkCd -= dt * (furyK ? FURY.atk : 1); p.moveCd -= dt * (furyK ? FURY.move : 1); p.shotCd -= dt; p.auraT = Math.max(0, (p.auraT || 0) - dt);
   if (c.moveType === 'flip' && !p.flip && (p.z || 0) > 0) p.z = 0; // red de seguridad: sin salto activo no puede quedarse en el aire
@@ -4239,6 +4255,7 @@ function updateRevive(dt) {
     if (p.rev >= 1) { // ¡en pie!
       p.down = false; p.ghost = false; p.rev = 0; p.hp = Math.min(p.maxHp, REVIVE.hp); p.inv = p.mercyT = HURT.revive;
       burst(p.x, p.y - 12, '#7ee08a', 20); floatText(p.x, p.y - 36, '¡En pie!', '#7ee08a'); SFX.launch();
+      if (reviveLimited()) { revivesLeft = Math.max(0, revivesLeft - 1); showBanner(revivesLeft ? 'Quedan ' + revivesLeft + (revivesLeft === 1 ? ' reanimación' : ' reanimaciones') + ' en este piso' : 'Sin reanimaciones: quien caiga se queda en el suelo hasta vencer al guardián'); }
     }
   }
 }
@@ -6827,7 +6844,7 @@ function hurtPlayer(p, sx, sy, srcEnemy, dmg) {
   shake = Math.max(shake, 6); burst(p.x, p.y - 12, p.color, 10);
   // [RETIRADO 2026-11-08] if (p.hp <= 0) { p.hp = 0; p.down = true; p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
   // [RETIRADO 2026-11-12] if (p.hp <= 0) { p.hp = 0; p.down = true; playSnd('down', 0.3); p.slash = null; p.cast = null; p.bleed = REVIVE.bleed; p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído'); }
-  if (p.hp <= 0) { p.hp = 0; p.down = true; playSnd('down', 0.3); p.slash = null; p.cast = null; p.roomDowns = (p.roomDowns || 0) + 1; p.bleed = REVIVE.bleed / (1 + REVIVE.againBleed * reviveK(p)); p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído' + (p.roomDowns > 1 ? ' otra vez: cuesta más levantarlo' : '')); }
+  if (p.hp <= 0) { p.hp = 0; p.down = true; playSnd('down', 0.3); p.slash = null; p.cast = null; p.roomDowns = (p.roomDowns || 0) + 1; p.bleed = REVIVE.bleed / (1 + REVIVE.againBleed * reviveK(p)); p.rev = 0; p.ghost = false; if (p.coverBy) detachCover(p); showBanner(p.ch.name + ' (J' + p.id + ') ha caído' + (reviveLimited() && !revivesLeft ? ': sin reanimaciones, se queda en el suelo hasta vencer al guardián' : p.roomDowns > 1 ? ' otra vez: cuesta más levantarlo' : '')); }
   return true;
 }
 
@@ -7063,7 +7080,8 @@ function executeEnemy(e, p, how) {
   if (e.type === 'boss') {
     // [RETIRADO 2026-11-10] e.hp -= e.maxHp * 0.25; … floatText(e.x, ey - 34, '¡Ejecución! −25 %', '#ffd54a');
     // const exK = 0.25 / (1 + ENEMY_SCALE.guardian.execDecay * (scaleN() - 1)); // [RETIRADO 2026-11-10] sin el hilo rojo del dúo
-    const exK = 0.25 / (1 + ENEMY_SCALE.guardian.execDecay * (scaleN() - 1)) * (duoLinked(e) ? DUO.linkHp : 1); // solo 25 %; en grupo menos por ejecución; el hilo rojo también protege
+    // [RETIRADO 2026-11-12] const exK = 0.25 / (1 + ENEMY_SCALE.guardian.execDecay * (scaleN() - 1)) * (duoLinked(e) ? DUO.linkHp : 1);
+    const exK = 0.25 / (1 + ENEMY_SCALE.guardian.execDecay * (enemyN(e) - 1)) * (duoLinked(e) ? DUO.linkHp : 1); // solo 25 %; en grupo menos por ejecución; el hilo rojo también protege
     e.hp -= e.maxHp * exK; e.stunT = 0; e.sta = e.maxSta; e.flash = 0.2;
     floatText(e.x, ey - 34, '¡Ejecución! −' + Math.round(exK * 100) + ' %', '#ffd54a');
     if (e.hp <= 0) killEnemy(e, true);
@@ -7433,7 +7451,8 @@ const BOSS = {
 // · Lamento: si cae uno, el otro entra en rabia hasta el final y se mueve más rápido.
 const DUO = { kinds: ['colossus', 'maiden'], share: { colossus: 0.62, maiden: 0.48 }, gap: 150,
               linkR: 300, linkHp: 0.45, linkSta: 0.45, griefSpd: 1.2,
-              title: 'Vladímir y Konchakovna' };
+              title: 'Vladímir y Konchakovna',
+              coopK: 0.5 }; // [2026-11-12] en grupo el dúo escala la mitad por jugador extra (vida, estamina, valor de la ejecución y recuperación): con 3-4 duraba el doble que solo
 const isDuoDepth = depth => bossKindFor(depth) === 'colossus';
 function duoLinked(e) { const m = e.duoMate; return !!(m && !m.dead && !e.dead && !m.sky && Math.hypot(m.x - e.x, m.y - e.y) < DUO.linkR); }
 function bossTitle(depth) { return isDuoDepth(depth) ? DUO.title : BOSS[bossKindFor(depth)].name; }
@@ -7877,7 +7896,8 @@ function updateEnemy(e, dt) {
     return;
   }
   if (e.maxSta > 0 && e.calm > 2) e.sta = Math.min(e.maxSta, e.sta + e.maxSta * 0.2 * dt); // recupera estamina si no le golpean
-  else if (e.type === 'boss' && e.maxSta > 0 && scaleN() > 1) e.sta = Math.min(e.maxSta, e.sta + e.maxSta * ENEMY_SCALE.guardian.regenPerPlayer * (scaleN() - 1) * dt); // en grupo se recupera aunque le golpeen
+  // [RETIRADO 2026-11-12] else if (e.type === 'boss' && e.maxSta > 0 && scaleN() > 1) e.sta = Math.min(e.maxSta, e.sta + e.maxSta * ENEMY_SCALE.guardian.regenPerPlayer * (scaleN() - 1) * dt);
+  else if (e.type === 'boss' && e.maxSta > 0 && enemyN(e) > 1) e.sta = Math.min(e.maxSta, e.sta + e.maxSta * ENEMY_SCALE.guardian.regenPerPlayer * (enemyN(e) - 1) * dt); // en grupo se recupera aunque le golpeen
   const [p, d] = nearestPlayer(e);
   let mv = [0, 0];
   const sgMv = SIEGE.on && e.sg ? siegeSteer(e, p, d, dt) : null; // asedio: van a por los objetivos salvo que un jugador los distraiga
@@ -10305,6 +10325,7 @@ function drawHUD() {
   }
   ctx.font = '700 14px ' + FONT; ctx.fillStyle = '#d8d0e6'; ctx.fillText('Piso ' + floor.depth, nx, 21);
   ctx.font = '400 10px ' + FONT; ctx.fillStyle = '#6f6680'; ctx.fillText('Semilla ' + seed, nx, 38);
+  if (reviveLimited()) { const sw = ctx.measureText('Semilla ' + seed).width; ctx.font = '700 11px ' + FONT; ctx.fillStyle = revivesLeft ? '#7ee08a' : '#ff6b6b'; ctx.fillText('✚ ' + revivesLeft + '/' + revivePool() + ' reanimaciones', nx + sw + 10, 38); } // [2026-11-12] las que le quedan al grupo en el piso
   if (testMode) { ctx.fillStyle = '#ffd54a'; ctx.font = '700 12px ' + FONT; ctx.fillText('Modo de prueba', nx + 72, 21); ctx.font = '400 10.5px ' + FONT; ctx.fillStyle = '#b9a96a'; ctx.fillText('clic de rueda, J o cruceta: lanzar', nx + 72, 38); }
   const known = [...floor.rooms.values()].filter(r => r.visited || Object.values(r.doors).some(n => n && n.visited));
   let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
